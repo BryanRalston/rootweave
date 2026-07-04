@@ -2276,16 +2276,20 @@ function drawGround(t, time){
       };
       const N = wat(t.c, t.r-1), S = wat(t.c, t.r+1), E = wat(t.c+1, t.r), W = wat(t.c-1, t.r);
       const n = (N?1:0)+(S?1:0)+(E?1:0)+(W?1:0);
-      // what each art piece ACTUALLY connects (verified by pixel-sampling the edges):
-      //   river_ns → N↔S straight · river_ew/river_sw → N↔E bend · river_nw/river_se → W↔S bend
-      // E↔W runs & 3-way junctions (the restored wash) fall back to procedural water
+      // Auto-tile the waterway from its water-neighbours. Bend sprites are named by
+      // the two edges their water connects (ne = N+E, nw = N+W, se = S+E, sw = S+W);
+      // straights connect N↔S or E↔W. Endpoints get a straight stub; 3+ way
+      // junctions have no clean piece, so they fall back to procedural water.
       let nm = null;
       if(n===2){
         if(N&&S) nm = 'river_ns';
-        else if(N&&E) nm = 'river_ew';                        // widest N↔E connector
-        else if(S&&W) nm = (t.c+t.r)%2 ? 'river_nw' : 'river_se';
-      }else if(n===1 && (N||S)){
-        nm = 'river_ns';
+        else if(E&&W) nm = 'river_ew';
+        else if(N&&E) nm = 'river_ne';
+        else if(N&&W) nm = 'river_nw';
+        else if(S&&E) nm = 'river_se';
+        else if(S&&W) nm = 'river_sw';
+      }else if(n===1){
+        nm = (N||S) ? 'river_ns' : 'river_ew';
       }
       img = nm ? SPRITES[nm] : null;
     }
