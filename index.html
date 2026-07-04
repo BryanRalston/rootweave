@@ -791,8 +791,8 @@ function loadSprites(){
     dragonfly:      'critter_dragonfly',
     rabbit:         'critter_rabbit',
   };
-  Object.entries(MAP).forEach(([name,file])=>registerSprite(name, 'sprites/'+file+'.png'));
-  registerSprite('bg_hills', 'sprites/bg_hills.jpg');   // horizon panorama (opaque scene)
+  Object.entries(MAP).forEach(([name,file])=>registerSprite(name, 'sprites/'+file+'.webp'));
+  registerSprite('bg_hills', 'sprites/bg_hills.webp');   // horizon panorama (opaque scene)
 }
 function drawSprite(name, x, y, w, h, fallback){
   const img = SPRITES[name];
@@ -3241,7 +3241,7 @@ function init(){
 function showSplash(){
   showModal(`
     <h2>🌱 Rootweave</h2>
-    <img src="sprites/title_farm.jpg" alt="" style="width:100%; border-radius:14px; border:2px solid var(--line); display:block" onerror="this.style.display='none'">
+    <img src="sprites/title_farm.webp" alt="" style="width:100%; border-radius:14px; border:2px solid var(--line); display:block" onerror="this.style.display='none'">
     <div class="eventkid"><b>The valley is dying.</b><br>Dust where wheat once stood, a dry creek, a muddy river — and one small green corner by the barn.<br><br>Weave the roots back together. Restore the dying land.</div>
     <div class="lesson">🌱 Feed the dead ground, plant many kinds, move the animals, shelter the river — and life returns, field by field.</div>
     <div class="modalbtns"><button class="mbtn big" data-act="close">Restore the land! 🚜</button></div>

@@ -11,7 +11,6 @@ public/
 src/
 scripts/
 node_modules/
-# ship only the two jpgs the game loads at runtime
+# ship only WebP sprites (small, fast on mobile); source PNG/JPG stay local
+sprites/*.png
 sprites/*.jpg
-!sprites/bg_hills.jpg
-!sprites/title_farm.jpg
