@@ -69,7 +69,11 @@ canvas#game.tooling{cursor:crosshair}
   background:var(--glass); border:2px solid var(--line); border-bottom:3px solid var(--wood2);
   border-radius:14px; box-shadow:0 4px 12px rgba(20,14,4,.35), inset 0 1px 0 rgba(255,250,230,.8);
   font-size:12.5px; color:var(--ink); overflow:hidden;
+  transition:opacity .18s ease;
 }
+/* while a dialog or the intro/tutorial is open, tuck the quest panel away so
+   the floating windows never stack on top of each other (esp. on phones) */
+body.overlay-open #questPanel{ opacity:0; pointer-events:none; }
 #questPanel .qhead{
   background:var(--woodgrain); color:#ffeece; font-weight:800; padding:7px 10px; font-size:13px;
   display:flex; align-items:center; gap:6px; cursor:pointer; text-shadow:0 1px 2px rgba(30,15,0,.5);
@@ -2170,16 +2174,19 @@ function drawHorizon(t){
     // on ANY screen/aspect (no thin-sliver clipping, no side gaps). Bottom-anchored
     // to the horizon line, tiled horizontally so parallax never exposes an edge.
     const bandH = horizonY;
-    const targetW = viewW * 1.25;                          // a touch wider than screen for parallax room
-    const scale = Math.max(targetW / img.width, bandH / img.height);   // cover both axes
+    // Cover-fit with ~40% extra width so we can drift for parallax WITHOUT ever
+    // exposing an edge — then draw the panorama ONCE (no tiling → no seam, since
+    // the painting isn't horizontally seamless).
+    const scale = Math.max((viewW * 1.4) / img.width, bandH / img.height);
     const dw = img.width * scale, dh = img.height * scale;
     const iy = horizonY - dh;                              // painting's base sits on the horizon line
-    const drift = -((cam.x * 0.12) % dw);                  // gentle parallax on pan
+    const slack = (dw - viewW) / 2;                        // spare width on each side
+    const drift = Math.max(-slack, Math.min(slack, -cam.x * 0.06));   // gentle, clamped parallax
+    const px = (viewW - dw) / 2 + drift;                   // centered + drift, edges always off-screen
     ctx.save();
     ctx.beginPath(); ctx.rect(0, 0, viewW, horizonY);
     ctx.clip();
-    // tile across the full width so there's never a gap, whatever the drift
-    for(let dx = drift - dw; dx < viewW + dw; dx += dw){ ctx.drawImage(img, dx, iy, dw, dh); }
+    ctx.drawImage(img, px, iy, dw, dh);                    // single draw, no repeat
     // blend the panorama's top into our sky
     ctx.globalAlpha = 0.6;
     const skyG = ctx.createLinearGradient(0, iy, 0, iy+dh*0.3);
@@ -3113,14 +3120,24 @@ function toast(msg){
   while(box.children.length>3) box.removeChild(box.firstChild);
   setTimeout(()=>{ if(el.parentNode) el.parentNode.removeChild(el); }, 3700);
 }
+// Keep floating panels from stacking on top of each other: whenever a centered
+// dialog (modal) or the intro/tutorial box is open, tuck the quest panel away
+// (it's redundant while a dialog is up, and on narrow phones they overlapped).
+function syncOverlay(){
+  const on = document.getElementById('modalWrap').classList.contains('show')
+          || document.getElementById('tut').classList.contains('show');
+  document.body.classList.toggle('overlay-open', on);
+}
 function showModal(html){
   document.getElementById('modalBox').innerHTML = html;
   document.getElementById('modalWrap').classList.add('show');
   modalOpen = true;
+  syncOverlay();
 }
 function closeModal(){
   document.getElementById('modalWrap').classList.remove('show');
   modalOpen = false;
+  syncOverlay();
 }
 function toolCost(td){
   if(td.id==='compost' && state.unlocks.upg_compost) return 2;
@@ -3377,13 +3394,15 @@ function setTut(step){
     el.classList.remove('show');
     state.tutDone = true;
     save();
+    syncOverlay();
     return;
   }
   const t = T[step];
   el.innerHTML = `<span class="skip" id="tutSkip">skip tutorial</span>${t.html}`
     + (t.btn ? `<button class="tnext" id="tutNext">${t.btn}</button>` : '');
   el.classList.add('show');
-  document.getElementById('tutSkip').onclick = ()=>{ state.tutDone = true; el.classList.remove('show'); save(); };
+  syncOverlay();
+  document.getElementById('tutSkip').onclick = ()=>{ state.tutDone = true; el.classList.remove('show'); syncOverlay(); save(); };
   const nx = document.getElementById('tutNext');
   if(nx) nx.onclick = ()=>setTut(step+1);
   save();
