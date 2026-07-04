@@ -222,8 +222,33 @@ canvas#game.tooling{cursor:crosshair}
   font-weight:800; font-size:14px; padding:10px; cursor:pointer; color:#5a3d10; box-shadow:0 3px 0 var(--gold2);
 }
 #tut .tnext:active{transform:translateY(2px); box-shadow:0 1px 0 var(--gold2)}
+/* ---------- journey (level select) ---------- */
+#journey{position:fixed; inset:0; z-index:62; display:none; flex-direction:column; align-items:center; overflow-y:auto; background:#0e1a12}
+#journey.show{display:flex}
+#journey .jbg{position:fixed; inset:0; background:url('sprites/title_farm.webp') center/cover no-repeat; opacity:.55; pointer-events:none}
+#journey .jshade{position:fixed; inset:0; background:linear-gradient(180deg, rgba(8,14,8,.74) 0%, rgba(8,14,8,.38) 42%, rgba(8,14,8,.8) 100%); pointer-events:none}
+#journey .jwrap{position:relative; z-index:1; width:100%; max-width:470px; padding:24px 18px calc(30px + env(safe-area-inset-bottom,0px))}
+#journey h1{color:#ffeece; font-size:30px; margin:4px 0 2px; text-align:center; text-shadow:0 2px 8px rgba(0,0,0,.6)}
+#journey .jsub{color:#e8d9ae; font-size:13.5px; font-weight:700; text-align:center; margin-bottom:20px; text-shadow:0 1px 4px rgba(0,0,0,.7)}
+.jnode{position:relative; display:flex; align-items:center; gap:12px; width:100%; text-align:left;
+  background:var(--glass); border:2px solid var(--line); border-bottom:4px solid var(--wood2); border-radius:18px;
+  padding:12px 14px; margin:0 0 26px; cursor:pointer; font-family:inherit; min-height:74px;
+  box-shadow:0 6px 18px rgba(10,8,2,.45), inset 0 1px 0 rgba(255,250,230,.8)}
+.jnode:active{transform:translateY(2px)}
+.jnode .jem{width:52px; height:52px; flex:none; border-radius:50%; background:var(--woodgrain); border:2px solid var(--wood2);
+  display:flex; align-items:center; justify-content:center; font-size:26px; box-shadow:inset 0 2px 4px rgba(0,0,0,.25)}
+.jnode .jnm{font-weight:800; font-size:16.5px; color:var(--wood2)}
+.jnode .jts{font-size:12px; font-weight:700; color:var(--soft); line-height:1.25; margin-top:1px}
+.jnode .jst{margin-left:auto; flex:none; font-weight:800; font-size:12.5px; text-align:right; color:var(--green2); white-space:nowrap; line-height:1.35}
+.jnode.locked{filter:grayscale(.85); opacity:.62; cursor:default}
+.jnode.locked .jst{color:var(--soft)}
+.jnode.done{border-color:#8fb768}
+.jnode.cur .jem{box-shadow:0 0 0 3px rgba(234,181,67,.65), inset 0 2px 4px rgba(0,0,0,.25)}
+.jnode:not(:last-child)::after{content:''; position:absolute; left:38px; top:100%; height:26px; border-left:4px dotted rgba(245,230,190,.75)}
+#btnJourney .jlbl{font-size:12.5px; margin-left:3px}
 @media(max-width:640px){
   #brand span{display:none}
+  #btnJourney .jlbl{display:none}
   .hudpill{font-size:12.5px; padding:5px 9px}
   .hudbtn{min-width:38px; min-height:36px; font-size:15px}
   #overlaybar{top:auto; bottom:96px}
@@ -238,6 +263,7 @@ canvas#game.tooling{cursor:crosshair}
 
 <div id="topbar">
   <span class="hudpill" id="brand">🌱 <span>Rootweave</span></span>
+  <button class="hudbtn" id="btnJourney" title="Back to the journey map (progress autosaves)">◀🗺️<span class="jlbl">Journey</span></button>
   <span class="hudpill" id="seasonPill">🌸 Spring · Y1</span>
   <span class="hudpill">🪙 <b id="coinsEl">75</b></span>
   <span id="clockGroup">
@@ -281,11 +307,22 @@ canvas#game.tooling{cursor:crosshair}
 <div id="toasts"></div>
 <div id="modalWrap"><div id="modalBox"></div></div>
 <div id="tut"></div>
+<div id="journey">
+  <div class="jbg"></div><div class="jshade"></div>
+  <div class="jwrap">
+    <h1>🌱 Rootweave</h1>
+    <div class="jsub">The journey home — heal the land, one plot at a time</div>
+    <div id="jpath"></div>
+  </div>
+</div>
 
 <script>
 'use strict';
 /* ===========================================================================
-   ROOTWEAVE v4 — a LIVE isometric regenerative-farming sim (SimCity-style).
+   ROOTWEAVE v6 — a LIVE isometric regenerative-farming sim (SimCity-style),
+   now taught as a STAGED CAMPAIGN: five distinct plots (see LEVELS) that grow
+   in size and difficulty and unlock mechanics one at a time, ending on the
+   original full dying valley.
    The regenerative soil model is the engine underneath: diverse planting +
    sequenced grazing (cattle → chickens) + resting land REGENERATES soil,
    monocropping extracts. v4 adds: illustrated cartoon art (sprites/ PNGs with
@@ -295,14 +332,15 @@ canvas#game.tooling{cursor:crosshair}
    =========================================================================== */
 
 // ---------------------------------------------------------------- constants
-const GRID = 14;                       // 14x14 isometric world — a whole dying valley
+let GRID = 14;                         // current plot's grid size (set per campaign level)
+const GRID_FULL = 14;                  // the final level: the whole dying valley
 const TILE_W = 72, TILE_H = 36;        // iso diamond size (world units)
 const TW2 = TILE_W/2, TH2 = TILE_H/2;
 const TDEPTH = 11;                     // tile side thickness (2.5D block edge)
 const DAY_LEN = 5.5;                   // real seconds per game day at 1× speed (slowed for a calmer, easier-to-follow pace)
 const DAYS_PER_SEASON = 12;
 const TOD_CYCLE = 75;                  // real seconds (at 1×) for a full dawn→night light cycle
-const SAVE_KEY = 'rootweave_v5';   // v5: RESTORE THE DYING LAND — dead tier, regions/quests, shop, full art set
+const SAVE_KEY = 'rootweave_v6';   // v6: STAGED CAMPAIGN — 5 plots, progressive tools (older save keys start the journey fresh)
 const SOIL_ATTRS = ['om','structure','nutrients','water','microbial','erosion'];
 const ATTR_INFO = {
   om:        {label:'🍂 Organic Matter', tip:'Decayed plants & manure — the soil sponge'},
@@ -425,6 +463,7 @@ const REGIONS = [
     story:'Poisoned white crust. Only patience and life itself can wash it clean.'},
 ];
 function regionOf(c,r){
+  if(GRID!==GRID_FULL) return 'plot';   // regions only exist on the full valley (final level)
   if(r<=5 && c<=5) return 'vale';
   if(r<=5) return 'ridge';
   if(r<=9 && c<=9) return 'wash';
@@ -473,6 +512,116 @@ const BADGES = [
     check:f=>f.restored>=f.totalSoil && f.bio>=60 && state.waterQuality>=80 && state.regionIdx>=REGIONS.length},
 ];
 
+/* ===================== THE CAMPAIGN — five plots, one lesson each ==========
+   Each level is its own distinct plot: its own map generation, size and
+   unlocked toolset. Mechanics arrive ONE AT A TIME so every idea lands before
+   the next. The old giant dying valley is the finale.
+   ========================================================================== */
+const LEVELS = [
+  {id:'home', name:'The Home Patch', em:'🏡', grid:6, coins:40, parYears:3,
+   teaser:'A tiny tired patch — learn to wake dead ground.',
+   story:'Grandpa\'s old kitchen garden. Small, dusty… and the perfect place to learn. Feed the dead ground, plant a team of crops, and watch the green come back. You can\'t fail here — just grow.',
+   doneText:'The Home Patch is green again! You know the heart of it now: feed the ground, plant many kinds, let the seasons work.',
+   tools:['select','compost','covercrop','sisters'],
+   shop:false, river:false, events:false, startPaused:true, regen:1.8,
+   ovs:['health'],
+   goalText:'Wake the little Home Patch back to life.',
+   goals:[
+     {em:'🌅', desc:'Revive 4 dead tiles',            prog:()=>[Math.min(4, state.stats.revived), 4]},
+     {em:'🌽', desc:'Plant 3 Three Sisters',          prog:()=>[Math.min(3, state.stats.sistersPlanted), 3]},
+     {em:'💚', desc:'Bring 10 tiles to 55+ health',   prog:()=>[Math.min(10, state.grid.filter(t=>t.terrain==='soil'&&t.health>=55).length), 10]},
+   ],
+   gen:genHomePatch,
+   tut:[
+     {html:'🏡 <b>Welcome to the Home Patch!</b><br>🖐️ <b>Drag</b> to look around · 🔍 <b>pinch or scroll</b> to zoom.<br><br>See the gray, cracked tiles? That ground is <b>DEAD</b> — nothing can grow there… yet.', btn:'Let\'s wake it up 🌱'},
+     {html:'🌿 Tap <b>Pioneers</b> in the palette below, then tap (or paint across) a few gray DEAD tiles.<br><br>Pioneer roots are the only seeds tough enough to crack dead crust. 🪣 Compost works too!', on:'feed_dead'},
+     {html:'🌱 Planted! Now press ▶️ <b>Play</b> (top of the screen) and let the days pass.<br><br>The pioneers will work the ground — watch for 🌅 <b>REVIVED!</b>', on:'revive'},
+     {html:'🌅 <b>The ground woke up!</b> Revived tiles become brown, workable soil.<br><br>Now tap 🌽 <b>3 Sisters</b> and plant it on workable soil — corn, beans & squash grow as a team and FEED the soil while they grow.', on:'plant_crop'},
+     {html:'🌽 Perfect! Crops grow as the days pass and harvest themselves for 🪙 coins.<br><br>Your goals live in the 🎯 panel (top left). Keep feeding, planting & resting the land — turn the whole patch green! 💚', btn:'I\'ve got this 🌿'},
+   ]},
+  {id:'field', name:'The Back Field', em:'🐄', grid:8, coins:55, parYears:4,
+   teaser:'Bring in the animals — hooves, beaks & manure.',
+   story:'The old grazing field behind the barn. Time to learn the animal dance: cattle munch and trample, chickens scratch through after them — and the soil drinks it all in.',
+   doneText:'The Back Field hums with life — you\'ve mastered the grazing dance!',
+   tools:['select','compost','covercrop','sisters','clover','cattle','chicken','bulldoze'],
+   shop:false, river:false, events:false, startPaused:false, regen:1.5,
+   ovs:['health','om'],
+   goalText:'Heal the Back Field with the help of the herd.',
+   goals:[
+     {em:'🌅', desc:'Revive 6 dead tiles',                  prog:()=>[Math.min(6, state.stats.revived), 6]},
+     {em:'✨', desc:'Team-graze 2 tiles (🐔 after 🐄)',     prog:()=>[Math.min(2, state.stats.synergy), 2]},
+     {em:'🍀', desc:'Plant 4 cover crops',                  prog:()=>[Math.min(4, state.stats.coverPlanted), 4]},
+     {em:'💚', desc:'Bring 16 tiles to 55+ health',         prog:()=>[Math.min(16, state.grid.filter(t=>t.terrain==='soil'&&t.health>=55).length), 16]},
+   ],
+   gen:genBackField,
+   tut:[
+     {html:'🐄 <b>The Back Field</b> — and two new helpers: <b>Cattle</b> & <b>Chickens</b>!<br><br>Animals GRAZE a tile for a few days: munching, trampling and fertilizing it back to life.', btn:'Meet the herd 🐄'},
+     {html:'🐄 Tap <b>Cattle</b> and place them on brown workable soil (they can\'t eat dead ground).<br><br>They\'ll mob-graze that tile for a few days.', on:'graze_cattle'},
+     {html:'🐔 Now the magic: send <b>Chickens</b> to the <b>SAME tile</b>.<br><br>They scratch through after the herd — ✨ <b>team synergy</b> supercharges the soil!', on:'synergy'},
+     {html:'✨ <b>Soil magic!</b> That\'s regenerative grazing.<br><br>One more friend: 🍀 <b>Clover</b> — no coins, but it feeds the soil a feast and its flowers call the bees. Finish the 🎯 goals to move on!', btn:'On it! 🐔'},
+   ]},
+  {id:'creek', name:'The Creek Bottom', em:'🏞️', grid:9, coins:65, parYears:5,
+   teaser:'A murky creek needs buffer roots.',
+   story:'A real creek runs through this low ground — and it\'s murky with mud. Bare dirt sheds runoff straight into the water. Plant roots along the banks and the creek will run clear again.',
+   doneText:'Listen — the creek chuckles over clean stones! Buffer roots did that.',
+   tools:['select','compost','covercrop','sisters','clover','wheat','cattle','chicken','trees','pond','bulldoze'],
+   shop:false, river:true, events:true, startPaused:false, regen:1.25,
+   ovs:['health','om','water','runoff'],
+   goalText:'Restore the land AND clean the creek.',
+   goals:[
+     {em:'🌳', desc:'Plant 3 riverside buffers',        prog:()=>[Math.min(3, state.stats.buffers), 3]},
+     {em:'💧', desc:'Creek quality 65+',                prog:()=>[Math.min(65, Math.round(state.waterQuality)), 65]},
+     {em:'🌅', desc:'Revive 8 dead tiles',              prog:()=>[Math.min(8, state.stats.revived), 8]},
+     {em:'💚', desc:'Bring 20 tiles to 55+ health',     prog:()=>[Math.min(20, state.grid.filter(t=>t.terrain==='soil'&&t.health>=55).length), 20]},
+   ],
+   gen:genCreek,
+   tut:[
+     {html:'🏞️ <b>The Creek Bottom.</b> A creek runs through this plot… and it\'s <b>MURKY</b> 🟤.<br><br>Bare, dying dirt sheds mud straight into the water every time it rains.', btn:'How do I clean it?'},
+     {html:'🌳 Tap <b>Trees</b> and plant them on living soil <b>RIGHT BESIDE the water</b>.<br><br>Buffer roots filter the runoff before it reaches the creek — watch the 💧 water quality pill rise!', on:'buffer'},
+     {html:'💧 That\'s a <b>riparian buffer</b> — the #1 clean-water move on any real farm!<br><br>New too: 💧 <b>Ponds</b> store rain for dry spells, and 🌾 <b>Wheat</b> pays fast but tires the soil. Check the 🌊 Runoff overlay (right side) to see what\'s washing in. 🎯 Go!', btn:'Clean water! 🌊'},
+   ]},
+  {id:'flats', name:'The Dust Flats', em:'🏜️', grid:11, coins:50, parYears:6,
+   teaser:'Salt, gullies & dust. The hard lesson.',
+   story:'The dust flats. Salt crusts, erosion gullies, a dry creekbed — and barely a coin to spare. This land will fight you. Feed it anyway.',
+   doneText:'Even the salt pan blooms. If you can heal the Dust Flats, you can heal anything.',
+   tools:['select','compost','covercrop','sisters','clover','wheat','cattle','chicken','goat','trees','pond','wetland','bulldoze'],
+   shop:false, river:true, events:true, startPaused:false, regen:1,
+   ovs:['health','om','water','bio','runoff'],
+   goalText:'Remediate the hard land of the Dust Flats.',
+   goals:[
+     {em:'🌅', desc:'Revive 18 dead tiles',             prog:()=>[Math.min(18, state.stats.revived), 18]},
+     {em:'🧂', desc:'Revive 3 salt-pan tiles',          prog:()=>[Math.min(3, state.stats.saltRevived||0), 3]},
+     {em:'💧', desc:'River quality 60+',                prog:()=>[Math.min(60, Math.round(state.waterQuality)), 60]},
+     {em:'💚', desc:'Bring 30 tiles to 55+ health',     prog:()=>[Math.min(30, state.grid.filter(t=>t.terrain==='soil'&&t.health>=55).length), 30]},
+   ],
+   gen:genDustFlats,
+   tut:[
+     {html:'🏜️ <b>The Dust Flats.</b> The hardest land yet: 🧂 <b>salt pans</b> that need extra feeding, ⛏️ <b>gullies</b>, a dry creekbed — and tight coins. Every move counts.', btn:'What\'s new?'},
+     {html:'🐐 Two new tools!<br><br><b>Goats</b> — the only grazer tough enough to browse DEAD scrub (try them on a gray tile!) — and 🌾 <b>Wetlands</b>, nature\'s kidney, which filter runoff near the water.', on:'graze_goat'},
+     {html:'🐐 Browse on! Goats even clear dead brush.<br><br>🧂 Salt pans wake at 30 health (extra compost + pioneers + patience). And beware 🌪️ <b>dust storms</b> off the dead flats — every tile you revive makes them weaker. 🎯 Go!', btn:'Bring the rain 🌧️'},
+   ]},
+  {id:'valley', name:'The Whole Valley', em:'🌄', grid:14, coins:75, parYears:8,
+   teaser:'The whole dying valley. Everything you\'ve learned.',
+   story:'The whole valley — dust where wheat once stood, a dry creek, a muddy river, and one small green corner by the barn. Every lesson, all at once. Weave the roots back together.',
+   doneText:'Every region breathes again. The valley is ALIVE — and so is everything you\'ve learned.',
+   tools:'all',
+   shop:true, river:true, events:true, startPaused:false, regen:1,
+   ovs:['health','om','water','bio','runoff'],
+   goalText:'Restore all 6 regions of the dying valley.',
+   goals:[
+     {em:'🗺️', desc:'Restore all 6 regions', prog:()=>[Math.min(REGIONS.length, state.regionIdx), REGIONS.length]},
+   ],
+   gen:genValley,
+   tut:[
+     {html:'🌄 <b>The Whole Valley.</b> Everything you\'ve learned, all at once — only one corner still breathes.<br><br>🎯 Heal it <b>region by region</b> (top-left panel shows the current one, plus side tasks that pay coins).', btn:'Show me'},
+     {html:'🛒 The <b>SHOP</b> is open (top bar)! Spend surplus coins on sheep, pigs, ducks, wetlands, greenhouses, markets, upgrades & more.<br><br>🏆 Restore every region, clean the river, and welcome the wildlife home!', btn:'Restore the valley! 🚜'},
+   ]},
+];
+let camp = {cur:0, unlocked:0, stars:[0,0,0,0,0], done:[false,false,false,false,false]};
+let journeyOpen = false;
+function LV(){ return LEVELS[(typeof state==='object' && state && typeof state.lv==='number') ? state.lv : camp.cur] || LEVELS[0]; }
+function toolAllowed(id){ const T = LV().tools; return T==='all' || T.indexOf(id)>=0; }
+
 // ---------------------------------------------------------------- state
 let state, canvas, ctx, DPR = 1, viewW = 0, viewH = 0;
 let cam = {x:0, y:0, zoom:1}, fitZoom = 1;
@@ -520,16 +669,137 @@ function recalc(t){
   t.health = SOIL_ATTRS.reduce((a,k)=>a+t.soil[k],0) / SOIL_ATTRS.length;
 }
 const DEFAULT_STATS = {planted:0, harvests:0, coinsEarned:0, synergy:0, cattle:0, chickens:0, ponds:0, trees:0,
-  composts:0, coverPlanted:0, revived:0, buffers:0, grazes:0, sistersPlanted:0, buildings:0, decos:0};
-function newGame(){
+  composts:0, coverPlanted:0, revived:0, buffers:0, grazes:0, sistersPlanted:0, buildings:0, decos:0, saltRevived:0};
+function newGame(lv){
+  if(typeof lv!=='number') lv = camp ? camp.cur : 0;
+  const L = LEVELS[lv];
+  GRID = L.grid;
   const s = {
-    v:5, year:1, season:0, day:1, dayFrac:0, seasonCount:0, tod:0.30,
-    coins:75, speed:1, paused:false, waterQuality:28, riparianTip:false, incomeTip:false, deadTip:false,
+    v:6, lv, gridSize:GRID, levelDone:false, introSeen:false,
+    year:1, season:0, day:1, dayFrac:0, seasonCount:0, tod:0.30,
+    coins:L.coins, speed:1, paused:!!L.startPaused, waterQuality:L.river?30:55,
+    riparianTip:false, incomeTip:false, deadTip:false,
     regionIdx:0, tasks:[], tasksDone:{}, unlocks:{}, washRestored:false,
     grid:[], badges:{}, won:false, tutStep:0, tutDone:false, sound:true,
     stats:Object.assign({}, DEFAULT_STATS),
   };
   for(let r=0;r<GRID;r++) for(let c=0;c<GRID;c++) s.grid.push(newTile(c,r));
+  L.gen(s);
+  return s;
+}
+// ---------------- per-level world generation ----------------
+function seedSoil(t, base, spread){
+  const i = idx(t.c,t.r);
+  t.terrain = 'soil'; t.deco = null; t.feature = null;
+  SOIL_ATTRS.forEach((k,ki)=>{ t.soil[k] = base + sr(i*5+ki)*spread; });
+  recalc(t);
+}
+// LEVEL 1 — The Home Patch (6×6): a living heart, a tired ring, a dead edge.
+// No river, no animals, no shop. Cannot fail.
+function genHomePatch(s){
+  s.grid.forEach(t=>{
+    const d = Math.max(Math.abs(t.c-2.5), Math.abs(t.r-2.5));
+    if(d<=0.5) seedSoil(t, 48, 14);        // 2×2 green heart
+    else if(d<=1.5) seedSoil(t, 30, 10);   // tired but workable ring
+    else makeDead(t);                      // the dead edge to wake up
+  });
+}
+// LEVEL 2 — The Back Field (8×8): adds cattle, chickens & clover.
+function genBackField(s){
+  s.grid.forEach(t=>{
+    const i = idx(t.c,t.r);
+    const d = Math.max(Math.abs(t.c-2), Math.abs(t.r-2));
+    if(d<=1) seedSoil(t, 46, 14);
+    else if(d<=3) seedSoil(t, 28, 12);
+    else if(sr(i*7+2)<0.7) makeDead(t);
+    else seedSoil(t, 18, 10);
+  });
+  const b = s.grid[idx(1,1)]; b.terrain = 'barn'; b.deco = null; b.feature = null;
+  [[6,1,'deco_stump'],[1,6,'deco_rock'],[6,6,'deco_deadtree']].forEach(([c,r,dc])=>{
+    const t = s.grid[idx(c,r)]; if(t.terrain==='dead') t.deco = dc;
+  });
+}
+// LEVEL 3 — The Creek Bottom (9×9): adds the creek, water quality, buffers, ponds.
+function genCreek(s){
+  s.grid.forEach(t=>{
+    const i = idx(t.c,t.r);
+    const d = Math.max(Math.abs(t.c-2), Math.abs(t.r-2));
+    if(d<=1) seedSoil(t, 46, 14);
+    else if(d<=3) seedSoil(t, 26, 12);
+    else if(sr(i*7+2)<0.6) makeDead(t);
+    else seedSoil(t, 16, 10);
+  });
+  const b = s.grid[idx(1,1)]; b.terrain = 'barn'; b.deco = null; b.feature = null;
+  // the creek: north→south near the east side, drifting only eastward (tileset-safe)
+  let rc = GRID-3;
+  for(let r=0;r<GRID;r++){
+    if(r>0 && r<GRID-1 && rc<GRID-2 && Math.random()<0.3){
+      const w = s.grid[idx(rc,r)]; w.terrain = 'water'; w.deco = null; w.feature = null; w.crop = null;
+      rc += 1;
+    }
+    const w = s.grid[idx(rc,r)]; w.terrain = 'water'; w.deco = null; w.feature = null; w.crop = null;
+  }
+  // muddy banks: ground beside the creek starts bare & sad — the runoff lesson
+  const isW = (c,r)=> inGrid(c,r) && s.grid[idx(c,r)].terrain==='water';
+  s.grid.forEach(t=>{
+    if(t.terrain!=='soil') return;
+    let adj = false;
+    for(let dr=-1;dr<=1;dr++) for(let dc=-1;dc<=1;dc++){ if((dc||dr) && isW(t.c+dc,t.r+dr)) adj = true; }
+    if(adj && t.health>40) seedSoil(t, 22, 10);
+  });
+}
+// LEVEL 4 — The Dust Flats (11×11): salt pan, gullies, dry creekbed, tight coins.
+function genDustFlats(s){
+  s.grid.forEach(t=>makeDead(t));
+  // thin murky river down the east side
+  let rc = GRID-3;
+  for(let r=0;r<GRID;r++){
+    if(r>0 && r<GRID-1 && rc<GRID-2 && Math.random()<0.3){
+      const w = s.grid[idx(rc,r)]; w.terrain = 'water'; w.deco = null; w.feature = null;
+      rc += 1;
+    }
+    const w = s.grid[idx(rc,r)]; w.terrain = 'water'; w.deco = null; w.feature = null;
+  }
+  // dry creekbed crawling east toward the river
+  let wr = 6;
+  for(let c=0;c<GRID;c++){
+    if(c>0 && Math.random()<0.35) wr += (Math.random()<0.5 ? -1 : 1);
+    wr = Math.max(5, Math.min(7, wr));
+    const t = s.grid[idx(c,wr)];
+    if(t.terrain==='water') break;
+    t.terrain = 'riverbed'; t.deco = null; t.feature = null;
+  }
+  // salt pan crusting the southwest
+  for(let r=7;r<GRID;r++) for(let c=0;c<4;c++){
+    const t = s.grid[idx(c,r)];
+    if(t.terrain==='dead' && sr(idx(c,r)*3+7)<0.6) t.feature = 'saltflat';
+  }
+  // erosion gullies
+  [[5,8],[8,3],[3,4],[9,9],[6,2]].forEach(([c,r])=>{
+    const t = s.grid[idx(c,r)];
+    if(t.terrain==='dead' && !t.feature) t.feature = 'gully';
+  });
+  // bones of the old land
+  const DECOS = ['deco_deadtree','deco_stump','deco_bones','deco_boulder','deco_rock'];
+  let placed = 0;
+  for(let tries=0; tries<160 && placed<10; tries++){
+    const i = (Math.random()*GRID*GRID)|0, t = s.grid[i];
+    if(t.terrain!=='dead' || t.feature || t.deco) continue;
+    if(t.c<=3 && t.r<=3) continue;
+    t.deco = DECOS[(Math.random()*DECOS.length)|0]; placed++;
+  }
+  // homestead corner: barn + a scrap of living ground
+  const b = s.grid[idx(1,1)]; b.terrain = 'barn'; b.deco = null; b.feature = null;
+  for(let r=0;r<=3;r++) for(let c=0;c<=3;c++){
+    const t = s.grid[idx(c,r)];
+    if(t.terrain!=='dead') continue;
+    const d = Math.max(Math.abs(c-1), Math.abs(r-1));
+    if(d<=1) seedSoil(t, 45, 12);
+    else if(d<=2) seedSoil(t, 26, 10);
+  }
+}
+// LEVEL 5 — The Whole Valley (14×14): the original full dying-land generation.
+function genValley(s){
   // ---- THE DYING LAND: almost everything starts dead
   s.grid.forEach(t=>makeDead(t));
   // ---- the RIVER: a thin, murky thread winding north→south through the east.
@@ -564,14 +834,14 @@ function newGame(){
   const scars = [[2,8,'gully'],[5,11,'gully'],[8,12,'gully'],[12,3,'gully'],[3,6,'swale'],[7,10,'swale'],[12,8,'gully']];
   scars.forEach(([c,r,f])=>{ const t = s.grid[idx(c,r)]; if(t.terrain==='dead' && !t.feature) t.feature = f; });
   // ---- bones of the old land: dead trees, stumps, boulders, bleached bones
-  const DECOS = ['deadtree','deadtree','stump','bones','boulder','rock','rock'];
+  const DECOS = ['deco_deadtree','deco_deadtree','deco_stump','deco_bones','deco_boulder','deco_rock','deco_rock'];
   let placed = 0;
   for(let tries=0; tries<200 && placed<16; tries++){
     const i = (Math.random()*GRID*GRID)|0;
     const t = s.grid[i];
     if(t.terrain!=='dead' || t.feature || t.deco) continue;
     if(t.c<=4 && t.r<=4) continue;                       // keep the homestead approach clear
-    t.deco = t.region==='orchard' ? (Math.random()<0.65?'deadtree':'stump') : DECOS[(Math.random()*DECOS.length)|0];
+    t.deco = t.region==='orchard' ? (Math.random()<0.65?'deco_deadtree':'deco_stump') : DECOS[(Math.random()*DECOS.length)|0];
     placed++;
   }
   // ---- the HOMESTEAD: barn, coop, and the last living soil in the valley
@@ -595,7 +865,6 @@ function newGame(){
       recalc(t);
     }
   }
-  return s;
 }
 function soilTiles(){ return state.grid.filter(t=>t.terrain==='soil'); }
 function isWaterT(t){ return t.terrain==='pond' || t.terrain==='water'; }
@@ -971,6 +1240,7 @@ function simStep(dt){
   const dd = dt / DAY_LEN;
   const f = farmCache || farmStats();
   const sn = SEASONS[state.season];
+  const lvB = LV().regen || 1;           // early plots heal a touch faster — gentler lessons
   state.tod = (state.tod + dt/TOD_CYCLE) % 1;        // the sun wheels overhead
   state.grid.forEach((t,i)=>{
     // ---- DEAD GROUND never heals itself — only the player's care wakes it.
@@ -996,6 +1266,7 @@ function simStep(dt){
         }
       }
       if(feed>0){
+        feed *= lvB;
         if(pondNear(t)) feed *= 1.3;                 // moisture helps amendments work
         SOIL_ATTRS.forEach(k=>{
           let d = feed;
@@ -1006,13 +1277,15 @@ function simStep(dt){
       recalc(t);
       const need = t.feature==='saltflat' ? 30 : 25;
       if(t.health >= need){                          // 🌅 the ground WAKES UP
+        const wasSalt = t.feature==='saltflat';
         t.terrain = 'soil';
         if(t.feature==='saltflat' || t.feature==='gully' || t.feature==='swale') t.feature = null;
         state.stats.revived++;
+        if(wasSalt) state.stats.saltRevived = (state.stats.saltRevived||0)+1;
         floater(i, '🌅 REVIVED!', '#ffe89a', 17);
         burst(i, '#c8f0a0', 14); ringAt(i, '#c8f0a0');
         SND.badge();
-        if(state.tutStep===1) setTut(2);
+        tutEvent('revive');
       }
       return;
     }
@@ -1037,7 +1310,7 @@ function simStep(dt){
     }
     // ---- baseline regeneration / degradation per day
     // (kept gentle: nature heals slowly — the PLAYER's practices are the engine)
-    let base = 0.05*sn.regenMult;
+    let base = 0.05*sn.regenMult*lvB;
     if(!t.crop && !t.graze) base += 0.04;            // open land rests & recovers (slowly)
     base += 0.02*healthyNeighbors(t);                // life spreads outward
     base += f.bio/100*0.05;                          // a wilder farm heals itself
@@ -1047,7 +1320,7 @@ function simStep(dt){
       let d = base;
       if(t.crop){
         const c = CROPS[t.crop.type];
-        d = c.diverse ? 0.6*sn.regenMult : -0.12;    // diversity builds; mono extracts
+        d = c.diverse ? 0.6*sn.regenMult*lvB : -0.12;   // diversity builds; mono extracts
         if((k==='om'||k==='microbial') && c.diverse) d *= 1.4;
         if(c.cover && (k==='om'||k==='microbial'||k==='erosion')) d *= 1.5;
         if(t.compost>0) d += 0.35;
@@ -1173,6 +1446,11 @@ function newTask(){
   return {id:td.id, base: td.stat ? (state.stats[td.stat]||0) : 0};
 }
 function updateQuests(){
+  if(state.lv===LEVELS.length-1) updateValleyQuests();   // tasks & regions only on the finale
+  checkLevelComplete();
+  renderQuests();
+}
+function updateValleyQuests(){
   while(state.tasks.length<2){ const t = newTask(); if(!t) break; state.tasks.push(t); }
   const f = farmCache || farmStats();
   for(let k=state.tasks.length-1; k>=0; k--){
@@ -1207,7 +1485,6 @@ function updateQuests(){
       checkBadges(); save();
     }
   }
-  renderQuests();
 }
 function restoreWash(){
   state.washRestored = true;
@@ -1221,6 +1498,19 @@ function renderQuests(){
   const regEl = document.getElementById('qRegion');
   const body = document.getElementById('qBody');
   if(!regEl || !body) return;
+  // ---- campaign plots 1–4: the level's own goal checklist
+  if(state.lv < LEVELS.length-1){
+    const L = LV();
+    regEl.textContent = L.name;
+    let h = `<div class="qgoal">${L.em} ${L.goalText}</div>`;
+    L.goals.forEach(g=>{
+      const p = g.prog(), cur = Math.min(p[0], p[1]), n = p[1];
+      h += `<div class="qtask ${cur>=n?'done':''}"><span class="qem">${cur>=n?'✅':g.em}</span><span>${g.desc}</span><span class="qprog">${cur}/${n}</span></div>`;
+    });
+    if(state.levelDone) h += `<div class="qtask done"><span class="qem">🏆</span><span>Plot complete! Keep tending, or head back to the 🗺️ Journey.</span></div>`;
+    body.innerHTML = h;
+    return;
+  }
   let html = '';
   if(state.regionIdx >= REGIONS.length){
     regEl.textContent = 'The Living Valley';
@@ -1241,6 +1531,35 @@ function renderQuests(){
     html += `<div class="qtask"><span class="qem">${td.em}</span><span>${td.desc}</span><span class="qprog">${td.abs?'':cur+'/'+n} +${td.reward}🪙</span></div>`;
   });
   body.innerHTML = html;
+}
+
+// ------------------------------------------------- campaign level completion
+function checkLevelComplete(){
+  if(!state || state.levelDone) return;
+  const L = LV();
+  if(!L.goals || !L.goals.length) return;
+  for(const g of L.goals){ const p = g.prog(); if(p[0] < p[1]) return; }
+  state.levelDone = true;
+  camp.done[state.lv] = true;
+  const f = farmCache || farmStats();
+  const stars = 1 + (state.year<=L.parYears ? 1 : 0) + (f.avgHealth>=55 ? 1 : 0);
+  camp.stars[state.lv] = Math.max(camp.stars[state.lv]||0, stars);
+  if(state.lv < LEVELS.length-1) camp.unlocked = Math.max(camp.unlocked, state.lv+1);
+  save();
+  confetti(120); SND.win();
+  const next = state.lv < LEVELS.length-1 ? LEVELS[state.lv+1] : null;
+  setTimeout(()=>showModal(`
+    <h2>${L.em} ${L.name} — Complete!</h2>
+    <div class="eventbig">${'⭐'.repeat(stars)}</div>
+    <div class="eventkid">${L.doneText}</div>
+    <div class="winstats">Finished in <b>${state.year} year${state.year>1?'s':''}</b> · Farm Life ${Math.round(f.avgHealth)} · ${f.restored}/${f.totalSoil} tiles restored</div>
+    ${next ? `<div class="lesson">🔓 Unlocked: <b>${next.em} ${next.name}</b> — ${next.teaser}</div>`
+           : `<div class="lesson">🏆 You walked the whole journey — the land remembers you now.</div>`}
+    <div class="modalbtns">
+      ${next ? `<button class="mbtn big" data-act="nextlevel">Next: ${next.name} ▶</button>` : ''}
+      <button class="mbtn wood" data-act="gojourney">🗺️ Journey</button>
+      <button class="mbtn" data-act="close">Keep tending</button>
+    </div>`), 700);
 }
 
 // ---------------------------------------------------------------- tools
@@ -1271,7 +1590,7 @@ function applyTool(i){
     return true;
   }
   if(t.terrain==='barn' || t.terrain==='coop'){ toast('That\'s the farmstead! 🏠'); return false; }
-  if(t.terrain==='riverbed'){ toast('🏜️ A dry creekbed… revive the land of the Dry Wash and the water will come back!'); return false; }
+  if(t.terrain==='riverbed'){ toast(state.lv===LEVELS.length-1 ? '🏜️ A dry creekbed… revive the land of the Dry Wash and the water will come back!' : '🏜️ A dry creekbed — water once ran here. Heal the land around it!'); return false; }
   if(t.terrain==='water'){
     if(tool==='bridge'){
       if(t.bridge) return false;
@@ -1336,13 +1655,14 @@ function applyTool(i){
     floater(i, CROPS[tool].em+' planted!', dead?'#e8d8a8':'#dff7c8');
     burst(i, dead?'#c9b896':'#8fce6e', 8); SND.pop();
     if(dead && !state.deadTip2){ state.deadTip2 = true; toast('🌿 Pioneer roots are cracking the dead crust — watch it wake up!'); }
-    if(state.tutStep===1 && dead) toast('🌱 Good! Now let it work — or paint more dead tiles.');
-    if(state.tutStep===2 && !dead) setTut(3);
+    if(dead) tutEvent('feed_dead');
+    if(!dead && (tool==='sisters' || tool==='wheat')) tutEvent('plant_crop');
     afterBuild(); return true;
   }
   if(GRAZE_TOOLS[tool]){
     if(dead && tool!=='goat'){
-      toast('💀 Nothing to eat on dead ground… only 🐐 goats can browse this scrub!');
+      toast(toolAllowed('goat') ? '💀 Nothing to eat on dead ground… only 🐐 goats can browse this scrub!'
+                                : '💀 Nothing to eat on dead ground — feed it first with 🪣 or 🌿!');
       SND.uhoh();
       return false;
     }
@@ -1357,10 +1677,11 @@ function applyTool(i){
       t.graze.synergy = true;
       state.stats.synergy++;
       floater(i, '✨ Team graze!', '#ffe89a', 17); burst(i, '#ffd45e', 16);
+      tutEvent('synergy');
     }else if(tool==='chicken'){
       const syn = t.sinceCattle <= 8;
       t.graze = {kind:'chicken', days:GRAZE.chicken.days, total:GRAZE.chicken.days, synergy:syn};
-      if(syn){ state.stats.synergy++; floater(i, '✨ following the herd!', '#ffe89a', 15); burst(i, '#ffd45e', 14); }
+      if(syn){ state.stats.synergy++; floater(i, '✨ following the herd!', '#ffe89a', 15); burst(i, '#ffd45e', 14); tutEvent('synergy'); }
       else floater(i, '🐔 scratching!', '#ffe0b0');
     }else{
       const g = GRAZE[tool];
@@ -1372,9 +1693,10 @@ function applyTool(i){
     if(tool==='chicken') state.stats.chickens++;
     state.stats.grazes++;
     spawnAnimals(i, GRAZE_TOOLS[tool], tool==='chicken'?3 : tool==='duckT'?3 : 2);
-    if(tool==='cattle'){ SND.moo(); if(state.tutStep===3) tutHintCattle(); }
-    else if(tool==='chicken'){ SND.cluck(); if(state.tutStep===3) setTut(4); }
+    if(tool==='cattle'){ SND.moo(); tutEvent('graze_cattle'); }
+    else if(tool==='chicken'){ SND.cluck(); }
     else SND.place();
+    if(tool==='goat') tutEvent('graze_goat');
     afterBuild(); return true;
   }
   if(tool==='pond'){
@@ -1396,6 +1718,7 @@ function applyTool(i){
       // riparian buffer! the key clean-water move — make cause→effect obvious
       state.waterQuality = clamp(state.waterQuality + 4);
       state.stats.buffers++;
+      tutEvent('buffer');
       setTimeout(()=>floater(i, '💧 riparian buffer!', '#bfe3ff', 16), 350);
       ringAt(i, '#7fd4f0');
       if(!state.riparianTip){
@@ -1413,6 +1736,7 @@ function applyTool(i){
     state.stats.composts++;
     floater(i, '🪣 +compost', '#d8c8a0'); burst(i, '#9a7d54', 10); SND.place();
     if(dead && !state.deadTip2){ state.deadTip2 = true; toast('🪣 Food for the dead ground — keep feeding and it will wake!'); }
+    if(dead) tutEvent('feed_dead');
     afterBuild(); return true;
   }
   if(tool==='fence'){
@@ -1459,15 +1783,9 @@ function afterBuild(){
   updateHUD();
   if(selected>=0) openInfo(true);
 }
-let tutCattleFlag = false;
-function tutHintCattle(){
-  if(tutCattleFlag) return;
-  tutCattleFlag = true;
-  toast('Now tap 🐔 Chickens and send them to the SAME tile! ✨');
-}
-
 // ---------------------------------------------------------------- events
 function rollEvent(){
+  if(!LV().events) return null;          // gentle early plots: no surprise weather
   if(state.seasonCount < 2) return null;
   if(Math.random() > 0.45) return null;
   const anyCrop = state.grid.some(t=>t.crop);
@@ -1647,32 +1965,25 @@ function openGoals(){
       <div>${b.name}<div style="font-size:11.5px;font-weight:600;opacity:.8">${b.desc}</div></div>
       <div style="margin-left:auto">${done?'⭐':''}</div></div>`;
   }).join('');
+  const L = LV();
+  const mission = state.lv===LEVELS.length-1
+    ? `Restore the <b>dying valley</b> into a living ecosystem: revive every 💀 dead tile, bring <b>every tile</b> to 💚 70+ health, restore all ${REGIONS.length} regions, grow Wildness to 60 — and send <b>clean water</b> 🌊 downstream!`
+    : `Plot ${state.lv+1} of ${LEVELS.length}: <b>${L.em} ${L.name}</b> — ${L.goalText}`;
   showModal(`
     <h2>⭐ Your Mission</h2>
-    <div class="sub">Restore the <b>dying valley</b> into a living ecosystem: revive every 💀 dead tile, bring <b>every tile</b> to 💚 70+ health, restore all ${REGIONS.length} regions, grow Wildness to 60 — and send <b>clean water</b> 🌊 downstream!</div>
-    <div class="sub" style="margin-top:-4px">Farm Life ${Math.round(f.avgHealth)} · Wildness ${Math.round(f.bio)} · River 💧${Math.round(state.waterQuality)} · Restored ${f.restored}/${f.totalSoil} ${state.won?'· 🏆 WON!':''}</div>
+    <div class="sub">${mission}</div>
+    <div class="sub" style="margin-top:-4px">Farm Life ${Math.round(f.avgHealth)} · Wildness ${Math.round(f.bio)}${L.river?` · River 💧${Math.round(state.waterQuality)}`:''} · Restored ${f.restored}/${f.totalSoil} ${state.won?'· 🏆 WON!':''}</div>
     ${rows}
     <div class="modalbtns">
-      <button class="mbtn wood" data-act="reset">🔄 New Farm</button>
+      <button class="mbtn wood" data-act="reset">🔄 Restart Plot</button>
       <button class="mbtn" data-act="close">Back</button>
     </div>
   `);
 }
 function resetGame(){
-  if(!confirm('Start a brand-new farm? Your current farm will be lost.')) return;
-  try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
-  state = newGame();
-  selected = -1; hovered = -1;
-  agents = []; wildlife = []; birds = []; worldParts = []; screenParts = [];
-  tutCattleFlag = false; decoIdx = 0;
-  closeModal(); closeInfo();
-  centerCamera();
-  buildPalette();
-  updateQuests();
-  refreshAnchors();
-  toast('🌄 A fresh dying valley awaits. Bring it back to life!');
-  setTut(0);
-  updateHUD(); updateClockUI();
+  if(!confirm('Restart this plot from the beginning? (Your journey progress is safe.)')) return;
+  enterLevel(state.lv, true);
+  toast(`🌄 A fresh start — ${LV().name} awaits!`);
 }
 
 // ---------------------------------------------------------------- iso helpers
@@ -2653,7 +2964,7 @@ function render(time){
   drawBirdsScreen(time);
   drawWeather(time);
   drawParts(screenParts);
-  if(state.paused || modalOpen){
+  if(state.paused || modalOpen || journeyOpen){
     ctx.fillStyle = 'rgba(20,16,8,.14)';
     ctx.fillRect(0,0,viewW,viewH);
   }
@@ -2665,7 +2976,7 @@ function frame(now){
   const dt = Math.min(0.1, (now-lastT)/1000 || 0.016);
   lastT = now;
   farmCache = farmStats();
-  const simDt = (state.paused || modalOpen) ? 0 : dt*state.speed;
+  const simDt = (state.paused || modalOpen || journeyOpen) ? 0 : dt*state.speed;
   if(simDt>0) simStep(simDt);
   updateAgents(simDt);
   updateWildlife(dt, farmCache.bio);
@@ -2821,7 +3132,8 @@ function buildPalette(){
   pal.innerHTML = '';
   const groups = {};
   TOOLS.forEach(t=>{
-    if(t.shopId && !state.unlocks[t.shopId]) return;   // locked until bought in the shop
+    if(!toolAllowed(t.id)) return;                         // gated by the campaign level
+    if(LV().shop && t.shopId && !state.unlocks[t.shopId]) return;   // locked until bought in the shop
     (groups[t.group] = groups[t.group]||[]).push(t);
   });
   Object.entries(groups).forEach(([gname, tools])=>{
@@ -2849,19 +3161,21 @@ function buildPalette(){
     g.appendChild(row);
     pal.appendChild(g);
   });
-  // the shop lives at the end of the palette too
-  const g = document.createElement('div');
-  g.className = 'toolgroup';
-  g.innerHTML = `<div class="grouplabel">More</div>`;
-  const row = document.createElement('div');
-  row.className = 'grouprow';
-  const b = document.createElement('button');
-  b.className = 'tool shopbtn';
-  b.innerHTML = `<span class="tem">🛒</span><span class="tnm">Shop</span><span class="tcost">unlocks!</span>`;
-  b.addEventListener('click', ()=>{ openShop(); SND.pop(); });
-  row.appendChild(b);
-  g.appendChild(row);
-  pal.appendChild(g);
+  // the shop lives at the end of the palette too (final level only)
+  if(LV().shop){
+    const g = document.createElement('div');
+    g.className = 'toolgroup';
+    g.innerHTML = `<div class="grouplabel">More</div>`;
+    const row = document.createElement('div');
+    row.className = 'grouprow';
+    const b = document.createElement('button');
+    b.className = 'tool shopbtn';
+    b.innerHTML = `<span class="tem">🛒</span><span class="tnm">Shop</span><span class="tcost">unlocks!</span>`;
+    b.addEventListener('click', ()=>{ openShop(); SND.pop(); });
+    row.appendChild(b);
+    g.appendChild(row);
+    pal.appendChild(g);
+  }
   const sel = document.getElementById('tool_'+tool) || document.getElementById('tool_select');
   if(sel) sel.classList.add('active');
 }
@@ -2944,7 +3258,6 @@ function setOverlay(ov){
   document.getElementById('legendLo').textContent = L.lo;
   document.getElementById('legendHi').textContent = L.hi;
   leg.classList.add('show');
-  if(state.tutStep===4) setTut(5);
 }
 // ---------------------------------------------------------------- info panel
 let sciOpen = false;
@@ -2986,7 +3299,7 @@ function openInfo(refreshOnly){
       ${t.compost>0?`<div class="chiprow">🪣 compost working — ${t.compost.toFixed(0)}d left</div>`:''}
       ${t.crop?`<div class="chiprow">🌿 pioneers cracking the crust — ${Math.round(Math.min(1,t.crop.growth)*100)}%</div>`:''}
       ${t.graze?`<div class="chiprow">🐐 goats browsing the scrub</div>`:''}
-      <div class="chiprow">💡 Feed it: 🪣 compost, 🌿 pioneer plants, or 🐐 goats. Water nearby helps it all work faster.</div>`;
+      <div class="chiprow">💡 Feed it: 🪣 compost${toolAllowed('covercrop')?', 🌿 pioneer plants':''}${toolAllowed('goat')?', or 🐐 goats':''}. Water nearby helps it all work faster.</div>`;
   }else if(t.terrain==='riverbed'){
     body = `<div class="chiprow">🏜️ A cracked creekbed where water once ran. Complete the <b>Dry Wash</b> restore goal and the creek will flow again!</div>`;
   }else if(BUILD_SET.has(t.terrain)){
@@ -3055,24 +3368,18 @@ function fillSci(t){
 }
 function closeInfo(){ document.getElementById('infoPanel').classList.remove('show'); }
 
-// ---------------------------------------------------------------- tutorial
-const TUT = [
-  {html:'🌄 <b>This valley is DYING.</b><br>Gray dust, dead trees, a muddy trickle of a river. Only the little green corner by the barn still breathes.<br><br>You\'re going to bring it ALL back.<br><br>🖐️ <b>Drag</b> to look around · 🔍 <b>scroll or pinch</b> to zoom.', btn:'Show me'},
-  {html:'💀 <b>Dead ground won\'t grow crops.</b><br>It has to be FED first. Pick 🪣 <b>Compost</b> or 🌿 <b>Pioneers</b> from the palette and paint some gray DEAD tiles near your green corner.<br><br>Watch them wake up: 🌅 <b>REVIVED!</b>', btn:null},
-  {html:'🌅 <b>It\'s working!</b><br>Revived ground becomes cracked-but-workable soil. Days pass on their own — try ⏸️ pause and <b>1×/2×/3×</b> speed up top.<br><br>Now plant a real crop on your WORKABLE soil: 🌽 <b>3 Sisters</b> feeds the soil while it grows.', btn:null},
-  {html:'🐄 <b>Animal teamwork!</b><br>Tap 🐄 <b>Cattle</b> and place them on open workable land. Then send 🐔 <b>Chickens</b> to the <b>same tile</b> — they follow the herd for ✨ soil magic!', btn:null},
-  {html:'🎯 <b>Heal region by region.</b><br>The 🎯 quest panel (top left) shows the region you\'re restoring and side tasks that pay coins.<br><br>🌊 The river is <b>murky</b> — plant 🌳 trees on its banks to filter runoff.<br><br>🛒 Surplus coins? The <b>Shop</b> unlocks goats, wetlands, greenhouses & more.<br><br>🏆 <b>Restore the whole valley</b>: every tile alive, clean water, wildlife home!', btn:'Restore the land! 🚜'},
-];
+// ------------------------------------- tutorial (per campaign level, event-driven)
 function setTut(step){
   state.tutStep = step;
   const el = document.getElementById('tut');
-  if(state.tutDone || step>=TUT.length){
+  const T = LV().tut || [];
+  if(state.tutDone || step>=T.length){
     el.classList.remove('show');
     state.tutDone = true;
     save();
     return;
   }
-  const t = TUT[step];
+  const t = T[step];
   el.innerHTML = `<span class="skip" id="tutSkip">skip tutorial</span>${t.html}`
     + (t.btn ? `<button class="tnext" id="tutNext">${t.btn}</button>` : '');
   el.classList.add('show');
@@ -3081,27 +3388,56 @@ function setTut(step){
   if(nx) nx.onclick = ()=>setTut(step+1);
   save();
 }
+// steps that wait for a real action ({on:'revive'} etc.) advance through here
+function tutEvent(name){
+  if(!state || state.tutDone) return;
+  const T = LV().tut || [];
+  const cur = T[state.tutStep];
+  if(cur && cur.on===name) setTut(state.tutStep+1);
+}
 
 // ---------------------------------------------------------------- save/load
+// v6 bundle: { v:6, camp:{cur,unlocked,stars,done}, state:<in-progress level> }
+// Anything else (including old rootweave_v5 saves under their own key, or
+// corrupted data) simply starts the campaign fresh — it must never crash.
 function save(){
   try{
     state.sound = soundOn;
-    localStorage.setItem(SAVE_KEY, JSON.stringify(state));
+    localStorage.setItem(SAVE_KEY, JSON.stringify({v:6, camp:camp, state:state}));
   }catch(e){}
 }
-function load(){
+function loadBundle(){
   try{
     const raw = localStorage.getItem(SAVE_KEY);
-    if(!raw) return false;
+    if(!raw) return null;
     const d = JSON.parse(raw);
-    // v5 saves only — older keys (rootweave_v4 etc.) describe a different, smaller
-    // world and simply start a fresh valley rather than crash
-    if(!d || d.v!==5 || !Array.isArray(d.grid) || d.grid.length!==GRID*GRID) return false;
-    const fresh = newGame();
-    state = Object.assign(fresh, d);
-    state.stats = Object.assign({}, DEFAULT_STATS, d.stats||{});
+    if(!d || typeof d!=='object' || d.v!==6) return null;
+    return d;
+  }catch(e){ return null; }
+}
+function loadCamp(d){
+  camp = {cur:0, unlocked:0, stars:LEVELS.map(()=>0), done:LEVELS.map(()=>false)};
+  if(!d || !d.camp || typeof d.camp!=='object') return;
+  const c = d.camp;
+  if(Array.isArray(c.done)) camp.done = LEVELS.map((_,i)=>!!c.done[i]);
+  if(Array.isArray(c.stars)) camp.stars = LEVELS.map((_,i)=>Math.max(0, Math.min(3, (+c.stars[i]||0)|0)));
+  camp.unlocked = (typeof c.unlocked==='number' && !isNaN(c.unlocked)) ? Math.max(0, Math.min(LEVELS.length-1, c.unlocked|0)) : 0;
+  camp.done.forEach((dn,i)=>{ if(dn && i+1<LEVELS.length) camp.unlocked = Math.max(camp.unlocked, i+1); });
+  camp.cur = (typeof c.cur==='number' && !isNaN(c.cur)) ? Math.max(0, Math.min(camp.unlocked, c.cur|0)) : 0;
+}
+function loadLevelState(d){
+  try{
+    if(!d || !d.state || typeof d.state!=='object') return false;
+    const st = d.state;
+    const lv = (typeof st.lv==='number' && st.lv>=0 && st.lv<LEVELS.length) ? st.lv|0 : -1;
+    if(lv<0 || lv>camp.unlocked) return false;
+    if(!Array.isArray(st.grid) || st.grid.length!==LEVELS[lv].grid*LEVELS[lv].grid) return false;
+    const fresh = newGame(lv);              // also sets GRID for this level
+    state = Object.assign(fresh, st);
+    state.v = 6; state.lv = lv; state.gridSize = GRID;
+    state.stats = Object.assign({}, DEFAULT_STATS, st.stats||{});
     // defensive: every field added after launch must never crash an older save
-    if(typeof state.waterQuality!=='number' || isNaN(state.waterQuality)) state.waterQuality = 28;
+    if(typeof state.waterQuality!=='number' || isNaN(state.waterQuality)) state.waterQuality = LEVELS[lv].river?30:55;
     state.waterQuality = clamp(state.waterQuality);
     if(typeof state.tod!=='number' || isNaN(state.tod)) state.tod = 0.3;
     state.tod = ((state.tod%1)+1)%1;
@@ -3111,11 +3447,13 @@ function load(){
     state.tasks = state.tasks.filter(x=>x && taskDef(x.id));
     if(!state.tasksDone || typeof state.tasksDone!=='object') state.tasksDone = {};
     if(!state.unlocks || typeof state.unlocks!=='object') state.unlocks = {};
-    if(typeof state.washRestored!=='boolean') state.washRestored = false;
-    ['riparianTip','incomeTip','deadTip','deadTip2'].forEach(k=>{ if(typeof state[k]!=='boolean') state[k] = false; });
+    ['washRestored','riparianTip','incomeTip','deadTip','deadTip2','levelDone','introSeen','paused','won','tutDone']
+      .forEach(k=>{ if(typeof state[k]!=='boolean') state[k] = false; });
+    state.tutStep = Math.max(0, Math.min((LEVELS[lv].tut||[]).length, (state.tutStep|0)||0));
+    if(typeof state.speed!=='number' || !(state.speed>=1 && state.speed<=3)) state.speed = 1;
     const VALID_TERRAIN = new Set(['soil','dead','water','pond','trees','barn','coop','riverbed'].concat(BUILDINGS));
-    state.grid = d.grid.map((st,i)=>{
-      const t = Object.assign(newTile(i%GRID, (i/GRID)|0), st);
+    state.grid = st.grid.map((sg,i)=>{
+      const t = Object.assign(newTile(i%GRID, (i/GRID)|0), sg);
       t.region = regionOf(t.c, t.r);
       if(!VALID_TERRAIN.has(t.terrain)) t.terrain = 'soil';
       if(t.crop && !CROPS[t.crop.type]) t.crop = null;
@@ -3136,8 +3474,98 @@ function load(){
       if(kind==='duckT') spawnAnimals(i, 'duckT', 3);
     });
     soundOn = state.sound!==false;
+    camp.cur = lv;
     return true;
   }catch(e){ return false; }
+}
+
+// ------------------------------------------- journey (level select) & level flow
+function levelHasProgress(){
+  return !!state && (state.day>1 || state.seasonCount>0 || state.stats.planted>0 ||
+    state.stats.composts>0 || state.stats.revived>0 || state.stats.grazes>0);
+}
+function buildJourney(){
+  const path = document.getElementById('jpath');
+  path.innerHTML = '';
+  LEVELS.forEach((L,i)=>{
+    const done = !!camp.done[i];
+    const unlocked = i<=camp.unlocked;
+    const isCur = state && state.lv===i;
+    const el = document.createElement('button');
+    el.className = 'jnode'+(unlocked?'':' locked')+(done?' done':'')+((isCur&&unlocked)?' cur':'');
+    const stars = done ? '⭐'.repeat(Math.max(1, camp.stars[i]||1)) : '';
+    const st = !unlocked ? '🔒 locked'
+             : done ? `✓ done<br>${stars}`
+             : (isCur && levelHasProgress()) ? '▶ continue' : '▶ play';
+    el.innerHTML = `<span class="jem">${unlocked?L.em:'🔒'}</span>
+      <span><span class="jnm">${i+1}. ${L.name}</span><div class="jts">${L.teaser}</div></span>
+      <span class="jst">${st}</span>`;
+    el.addEventListener('click', ()=>journeyPick(i));
+    path.appendChild(el);
+  });
+}
+function showJourney(){
+  buildJourney();
+  journeyOpen = true;
+  document.getElementById('journey').classList.add('show');
+  document.getElementById('tut').classList.remove('show');
+  closeInfo();
+}
+function hideJourney(){
+  journeyOpen = false;
+  document.getElementById('journey').classList.remove('show');
+}
+function journeyPick(lv){
+  if(lv>camp.unlocked){ toast('🔒 Finish the earlier plots to unlock this one!'); SND.uhoh(); return; }
+  SND.pop();
+  if(state && state.lv===lv){ enterLevel(lv, false); return; }   // resume the current plot
+  if(state && !state.levelDone && levelHasProgress() &&
+     !confirm(`Start "${LEVELS[lv].name}"? Your unfinished progress on "${LEVELS[state.lv].name}" will be reset.`)) return;
+  enterLevel(lv, true);
+}
+function enterLevel(lv, fresh){
+  camp.cur = lv;
+  if(fresh || !state || state.lv!==lv){
+    state = newGame(lv);
+    agents = []; wildlife = []; birds = []; worldParts = []; screenParts = [];
+    decoIdx = 0; sciOpen = false;
+  }
+  GRID = state.gridSize;
+  selected = -1; hovered = -1;
+  tool = 'select';
+  canvas.classList.remove('tooling');
+  closeModal(); closeInfo();
+  layout(); centerCamera();
+  applyLevelUI();
+  setOverlay('none');
+  updateHUD(); updateClockUI(); updateQuests(); refreshAnchors();
+  hideJourney();
+  save();
+  if(!state.introSeen){ state.introSeen = true; showLevelIntro(); save(); }
+  else if(!state.tutDone) setTut(state.tutStep||0);
+  else document.getElementById('tut').classList.remove('show');
+}
+function showLevelIntro(){
+  const L = LV();
+  document.getElementById('tut').classList.remove('show');
+  showModal(`
+    <h2>${L.em} ${L.name}</h2>
+    <div class="sub">Plot ${state.lv+1} of ${LEVELS.length}</div>
+    <div class="eventbig">${L.em}</div>
+    <div class="eventkid">${L.story}</div>
+    <div class="lesson">🎯 ${L.goalText}</div>
+    <div class="modalbtns"><button class="mbtn big" data-act="lvgo">${L.startPaused?'Look around 🖐️':'Start! 🌱'}</button></div>`);
+}
+// show/hide the pieces of UI this level actually uses
+function applyLevelUI(){
+  const L = LV();
+  buildPalette();
+  document.getElementById('btnShop').style.display = L.shop ? '' : 'none';
+  document.getElementById('wqPill').style.display = L.river ? '' : 'none';
+  document.querySelectorAll('.ovbtn').forEach(b=>{
+    const ov = b.dataset.ov;
+    b.style.display = (ov==='none' || L.ovs.indexOf(ov)>=0) ? '' : 'none';
+  });
 }
 
 // ---------------------------------------------------------------- init
@@ -3153,12 +3581,15 @@ function layout(){
 function init(){
   canvas = document.getElementById('game');
   ctx = canvas.getContext('2d');
-  state = newGame();
-  const loaded = load();
   loadSprites();
+  const bundle = loadBundle();
+  loadCamp(bundle);
+  let resumed = false;
+  if(bundle) resumed = loadLevelState(bundle);
+  if(!resumed) state = newGame(camp.cur);
   layout();
   centerCamera();
-  buildPalette();
+  applyLevelUI();
   // canvas input
   canvas.addEventListener('pointerdown', onPointerDown);
   window.addEventListener('pointermove', onPointerMove);
@@ -3204,6 +3635,10 @@ function init(){
     const act = actEl.dataset.act;
     if(act==='close') closeModal();
     else if(act==='reset') resetGame();
+    else if(act==='splashgo'){ closeModal(); showJourney(); }
+    else if(act==='lvgo'){ closeModal(); if(!state.tutDone) setTut(state.tutStep||0); }
+    else if(act==='gojourney'){ closeModal(); save(); showJourney(); }
+    else if(act==='nextlevel'){ closeModal(); if(state.lv<LEVELS.length-1) enterLevel(state.lv+1, true); }
   });
   // shop + quest panel
   document.getElementById('btnShop').addEventListener('click', ()=>{ openShop(); SND.pop(); });
@@ -3229,22 +3664,23 @@ function init(){
       if(el) el.click();
     }
   });
+  // journey button — autosaves, then back to the level map
+  document.getElementById('btnJourney').addEventListener('click', ()=>{ save(); SND.pop(); showJourney(); });
   updateHUD();
   updateClockUI();
   updateQuests();
   refreshAnchors();
-  if(!state.tutDone) setTut(state.tutStep||0);
-  if(loaded) toast('🌄 Welcome back to the valley!');
-  else showSplash();
+  if(!bundle) showSplash();     // brand new: title first, then the journey map
+  else showJourney();           // returning: straight to the journey (▶ continue)
   requestAnimationFrame(frame);
 }
 function showSplash(){
   showModal(`
     <h2>🌱 Rootweave</h2>
     <img src="sprites/title_farm.webp" alt="" style="width:100%; border-radius:14px; border:2px solid var(--line); display:block" onerror="this.style.display='none'">
-    <div class="eventkid"><b>The valley is dying.</b><br>Dust where wheat once stood, a dry creek, a muddy river — and one small green corner by the barn.<br><br>Weave the roots back together. Restore the dying land.</div>
-    <div class="lesson">🌱 Feed the dead ground, plant many kinds, move the animals, shelter the river — and life returns, field by field.</div>
-    <div class="modalbtns"><button class="mbtn big" data-act="close">Restore the land! 🚜</button></div>
+    <div class="eventkid"><b>The valley is dying.</b><br>Dust where wheat once stood, a dry creek, a muddy river.<br><br>Your journey home starts small — one little plot at a time — and ends with the whole valley alive again.</div>
+    <div class="lesson">🌱 Feed the dead ground, plant many kinds, move the animals, shelter the water — and life returns, field by field.</div>
+    <div class="modalbtns"><button class="mbtn big" data-act="splashgo">Begin the journey 🥾</button></div>
   `);
 }
 window.addEventListener('load', init);
