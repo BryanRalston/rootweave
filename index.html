@@ -1,0 +1,3253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#3a5a40">
+<title>Rootweave 🌱</title>
+<style>
+:root{
+  --cream:#f6e7c6; --card:#f9edd0; --wood:#8a5a33; --wood2:#6b4423; --bark:#4a2f1a;
+  --green:#4f9147; --green2:#3b7238; --gold:#eab543; --gold2:#c98f1e; --terra:#c96f3b;
+  --ink:#3b2d1d; --soft:#8a7052; --line:#b98d5e;
+  --glass:linear-gradient(180deg,#f9eccb 0%,#f1ddb0 100%);
+  --woodgrain:linear-gradient(180deg,#a5713f 0%,#8a5a33 45%,#7c4f2b 100%);
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none; -webkit-user-select:none}
+html,body{margin:0; padding:0; height:100%; overflow:hidden; position:fixed; inset:0; width:100%}
+body{
+  font-family:"Segoe UI Rounded","Segoe UI",system-ui,-apple-system,sans-serif;
+  background:#0e1a12; color:var(--ink); overscroll-behavior:none;
+}
+canvas#game{position:absolute; inset:0; width:100%; height:100%; display:block; touch-action:none; cursor:grab}
+canvas#game.tooling{cursor:crosshair}
+/* ---------- top HUD bar ---------- */
+#topbar{
+  position:absolute; top:0; left:0; right:0; z-index:20;
+  display:flex; align-items:center; gap:6px; flex-wrap:wrap;
+  padding:8px 10px calc(8px) 10px; pointer-events:none;
+}
+#topbar > *{pointer-events:auto}
+.hudpill{
+  background:var(--glass); border:2px solid var(--line); border-bottom-color:var(--wood2); border-radius:999px;
+  padding:6px 12px; font-size:14.5px; font-weight:800; color:var(--ink);
+  box-shadow:0 3px 8px rgba(20,14,4,.35), inset 0 1px 0 rgba(255,250,230,.8); white-space:nowrap;
+  display:flex; align-items:center; gap:6px;
+}
+.hudpill b{color:var(--wood2)}
+#brand{font-size:16px; color:var(--wood2); letter-spacing:.3px}
+.hudspacer{flex:1; pointer-events:none !important}
+.hudbtn{
+  background:var(--glass); border:2px solid var(--line); border-bottom:3px solid var(--wood2); border-radius:14px;
+  font-size:17px; min-width:42px; min-height:40px; padding:4px 10px; cursor:pointer;
+  box-shadow:0 3px 8px rgba(20,14,4,.35), inset 0 1px 0 rgba(255,250,230,.8); font-weight:800; color:var(--ink);
+  font-family:inherit; display:flex; align-items:center; justify-content:center; gap:4px;
+}
+.hudbtn:active{transform:translateY(2px); box-shadow:0 1px 4px rgba(20,14,4,.2)}
+.hudbtn.on{background:linear-gradient(180deg,#ffedb8,#f5d98a); border-color:var(--gold2)}
+#clockGroup{display:flex; gap:4px}
+.hudpill .minibar{display:inline-block; width:64px; height:9px; background:#e7dcbf; border-radius:99px; overflow:hidden; border:1px solid var(--line); vertical-align:middle}
+.hudpill .minifill{display:block; height:100%; background:linear-gradient(90deg,#c98a3d,#4a8f4d); border-radius:99px; transition:width .5s}
+#wqPill .minibar{width:52px}
+#wqPill .minifill{background:linear-gradient(90deg,#9a8340,#3d9ec7)}
+.chips{display:flex; gap:3px; font-size:17px}
+.chip{filter:grayscale(1); opacity:.32; transition:all .5s; transform:scale(.9)}
+.chip.on{filter:none; opacity:1; transform:scale(1.1)}
+/* ---------- overlay (data view) bar ---------- */
+#overlaybar{
+  position:absolute; right:10px; top:64px; z-index:19; display:flex; flex-direction:column; gap:5px; align-items:flex-end;
+}
+.ovbtn{
+  background:var(--glass); border:2px solid var(--line); border-bottom:3px solid var(--wood2); border-radius:12px; cursor:pointer;
+  font-family:inherit; font-size:12.5px; font-weight:800; color:var(--ink); padding:6px 10px;
+  box-shadow:0 3px 8px rgba(20,14,4,.3), inset 0 1px 0 rgba(255,250,230,.8); display:flex; align-items:center; gap:5px; min-height:36px;
+}
+.ovbtn.on{background:linear-gradient(180deg,#e4f0cd,#cfe3ae); border-color:var(--green2)}
+/* ---------- quest / region panel ---------- */
+#questPanel{
+  position:absolute; left:10px; top:64px; z-index:19; width:236px; max-width:46vw;
+  background:var(--glass); border:2px solid var(--line); border-bottom:3px solid var(--wood2);
+  border-radius:14px; box-shadow:0 4px 12px rgba(20,14,4,.35), inset 0 1px 0 rgba(255,250,230,.8);
+  font-size:12.5px; color:var(--ink); overflow:hidden;
+}
+#questPanel .qhead{
+  background:var(--woodgrain); color:#ffeece; font-weight:800; padding:7px 10px; font-size:13px;
+  display:flex; align-items:center; gap:6px; cursor:pointer; text-shadow:0 1px 2px rgba(30,15,0,.5);
+}
+#questPanel .qhead .qcaret{margin-left:auto; font-size:11px; opacity:.85}
+#questPanel .qbody{padding:8px 10px 9px}
+#questPanel.min .qbody{display:none}
+.qgoal{font-weight:800; color:var(--wood2); margin-bottom:3px; line-height:1.25}
+.qbarw{height:10px; background:#e2cd9d; border-radius:99px; overflow:hidden; border:1px solid var(--line); margin:4px 0 8px}
+.qbar{height:100%; border-radius:99px; background:linear-gradient(90deg,var(--gold),var(--green)); transition:width .5s}
+.qtask{display:flex; gap:6px; align-items:flex-start; padding:4px 6px; margin:3px 0; border-radius:9px; background:rgba(255,248,226,.7); font-weight:700; line-height:1.2}
+.qtask.done{background:#dcedc9; color:var(--green2)}
+.qtask .qem{width:18px; text-align:center; flex:none}
+.qtask .qprog{margin-left:auto; font-family:ui-monospace,monospace; font-size:11px; color:var(--soft); flex:none}
+.qtask.done .qprog{color:var(--green2)}
+/* ---------- shop ---------- */
+.shoptabs{display:flex; gap:5px; margin:6px 0 8px}
+.shoptab{flex:1; font-family:inherit; font-weight:800; font-size:12.5px; padding:7px 4px; border-radius:10px;
+  border:2px solid var(--line); background:#f2e2ba; cursor:pointer; color:var(--soft)}
+.shoptab.on{background:var(--woodgrain); color:#ffeece; border-color:var(--wood2)}
+.shopitem{display:flex; align-items:center; gap:9px; padding:7px 9px; border-radius:12px; margin:5px 0;
+  background:rgba(255,248,226,.75); border:1.5px solid #dcc490}
+.shopitem .sem{font-size:24px; width:32px; text-align:center; flex:none}
+.shopitem .snm{font-weight:800; font-size:13.5px; color:var(--wood2)}
+.shopitem .sds{font-size:11px; font-weight:600; color:var(--soft); line-height:1.25}
+.shopbuy{margin-left:auto; flex:none; font-family:inherit; font-weight:800; font-size:12.5px; color:#5a3d10;
+  background:linear-gradient(180deg,var(--gold),#e3a92e); border:none; border-radius:10px; padding:8px 10px;
+  cursor:pointer; box-shadow:0 3px 0 var(--gold2); min-width:64px}
+.shopbuy:active{transform:translateY(2px); box-shadow:0 1px 0 var(--gold2)}
+.shopbuy:disabled{background:#d8c9a4; box-shadow:0 3px 0 #b3a37e; color:#8a7a5c; cursor:default}
+.shopitem.owned{opacity:.62}
+.shopitem.owned .shopbuy{background:#c5d9ad; box-shadow:0 3px 0 #9db384; color:#3b6b2e}
+#legend{
+  display:none; background:var(--glass); border:2px solid var(--line); border-radius:12px;
+  padding:7px 10px; font-size:11.5px; font-weight:700; color:var(--soft);
+  box-shadow:0 3px 8px rgba(20,14,4,.22); text-align:center;
+}
+#legend.show{display:block}
+#legend .lbar{width:110px; height:10px; border-radius:99px; margin:4px auto 2px; border:1px solid rgba(0,0,0,.15)}
+#legend .lrow{display:flex; justify-content:space-between; width:110px; margin:0 auto}
+/* ---------- build palette ---------- */
+#palette{
+  position:absolute; left:0; right:0; bottom:0; z-index:20;
+  display:flex; gap:6px; align-items:flex-end; padding:8px 10px calc(10px + env(safe-area-inset-bottom,0px));
+  overflow-x:auto; overflow-y:hidden; scrollbar-width:none;
+  background:linear-gradient(180deg,transparent,rgba(10,18,10,.35));
+}
+#palette::-webkit-scrollbar{display:none}
+.toolgroup{display:flex; flex-direction:column; gap:3px; flex:none}
+.grouplabel{font-size:10px; font-weight:800; color:#f5eed8; text-shadow:0 1px 3px rgba(0,0,0,.6); letter-spacing:.6px; padding-left:4px; text-transform:uppercase}
+.grouprow{display:flex; gap:6px}
+.tool{
+  background:var(--glass); border:2px solid var(--line); border-bottom:3px solid var(--wood2); border-radius:14px; cursor:pointer;
+  font-family:inherit; width:66px; min-height:62px; padding:5px 2px 4px;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px;
+  box-shadow:0 3px 8px rgba(20,14,4,.35), inset 0 1px 0 rgba(255,250,230,.8); transition:transform .08s; flex:none;
+}
+.tool:active{transform:translateY(2px)}
+.tool .tem{font-size:22px; line-height:1.1}
+.tool .tnm{font-size:10.5px; font-weight:800; color:var(--ink); line-height:1.1}
+.tool .tcost{font-size:10px; font-weight:800; color:var(--gold2)}
+.tool.active{background:linear-gradient(180deg,#ffedb8,#f5d98a); border-color:var(--gold2); box-shadow:0 0 0 3px rgba(234,181,67,.5), 0 3px 8px rgba(20,14,4,.3); transform:scale(1.06)}
+.tool.cant .tcost{color:#c05540}
+.tool.shopbtn{background:var(--woodgrain)}
+.tool.shopbtn .tnm{color:#ffeece}
+.tool.shopbtn .tcost{color:#f5d98a}
+/* ---------- info panel ---------- */
+#infoPanel{
+  position:absolute; left:10px; bottom:96px; z-index:21; width:290px; max-width:calc(100% - 20px);
+  max-height:52vh; overflow-y:auto; display:none;
+  background:var(--glass); border:2px solid var(--line); border-radius:16px;
+  padding:12px 14px; box-shadow:0 8px 26px rgba(10,8,2,.4); font-size:14px;
+}
+#infoPanel.show{display:block; animation:slideUp .22s ease}
+@keyframes slideUp{from{opacity:0; transform:translateY(16px)}to{opacity:1; transform:none}}
+#infoPanel h3{margin:0 0 4px; font-size:16px; color:var(--wood2); display:flex; align-items:center; gap:6px}
+#infoPanel .closex{margin-left:auto; cursor:pointer; font-size:15px; color:var(--soft); background:none; border:none; font-weight:800; padding:2px 6px}
+#infoPanel .hbarw{height:13px; background:#e7dcbf; border-radius:99px; overflow:hidden; border:1px solid var(--line); margin:4px 0}
+#infoPanel .hbar{height:100%; border-radius:99px; background:linear-gradient(90deg,#c98a3d,#a8c04a,#4a8f4d); transition:width .4s}
+#infoPanel .chiprow{font-size:12.5px; color:var(--soft); font-weight:700; margin:5px 0}
+.sciBtn{
+  font-family:inherit; width:100%; margin-top:7px; background:#efe7d0; border:2px solid var(--line);
+  border-radius:11px; font-weight:800; font-size:12.5px; padding:7px; cursor:pointer; color:var(--wood2);
+}
+#sciBox{display:none; margin-top:7px}
+#sciBox.show{display:block}
+.soilrow{display:flex; align-items:center; gap:7px; margin:3px 0}
+.soilrow .lbl{width:118px; font-weight:700; color:var(--soft); font-size:11px}
+.soilrow .bar{flex:1; height:9px; background:#e7dcbf; border-radius:99px; overflow:hidden; border:1px solid var(--line)}
+.soilrow .fill{height:100%; border-radius:99px}
+.soilrow .num{width:26px; text-align:right; font-family:ui-monospace,monospace; font-size:11px}
+.scinote{font-size:11px; color:var(--soft); font-weight:600; margin-top:5px}
+/* ---------- toasts ---------- */
+#toasts{position:fixed; top:60px; left:50%; transform:translateX(-50%); z-index:60; display:flex; flex-direction:column; gap:6px; align-items:center; pointer-events:none; width:92%; max-width:430px}
+.toast{
+  background:rgba(58,49,40,.94); color:#fff7e6; font-size:14.5px; font-weight:700;
+  padding:9px 17px; border-radius:14px; box-shadow:0 6px 20px rgba(0,0,0,.35);
+  animation:toastIn .3s ease, toastOut .5s ease 3s forwards; text-align:center; max-width:100%;
+}
+@keyframes toastIn{from{opacity:0; transform:translateY(-14px) scale(.9)}to{opacity:1; transform:none}}
+@keyframes toastOut{to{opacity:0; transform:translateY(-10px)}}
+/* ---------- modal ---------- */
+#modalWrap{position:fixed; inset:0; background:rgba(20,16,8,.55); z-index:70; display:none; align-items:center; justify-content:center; padding:16px}
+#modalWrap.show{display:flex}
+#modalBox{
+  background:radial-gradient(120% 100% at 50% 0%, #fbf0d4 0%, #f3e0b4 100%);
+  border-radius:22px; max-width:440px; width:100%;
+  max-height:84vh; overflow:auto; padding:18px 18px 14px; box-shadow:0 20px 60px rgba(0,0,0,.5), inset 0 0 0 2px rgba(255,250,230,.6);
+  animation:popIn .25s ease; border:3px solid var(--wood);
+}
+@keyframes popIn{from{transform:scale(.85); opacity:0}to{transform:none; opacity:1}}
+#modalBox h2{margin:0 0 4px; font-size:21px; color:var(--wood2); display:flex; align-items:center; gap:8px}
+#modalBox .sub{color:var(--soft); font-size:13.5px; margin-bottom:10px; font-weight:600}
+.goalitem{display:flex; align-items:center; gap:10px; padding:6px 10px; border-radius:12px; margin:4px 0; font-size:13.5px; font-weight:700}
+.goalitem.done{background:#eaf5e2; color:var(--green2)}
+.goalitem.todo{background:#f6f0dd; color:var(--soft)}
+.goalitem .gm{font-size:20px; width:28px; text-align:center}
+.goalitem.todo .gm{filter:grayscale(1); opacity:.5}
+.modalbtns{display:flex; gap:8px; margin-top:12px}
+.mbtn{
+  font-family:inherit; flex:1; font-size:15.5px; font-weight:800; color:#fff;
+  background:var(--green); border:none; border-radius:13px; padding:12px 8px;
+  cursor:pointer; box-shadow:0 4px 0 var(--green2); min-height:48px;
+}
+.mbtn:active{transform:translateY(3px); box-shadow:0 1px 0 var(--green2)}
+.mbtn.wood{background:var(--wood); box-shadow:0 4px 0 var(--wood2)}
+.mbtn.wood:active{box-shadow:0 1px 0 var(--wood2)}
+.mbtn.big{background:linear-gradient(180deg,var(--gold),#eaa62a); color:#5a3d10; box-shadow:0 5px 0 var(--gold2); font-size:17px}
+.mbtn.big:active{box-shadow:0 1px 0 var(--gold2)}
+.eventbig{font-size:52px; text-align:center; margin:4px 0}
+.eventkid{font-size:16px; text-align:center; font-weight:700; margin:6px 0}
+.eventlines{font-size:14px; margin:8px 0; font-weight:600}
+.eventlines div{padding:3px 0}
+.lesson{
+  background:#eef5e4; border:2px dashed #a8c890; border-radius:12px; padding:9px 12px;
+  font-size:13px; font-style:italic; color:var(--green2); font-weight:600;
+}
+.winstats{text-align:center; font-size:14.5px; font-weight:700; margin:8px 0; color:var(--soft)}
+/* ---------- tutorial ---------- */
+#tut{
+  position:fixed; left:50%; transform:translateX(-50%); bottom:100px; z-index:65;
+  background:#fffbe9; border:3px solid var(--gold); border-radius:18px; padding:12px 15px;
+  max-width:400px; width:92%; box-shadow:0 10px 30px rgba(0,0,0,.4); display:none;
+  font-size:14.5px; font-weight:700;
+}
+#tut.show{display:block; animation:popIn .3s ease}
+#tut .skip{float:right; font-size:11.5px; color:var(--soft); cursor:pointer; text-decoration:underline; font-weight:600; margin-left:10px}
+#tut .tnext{
+  font-family:inherit; margin-top:8px; width:100%; background:var(--gold); border:none; border-radius:12px;
+  font-weight:800; font-size:14px; padding:10px; cursor:pointer; color:#5a3d10; box-shadow:0 3px 0 var(--gold2);
+}
+#tut .tnext:active{transform:translateY(2px); box-shadow:0 1px 0 var(--gold2)}
+@media(max-width:640px){
+  #brand span{display:none}
+  .hudpill{font-size:12.5px; padding:5px 9px}
+  .hudbtn{min-width:38px; min-height:36px; font-size:15px}
+  #overlaybar{top:auto; bottom:96px}
+  #infoPanel{bottom:96px; width:260px}
+  .tool{width:58px; min-height:58px}
+  #questPanel{width:200px; top:auto; bottom:170px}
+}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="topbar">
+  <span class="hudpill" id="brand">🌱 <span>Rootweave</span></span>
+  <span class="hudpill" id="seasonPill">🌸 Spring · Y1</span>
+  <span class="hudpill">🪙 <b id="coinsEl">75</b></span>
+  <span id="clockGroup">
+    <button class="hudbtn" id="btnPause" title="Pause / play">⏸️</button>
+    <button class="hudbtn" id="btnSpeed" title="Game speed">1×</button>
+  </span>
+  <span class="hudpill" id="goalPill" title="Tiles restored to healthy soil">
+    🏡 <b id="restoredEl">0/97</b>
+    <span class="minibar"><span class="minifill" id="goalFill"></span></span>
+  </span>
+  <span class="hudpill" id="wqPill" title="River water quality — living soil & buffer plants send clean water downstream!">
+    💧 <b id="wqEl">35</b>
+    <span class="minibar"><span class="minifill" id="wqFill"></span></span>
+  </span>
+  <span class="hudpill chips" title="Wildlife returns as the farm gets wilder!">
+    <span class="chip" id="chipBees">🐝</span><span class="chip" id="chipFlies">🦋</span><span class="chip" id="chipBirds">🐦</span>
+  </span>
+  <span class="hudspacer"></span>
+  <button class="hudbtn" id="btnShop" title="Shop — unlock buildings, animals & upgrades">🛒</button>
+  <button class="hudbtn" id="btnGoals" title="Goals & badges">⭐</button>
+  <button class="hudbtn" id="btnSound" title="Sound on/off">🔊</button>
+</div>
+
+<div id="questPanel">
+  <div class="qhead" id="qHead">🎯 <span id="qRegion">Homestead Vale</span><span class="qcaret" id="qCaret">▼</span></div>
+  <div class="qbody" id="qBody"></div>
+</div>
+
+<div id="overlaybar">
+  <button class="ovbtn on" data-ov="none">🌈 Natural</button>
+  <button class="ovbtn" data-ov="health">💚 Soil Health</button>
+  <button class="ovbtn" data-ov="water">💧 Water</button>
+  <button class="ovbtn" data-ov="bio">🐝 Biodiversity</button>
+  <button class="ovbtn" data-ov="om">🍂 Organic Matter</button>
+  <button class="ovbtn" data-ov="runoff">🌊 Runoff</button>
+  <div id="legend"><div id="legendTitle">Soil Health</div><div class="lbar" id="legendBar"></div><div class="lrow"><span id="legendLo">poor</span><span id="legendHi">rich</span></div></div>
+</div>
+
+<div id="palette"></div>
+<div id="infoPanel"></div>
+<div id="toasts"></div>
+<div id="modalWrap"><div id="modalBox"></div></div>
+<div id="tut"></div>
+
+<script>
+'use strict';
+/* ===========================================================================
+   ROOTWEAVE v4 — a LIVE isometric regenerative-farming sim (SimCity-style).
+   The regenerative soil model is the engine underneath: diverse planting +
+   sequenced grazing (cattle → chickens) + resting land REGENERATES soil,
+   monocropping extracts. v4 adds: illustrated cartoon art (sprites/ PNGs with
+   health-driven tile swaps), a RIVER with a live water-quality model (riparian
+   buffers are the big lever — clean runoff is the lesson), and a gentler
+   early-game economy (daily farm-stand trickle).
+   =========================================================================== */
+
+// ---------------------------------------------------------------- constants
+const GRID = 14;                       // 14x14 isometric world — a whole dying valley
+const TILE_W = 72, TILE_H = 36;        // iso diamond size (world units)
+const TW2 = TILE_W/2, TH2 = TILE_H/2;
+const TDEPTH = 11;                     // tile side thickness (2.5D block edge)
+const DAY_LEN = 2.5;                   // real seconds per game day at 1× speed
+const DAYS_PER_SEASON = 12;
+const TOD_CYCLE = 75;                  // real seconds (at 1×) for a full dawn→night light cycle
+const SAVE_KEY = 'rootweave_v5';   // v5: RESTORE THE DYING LAND — dead tier, regions/quests, shop, full art set
+const SOIL_ATTRS = ['om','structure','nutrients','water','microbial','erosion'];
+const ATTR_INFO = {
+  om:        {label:'🍂 Organic Matter', tip:'Decayed plants & manure — the soil sponge'},
+  structure: {label:'🧱 Soil Structure', tip:'Crumbly soil roots can breathe in'},
+  nutrients: {label:'🍽️ Nutrients',      tip:'Food for plants'},
+  water:     {label:'💧 Water',           tip:'Moisture held in the ground'},
+  microbial: {label:'🦠 Microbe Life',    tip:'Billions of tiny helpers (worms love this!)'},
+  erosion:   {label:'🛡️ Ground Cover',   tip:'Protection from wind & pounding rain'},
+};
+const SEASONS = [
+  {name:'Spring', emoji:'🌸', sky0:'#8fd0f2', sky1:'#cfeadf', grass:'#69a84f', growMult:1.0,  regenMult:1.1, canPlant:true},
+  {name:'Summer', emoji:'☀️', sky0:'#7ec4ee', sky1:'#d8ecc8', grass:'#5f9c46', growMult:1.15, regenMult:1.0, canPlant:true},
+  {name:'Fall',   emoji:'🍂', sky0:'#f0c88f', sky1:'#f4e2bb', grass:'#96993f', growMult:0.8,  regenMult:1.0, canPlant:true},
+  {name:'Winter', emoji:'❄️', sky0:'#b9c9dc', sky1:'#e8edf4', grass:'#b9c8b4', growMult:0.12, regenMult:0.9, canPlant:false},
+];
+const CROPS = {
+  sisters:  {name:'Three Sisters', em:'🌽', cost:6, diverse:true,  cover:false, pioneer:false, growPerDay:0.09, yield:22,
+    desc:'Corn, beans & squash grow as a team and feed the soil. Big harvest!'},
+  wheat:    {name:'Quick Wheat',   em:'🌾', cost:3, diverse:false, cover:false, pioneer:false, growPerDay:0.16, yield:12,
+    desc:'Fast cash… but a lonely crop tires the soil out while it grows.'},
+  clover:   {name:'Clover Cover',  em:'🍀', cost:4, diverse:true,  cover:true,  pioneer:true,  growPerDay:0.12, yield:0,
+    desc:'No coins — but it feeds the soil a feast and its flowers call the bees!'},
+  covercrop:{name:'Pioneer Mix',   em:'🌿', cost:2, diverse:true,  cover:true,  pioneer:true,  growPerDay:0.14, yield:0,
+    desc:'Tough pioneer roots that crack open DEAD ground and wake it up.'},
+};
+// per-day soil deltas while animals graze a tile (spread of the old one-shot boost)
+const GRAZE = {
+  cattle:  {days:5, em:'🐄', rates:{om:2.0, structure:1.0,  nutrients:1.3, microbial:1.3, erosion:0.6,  water:0.3}},
+  chicken: {days:4, em:'🐔', rates:{om:0.8, structure:0.15, nutrients:0.5, microbial:1.4, erosion:0.15, water:0.1}},
+  sheep:   {days:4, em:'🐑', rates:{om:0.9, structure:0.4,  nutrients:0.6, microbial:0.7, erosion:1.4,  water:0.2}},
+  goat:    {days:4, em:'🐐', rates:{om:0.6, structure:0.5,  nutrients:0.7, microbial:0.5, erosion:0.3,  water:0.1}},
+  pig:     {days:3, em:'🐖', rates:{om:0.9, structure:2.2,  nutrients:1.6, microbial:0.8, erosion:-0.5, water:0.1}},
+  duckT:   {days:5, em:'🦆', rates:{om:0.4, structure:0.1,  nutrients:0.5, microbial:0.8, erosion:0.1,  water:0.3}},
+};
+const SYNERGY_MULT = 1.7;              // chickens after/with cattle: microbe magic
+// tools with a shopId appear in the palette only after that shop unlock is bought
+const TOOLS = [
+  {id:'select',  em:'👆', name:'Inspect', cost:0,  group:'Look',    paint:false, tip:'Tap a tile to peek at it. Drag pans the camera.'},
+  {id:'compost', em:'🪣', name:'Compost', cost:5,  group:'Revive',  paint:true,  tip:'A rich soil meal — the fastest way to feed DEAD ground.'},
+  {id:'covercrop',em:'🌿',name:'Pioneers',cost:2,  group:'Revive',  paint:true,  tip:'Hardy pioneer plants — the ONLY seeds tough enough for dead ground.'},
+  {id:'sisters', em:'🌽', name:'3 Sisters',cost:6, group:'Plant',   paint:true,  tip:'Corn + beans + squash — a diverse team that FEEDS the soil.'},
+  {id:'wheat',   em:'🌾', name:'Wheat',   cost:3,  group:'Plant',   paint:true,  tip:'Quick coins, but a lonely monocrop drains the soil.'},
+  {id:'clover',  em:'🍀', name:'Clover',  cost:4,  group:'Plant',   paint:true,  tip:'Cover crop: no coins, huge soil food, flowers for bees.'},
+  {id:'cattle',  em:'🐄', name:'Cattle',  cost:8,  group:'Animals', paint:true,  tip:'Mob-graze a tile for 5 days: munch, trample, fertilize.'},
+  {id:'chicken', em:'🐔', name:'Chickens',cost:5,  group:'Animals', paint:true,  tip:'Send them where cattle grazed for ✨ team synergy!'},
+  {id:'sheep',   em:'🐑', name:'Sheep',   cost:7,  group:'Animals', paint:true,  shopId:'sheep', tip:'Gentle mowers — they thicken the ground cover.'},
+  {id:'goat',    em:'🐐', name:'Goats',   cost:7,  group:'Animals', paint:true,  shopId:'goat',  tip:'Brush-clearers! The only grazer tough enough for DEAD land.'},
+  {id:'pig',     em:'🐖', name:'Pigs',    cost:9,  group:'Animals', paint:true,  shopId:'pig',   tip:'Living rototillers — they loosen packed dirt fast.'},
+  {id:'duckT',   em:'🦆', name:'Ducks',   cost:6,  group:'Animals', paint:true,  shopId:'duckT', tip:'Pest patrol — slugs beware. Extra happy near water.'},
+  {id:'pond',    em:'💧', name:'Pond',    cost:25, group:'Land',    paint:false, tip:'Stores rain, waters neighbors, shrugs off droughts.'},
+  {id:'trees',   em:'🌳', name:'Trees',   cost:15, group:'Land',    paint:true,  tip:'Hedgerow: wildlife home + wind & rain protection nearby.'},
+  {id:'market',  em:'🏪', name:'Market',  cost:15, group:'Build',   paint:false, shopId:'market',    tip:'A farm stand that sells for you: +3🪙 every day.'},
+  {id:'beehive', em:'🐝', name:'Beehive', cost:10, group:'Build',   paint:false, shopId:'beehive',   tip:'Pollinators! Nearby crops yield +20%.'},
+  {id:'wetland', em:'🌾', name:'Wetland', cost:18, group:'Build',   paint:false, shopId:'wetland',   tip:'Nature\'s kidney — filters runoff, big river cleanup.'},
+  {id:'raintank',em:'🛢️', name:'RainTank',cost:10, group:'Build',   paint:false, shopId:'raintank',  tip:'Catches storms, waters neighbors through droughts.'},
+  {id:'greenhouse',em:'🪴',name:'Grnhouse',cost:20,group:'Build',   paint:false, shopId:'greenhouse',tip:'Plant beside it even in WINTER; crops nearby grow faster.'},
+  {id:'silo',    em:'🌾', name:'Silo',    cost:15, group:'Build',   paint:false, shopId:'silo',      tip:'Grain storage — every harvest sells +15%.'},
+  {id:'orchard', em:'🍎', name:'Orchard', cost:14, group:'Build',   paint:true,  shopId:'orchard',   tip:'A perennial food forest — fruit coins every season.'},
+  {id:'berrybush',em:'🫐',name:'Berries', cost:8,  group:'Build',   paint:true,  shopId:'berrybush', tip:'Berry hedges — snacks for you, blossoms for the bees.'},
+  {id:'wormfarm',em:'🪱', name:'WormFarm',cost:10, group:'Build',   paint:false, shopId:'wormfarm',  tip:'A worm army that supercharges soil life nearby.'},
+  {id:'birdhouse',em:'🐦',name:'Birdhouse',cost:6, group:'Build',   paint:true,  shopId:'birdhouse', tip:'Songbirds move in — and eat the pests for free.'},
+  {id:'well',    em:'⛲', name:'Well',    cost:10, group:'Build',   paint:false, shopId:'well',      tip:'Sweet groundwater for the soil right beside it.'},
+  {id:'windmill',em:'🌬️', name:'Windmill',cost:15, group:'Build',   paint:false, shopId:'windmill',  tip:'Clean wind power: +2🪙 a day.'},
+  {id:'solar',   em:'☀️', name:'Solar',   cost:15, group:'Build',   paint:false, shopId:'solar',     tip:'Sunshine to coins: +2🪙 a day.'},
+  {id:'mushroom',em:'🍄', name:'Mushrooms',cost:8, group:'Build',   paint:true,  shopId:'mushroom',  tip:'Fungi knit the soil web together nearby.'},
+  {id:'stable',  em:'🐴', name:'Stable',  cost:20, group:'Build',   paint:false, shopId:'stable',    tip:'Home for a gentle horse. Calm pastures call wildlife.'},
+  {id:'bridge',  em:'🌉', name:'Bridge',  cost:12, group:'Build',   paint:false, shopId:'bridge',    tip:'Cross the river in style. Place it ON the water.'},
+  {id:'fence',   em:'🚧', name:'Paddock', cost:4,  group:'Build',   paint:true,  shopId:'fence',     tip:'Fenced paddock: animals graze +50% better here.'},
+  {id:'decor',   em:'🎀', name:'Decorate',cost:3,  group:'Build',   paint:true,  shopId:'decor',     tip:'Haybales, carts, flowerbeds, scarecrows… make it home.'},
+  {id:'bulldoze',em:'🚜', name:'Clear',   cost:2,  group:'Fix',     paint:true,  tip:'Remove a crop, animals, building or decoration from a tile.'},
+];
+// -------- SHOP: coins → new capabilities (the money sink with a purpose)
+const SHOP = [
+  {id:'sheep',      em:'🐑', name:'Sheep',           cost:20, cat:'Animals', desc:'Gentle mowers that thicken ground cover.'},
+  {id:'goat',       em:'🐐', name:'Goats',           cost:25, cat:'Animals', desc:'Browse dead brush — the only grazer for DEAD land.'},
+  {id:'pig',        em:'🐖', name:'Pigs',            cost:30, cat:'Animals', desc:'Living rototillers — loosen packed soil fast.'},
+  {id:'duckT',      em:'🦆', name:'Ducks',           cost:25, cat:'Animals', desc:'Pest patrol, extra happy near water.'},
+  {id:'stable',     em:'🐴', name:'Stable & Horse',  cost:60, cat:'Animals', desc:'A gentle giant to watch over the fields.'},
+  {id:'market',     em:'🏪', name:'Farm Market',     cost:40, cat:'Build',   desc:'+3🪙 every day, rain or shine.'},
+  {id:'beehive',    em:'🐝', name:'Beehive',         cost:30, cat:'Build',   desc:'Nearby crops yield +20%. Bees everywhere!'},
+  {id:'wetland',    em:'🌾', name:'Wetland',         cost:45, cat:'Build',   desc:'Nature\'s water filter — big river cleanup.'},
+  {id:'raintank',   em:'🛢️', name:'Rain Tank',       cost:30, cat:'Build',   desc:'Catches rain, waters neighbors in dry spells.'},
+  {id:'greenhouse', em:'🪴', name:'Greenhouse',      cost:70, cat:'Build',   desc:'Grow beside it all WINTER, +faster crops.'},
+  {id:'silo',       em:'🌾', name:'Grain Silo',      cost:55, cat:'Build',   desc:'Every harvest sells for +15%.'},
+  {id:'orchard',    em:'🍎', name:'Orchard',         cost:45, cat:'Build',   desc:'Perennial food forest — fruit every season.'},
+  {id:'berrybush',  em:'🫐', name:'Berry Bushes',    cost:20, cat:'Build',   desc:'Berries + blossoms the pollinators adore.'},
+  {id:'wormfarm',   em:'🪱', name:'Worm Farm',       cost:35, cat:'Build',   desc:'Compost drops to 2🪙 & soil life blooms nearby.'},
+  {id:'birdhouse',  em:'🐦', name:'Birdhouses',      cost:25, cat:'Build',   desc:'Songbirds eat the pests for free.'},
+  {id:'well',       em:'⛲', name:'Well',            cost:30, cat:'Build',   desc:'Waters the soil right beside it.'},
+  {id:'windmill',   em:'🌬️', name:'Windmill',        cost:65, cat:'Build',   desc:'Clean power: +2🪙 a day.'},
+  {id:'solar',      em:'☀️', name:'Solar Panels',    cost:65, cat:'Build',   desc:'Sunshine to coins: +2🪙 a day.'},
+  {id:'mushroom',   em:'🍄', name:'Mushroom Logs',   cost:30, cat:'Build',   desc:'Fungi feed the soil web nearby.'},
+  {id:'bridge',     em:'🌉', name:'Bridge',          cost:35, cat:'Build',   desc:'Cross the river in style.'},
+  {id:'fence',      em:'🚧', name:'Paddock Fences',  cost:25, cat:'Build',   desc:'Rotational grazing: animals work +50% better.'},
+  {id:'decor',      em:'🎀', name:'Decorations',     cost:15, cat:'Build',   desc:'Haybales, carts, flowerbeds… make it home.'},
+  {id:'upg_growth', em:'🌱', name:'Heirloom Seeds',  cost:60, cat:'Upgrades',desc:'All crops grow 20% faster.'},
+  {id:'upg_compost',em:'🪣', name:'Compost Master',  cost:40, cat:'Upgrades',desc:'Compost costs 2🪙 and lasts 14 days.'},
+  {id:'upg_seeds',  em:'👛', name:'Seed Saver',      cost:50, cat:'Upgrades',desc:'Planting costs 1🪙 less.'},
+  {id:'upg_trickle',em:'🧺', name:'Bigger Farm Stand',cost:45,cat:'Upgrades',desc:'+2🪙 extra every day.'},
+];
+// -------- REGIONS: the dying valley heals outward, one named place at a time
+const REGIONS = [
+  {id:'vale',   name:'Homestead Vale', em:'🏡', reward:30, goal:{type:'healthy', n:14, hp:50},
+    desc:'Wake the home fields — bring 14 tiles here to 50+ health.',
+    story:'The last living corner of the valley. Feed the ground. Plant pioneers.'},
+  {id:'wash',   name:'Dry Wash',       em:'🏜️', reward:50, goal:{type:'alive', n:18},
+    desc:'Revive 18 tiles here and the creek itself will come back.',
+    story:'A cracked creekbed winds through this dust. Water remembers.'},
+  {id:'orchard',name:'Old Orchard',    em:'🍎', reward:40, goal:{type:'grove', n:6},
+    desc:'Plant 6 trees or orchards among the dead stumps.',
+    story:'Skeleton trees where fruit once hung heavy. Plant new roots.'},
+  {id:'ridge',  name:'East Ridge',     em:'⛰️', reward:50, goal:{type:'healthy', n:18, hp:55},
+    desc:'Bring 18 ridge tiles to 55+ health.',
+    story:'Wind-scoured high ground across the river. It will fight you.'},
+  {id:'flats',  name:'The Dust Flats', em:'🌵', reward:60, goal:{type:'alive', n:30},
+    desc:'Revive 30 tiles of the great southern flats.',
+    story:'The heart of the dying. Dust devils dance where wheat once stood.'},
+  {id:'salt',   name:'Salt Pan',       em:'🧂', reward:80, goal:{type:'healthy', n:10, hp:50},
+    desc:'The hardest ground of all — bring 10 tiles to 50+ health.',
+    story:'Poisoned white crust. Only patience and life itself can wash it clean.'},
+];
+function regionOf(c,r){
+  if(r<=5 && c<=5) return 'vale';
+  if(r<=5) return 'ridge';
+  if(r<=9 && c<=9) return 'wash';
+  if(r<=9) return 'orchard';
+  if(c<=9) return 'flats';
+  return 'salt';
+}
+// -------- rotating side tasks (2 live at a time; small coin rewards)
+const TASKS = [
+  {id:'cover5',   em:'🌿', desc:'Plant 5 cover crops',            stat:'coverPlanted', n:5, reward:8},
+  {id:'compost6', em:'🪣', desc:'Compost 6 tiles',                stat:'composts',     n:6, reward:8},
+  {id:'revive3',  em:'💚', desc:'Revive 3 dead tiles',            stat:'revived',      n:3, reward:10},
+  {id:'buffer2',  em:'🌳', desc:'Plant 2 riverside buffer trees', stat:'buffers',      n:2, reward:12},
+  {id:'harvest4', em:'🌾', desc:'Harvest 4 crops',                stat:'harvests',     n:4, reward:8},
+  {id:'graze3',   em:'🐄', desc:'Set animals grazing 3 times',    stat:'grazes',       n:3, reward:8},
+  {id:'sisters4', em:'🌽', desc:'Plant 4 Three Sisters',          stat:'sistersPlanted',n:4,reward:8},
+  {id:'build2',   em:'🏗️', desc:'Place 2 buildings',              stat:'buildings',    n:2, reward:10},
+  {id:'wq50',     em:'💧', desc:'Get the river to 50 quality',    abs:(f)=>state.waterQuality>=50, reward:12},
+  {id:'wq70',     em:'💧', desc:'Get the river to 70 quality',    abs:(f)=>state.waterQuality>=70, reward:15},
+  {id:'bio30',    em:'🐝', desc:'Bring back the bees (Wildness 30)', abs:(f)=>f.bio>=30, reward:12},
+  {id:'bio60',    em:'🐦', desc:'Bring back the birds (Wildness 60)',abs:(f)=>f.bio>=60, reward:15},
+  {id:'heron85',  em:'🦩', desc:'Bring back the herons (River 85)',  abs:(f)=>state.waterQuality>=85, reward:20},
+];
+const BADGES = [
+  {id:'revive',  em:'🌅', name:'First Light',      desc:'Revive your first dead tile',              check:f=>state.stats.revived>0},
+  {id:'seed',    em:'🌱', name:'First Seeds',      desc:'Plant your first crop',                    check:f=>state.stats.planted>0},
+  {id:'harvest', em:'🌾', name:'First Harvest',    desc:'Harvest a crop for coins',                 check:f=>state.stats.harvests>0},
+  {id:'cattle',  em:'🐄', name:'The Herd Arrives', desc:'Set cattle grazing on a tile',             check:f=>state.stats.cattle>0},
+  {id:'chick',   em:'🐔', name:'Cluck Crew',       desc:'Set chickens loose on a tile',             check:f=>state.stats.chickens>0},
+  {id:'synergy', em:'✨', name:'Soil Magic',       desc:'Chickens follow the cattle — team graze!', check:f=>state.stats.synergy>0},
+  {id:'pond',    em:'💧', name:'Pondkeeper',       desc:'Dig a farm pond',                          check:f=>state.stats.ponds>0},
+  {id:'cleanwater', em:'🌊', name:'Clean Water',   desc:'Bring the river to 80+ water quality',     check:f=>state.waterQuality>=80},
+  {id:'forest',  em:'🌳', name:'Hedgerow Hero',    desc:'Plant 5 tree tiles',                       check:f=>state.stats.trees>=5},
+  {id:'worms',   em:'🪱', name:'Worm Party',       desc:'Get Microbe Life to 70 on a tile',         check:f=>f.maxMicrobial>=70},
+  {id:'bees',    em:'🐝', name:'The Bees Return',  desc:'Grow Farm Wildness to 30',                 check:f=>f.bio>=30},
+  {id:'flies',   em:'🦋', name:'Butterfly Meadow', desc:'Grow Farm Wildness to 45',                 check:f=>f.bio>=45},
+  {id:'birds',   em:'🐦', name:'Birdsong',         desc:'Grow Farm Wildness to 60',                 check:f=>f.bio>=60},
+  {id:'shopper', em:'🛒', name:'Homesteader',      desc:'Buy something from the shop',              check:f=>Object.keys(state.unlocks).length>0},
+  {id:'region',  em:'🗺️', name:'Region Reborn',    desc:'Complete your first region quest',         check:f=>state.regionIdx>0},
+  {id:'wash',    em:'🏞️', name:'The Water Returns',desc:'Bring the Dry Wash creek back to life',    check:f=>!!state.washRestored},
+  {id:'first',   em:'💚', name:'First Tile Healed',desc:'Bring any tile to 70+ health',             check:f=>f.restored>=1},
+  {id:'ten',     em:'🌿', name:'Green Corner',     desc:'Restore 10 tiles',                         check:f=>f.restored>=10},
+  {id:'quarter', em:'🌟', name:'Quarter Alive',    desc:'Restore a quarter of the valley',          check:f=>f.restored>=Math.ceil(f.totalSoil/4)},
+  {id:'half',    em:'🌈', name:'Half the Valley',  desc:'Restore half of all land tiles',           check:f=>f.restored>=Math.ceil(f.totalSoil/2)},
+  {id:'win',     em:'🏆', name:'Living Ecosystem', desc:'Restore the WHOLE valley, clean river, wildlife home',
+    check:f=>f.restored>=f.totalSoil && f.bio>=60 && state.waterQuality>=80 && state.regionIdx>=REGIONS.length},
+];
+
+// ---------------------------------------------------------------- state
+let state, canvas, ctx, DPR = 1, viewW = 0, viewH = 0;
+let cam = {x:0, y:0, zoom:1}, fitZoom = 1;
+let tool = 'select', overlay = 'none', selected = -1, hovered = -1;
+let agents = [];                 // farm animals bound to grazing tiles
+let wildlife = [];               // free-roaming bees / butterflies (world space)
+let birds = [];                  // sky birds (screen space)
+let worldParts = [], screenParts = [];   // particles
+let soundOn = true, actx = null;
+let lastT = 0, simClock = 0, autosaveT = 0;
+let modalOpen = false, farmCache = null;
+
+function clamp(v){ return Math.max(0, Math.min(100, v)); }
+function lerp(a,b,t){ return a+(b-a)*t; }
+function fract(x){ return x - Math.floor(x); }
+function sr(n){ const x = Math.sin(n*127.1 + 311.7) * 43758.5453; return x - Math.floor(x); }
+function idx(c,r){ return r*GRID + c; }
+function inGrid(c,r){ return c>=0 && c<GRID && r>=0 && r<GRID; }
+
+function newTile(c,r){
+  const i = idx(c,r);
+  const t = {
+    c, r, terrain:'soil', region:regionOf(c,r), feature:null, deco:null, fence:false, bridge:false,
+    soil:{
+      om:        20 + sr(i*7+1)*14,
+      structure: 24 + sr(i*5+2)*12,
+      nutrients: 28 + sr(i*3+3)*11,
+      water:     30 + sr(i*2+4)*12,
+      microbial: 20 + sr(i*11+5)*13,
+      erosion:   26 + sr(i*13+6)*12,
+    },
+    crop:null, graze:null, sinceCattle:999, compost:0, flowers:0, health:0,
+  };
+  recalc(t);
+  return t;
+}
+function makeDead(t){
+  const i = idx(t.c,t.r);
+  t.terrain = 'dead';
+  SOIL_ATTRS.forEach((k,ki)=>{ t.soil[k] = 3 + sr(i*7+ki*13+2)*11; });
+  t.crop = null; t.flowers = 0;
+  recalc(t);
+}
+function recalc(t){
+  t.health = SOIL_ATTRS.reduce((a,k)=>a+t.soil[k],0) / SOIL_ATTRS.length;
+}
+const DEFAULT_STATS = {planted:0, harvests:0, coinsEarned:0, synergy:0, cattle:0, chickens:0, ponds:0, trees:0,
+  composts:0, coverPlanted:0, revived:0, buffers:0, grazes:0, sistersPlanted:0, buildings:0, decos:0};
+function newGame(){
+  const s = {
+    v:5, year:1, season:0, day:1, dayFrac:0, seasonCount:0, tod:0.30,
+    coins:75, speed:1, paused:false, waterQuality:28, riparianTip:false, incomeTip:false, deadTip:false,
+    regionIdx:0, tasks:[], tasksDone:{}, unlocks:{}, washRestored:false,
+    grid:[], badges:{}, won:false, tutStep:0, tutDone:false, sound:true,
+    stats:Object.assign({}, DEFAULT_STATS),
+  };
+  for(let r=0;r<GRID;r++) for(let c=0;c<GRID;c++) s.grid.push(newTile(c,r));
+  // ---- THE DYING LAND: almost everything starts dead
+  s.grid.forEach(t=>makeDead(t));
+  // ---- the RIVER: a thin, murky thread winding north→south through the east.
+  // It only ever drifts EASTWARD as it flows south — the two bend directions the
+  // illustrated tileset can draw (N↔E and W↔S) — staying 4-connected the whole way
+  let rc = 8 + ((Math.random()*2)|0);
+  const riverCol = [];
+  for(let r=0;r<GRID;r++){
+    if(r>0 && r<GRID-1 && rc<GRID-2 && Math.random()<0.35){
+      s.grid[idx(rc,r)].terrain = 'water';   // the elbow tile (N↔E bend)
+      rc += 1;                               // …then the step tile (W↔S bend)
+    }
+    riverCol.push(rc);
+    s.grid[idx(rc,r)].terrain = 'water';
+  }
+  // ---- the DRY WASH: a cracked creekbed crawling east to meet the river
+  let wr = 8;
+  for(let c=0;c<GRID;c++){
+    if(c>0 && Math.random()<0.35) wr += (Math.random()<0.5 ? -1 : 1);
+    wr = Math.max(7, Math.min(9, wr));
+    if(c >= riverCol[wr]) break;              // reached (or slipped past) the river
+    const t = s.grid[idx(c,wr)];
+    if(t.terrain==='water') break;
+    t.terrain = 'riverbed'; t.deco = null;
+  }
+  // ---- SALT PAN: a poisoned white crust in the southeast
+  for(let r=10;r<GRID;r++) for(let c=10;c<GRID;c++){
+    const t = s.grid[idx(c,r)];
+    if(t.terrain==='dead' && sr(idx(c,r)*3+7)<0.55) t.feature = 'saltflat';
+  }
+  // ---- EROSION GULLIES + old swale scars across the dead ground
+  const scars = [[2,8,'gully'],[5,11,'gully'],[8,12,'gully'],[12,3,'gully'],[3,6,'swale'],[7,10,'swale'],[12,8,'gully']];
+  scars.forEach(([c,r,f])=>{ const t = s.grid[idx(c,r)]; if(t.terrain==='dead' && !t.feature) t.feature = f; });
+  // ---- bones of the old land: dead trees, stumps, boulders, bleached bones
+  const DECOS = ['deadtree','deadtree','stump','bones','boulder','rock','rock'];
+  let placed = 0;
+  for(let tries=0; tries<200 && placed<16; tries++){
+    const i = (Math.random()*GRID*GRID)|0;
+    const t = s.grid[i];
+    if(t.terrain!=='dead' || t.feature || t.deco) continue;
+    if(t.c<=4 && t.r<=4) continue;                       // keep the homestead approach clear
+    t.deco = t.region==='orchard' ? (Math.random()<0.65?'deadtree':'stump') : DECOS[(Math.random()*DECOS.length)|0];
+    placed++;
+  }
+  // ---- the HOMESTEAD: barn, coop, and the last living soil in the valley
+  s.grid[idx(1,1)].terrain = 'barn'; s.grid[idx(1,1)].deco = null; s.grid[idx(1,1)].feature = null;
+  s.grid[idx(2,1)].terrain = 'coop'; s.grid[idx(2,1)].deco = null; s.grid[idx(2,1)].feature = null;
+  for(let r=0;r<=4;r++) for(let c=0;c<=4;c++){
+    const t = s.grid[idx(c,r)];
+    if(t.terrain!=='dead') continue;
+    const d = Math.max(Math.abs(c-2), Math.abs(r-2));
+    if(d<=1){                                            // the green heart: still truly alive
+      t.terrain = 'soil'; t.deco = null; t.feature = null;
+      SOIL_ATTRS.forEach((k,ki)=>{ t.soil[k] = 48 + sr(idx(c,r)*5+ki)*14; });
+      recalc(t);
+    }else if(d<=2){                                      // viable ring: tired but workable
+      t.terrain = 'soil'; t.deco = null; t.feature = null;
+      SOIL_ATTRS.forEach((k,ki)=>{ t.soil[k] = 32 + sr(idx(c,r)*5+ki)*12; });
+      recalc(t);
+    }else if(Math.random()<0.5){                         // frayed edge: barely hanging on
+      t.terrain = 'soil'; t.deco = null;
+      SOIL_ATTRS.forEach((k,ki)=>{ t.soil[k] = 16 + sr(idx(c,r)*9+ki)*10; });
+      recalc(t);
+    }
+  }
+  return s;
+}
+function soilTiles(){ return state.grid.filter(t=>t.terrain==='soil'); }
+function isWaterT(t){ return t.terrain==='pond' || t.terrain==='water'; }
+function isWetT(t){ return t.terrain==='pond' || t.terrain==='water' || t.terrain==='wetland'; }
+function isLandT(t){ return t.terrain==='soil' || t.terrain==='dead'; }   // restorable ground
+const BUILDINGS = ['market','silo','greenhouse','beehive','orchard','raintank','wetland','stable',
+  'wormfarm','birdhouse','well','windmill','solar','mushroom','berrybush'];
+const BUILD_SET = new Set(BUILDINGS);
+function farmStats(){
+  let h=0, restored=0, micro=0, flowers=0, diverse=0, maxMicrobial=0, n=0, ponds=0, trees=0, dead=0;
+  const bcounts = {};
+  state.grid.forEach(t=>{
+    if(t.terrain==='pond'){ ponds++; return; }
+    if(t.terrain==='trees'){ trees++; return; }
+    if(BUILD_SET.has(t.terrain)){ bcounts[t.terrain] = (bcounts[t.terrain]||0)+1; return; }
+    if(t.terrain==='dead'){ dead++; n++; h += t.health; return; }
+    if(t.terrain!=='soil') return;
+    n++;
+    h += t.health;
+    micro += t.soil.microbial;
+    flowers += t.flowers;
+    if(t.health>=70) restored++;
+    if(t.crop && CROPS[t.crop.type].diverse) diverse++;
+    if(t.soil.microbial>maxMicrobial) maxMicrobial = t.soil.microbial;
+  });
+  const nAlive = Math.max(1, n-dead);
+  const avgH = n? h/n : 0, avgMicro = micro/nAlive;
+  let bio = (avgMicro-22)*0.9 + (flowers/nAlive)*34 + diverse*1.2
+          + (restored/Math.max(1,n))*30 + trees*2.6 + ponds*2.2
+          + (bcounts.beehive||0)*3 + (bcounts.wetland||0)*2.5 + (bcounts.orchard||0)*2.2
+          + (bcounts.berrybush||0)*1.2 + (bcounts.birdhouse||0)*1.5 + (bcounts.mushroom||0)*1
+          + (bcounts.stable||0)*1;
+  if(state && state.waterQuality>=70) bio += 5;      // a clean river hums with life
+  bio = Math.max(0, Math.min(100, bio));
+  return {avgHealth:avgH, restored, totalSoil:n, dead, bio, maxMicrobial, ponds, trees, b:bcounts};
+}
+function pondNear(t, range){
+  range = range||2;
+  for(let dr=-range; dr<=range; dr++) for(let dc=-range; dc<=range; dc++){
+    if(!inGrid(t.c+dc, t.r+dr)) continue;
+    const nb = state.grid[idx(t.c+dc, t.r+dr)];
+    if(isWetT(nb) || nb.terrain==='well' || nb.terrain==='raintank') return true;
+  }
+  return false;
+}
+function waterAdj(t){
+  for(let dr=-1; dr<=1; dr++) for(let dc=-1; dc<=1; dc++){
+    if((dc||dr) && inGrid(t.c+dc,t.r+dr) && isWaterT(state.grid[idx(t.c+dc,t.r+dr)])) return true;
+  }
+  return false;
+}
+// count buildings of a kind within range (Chebyshev) of a tile
+function buildNear(t, kind, range){
+  for(let dr=-range; dr<=range; dr++) for(let dc=-range; dc<=range; dc++){
+    if(!inGrid(t.c+dc,t.r+dr)) continue;
+    if(state.grid[idx(t.c+dc,t.r+dr)].terrain===kind) return true;
+  }
+  return false;
+}
+function waterTileIdx(){
+  const list = [];
+  state.grid.forEach((t,i)=>{ if(isWaterT(t)) list.push(i); });
+  return list;
+}
+function treeAdj(t){
+  for(let dr=-1; dr<=1; dr++) for(let dc=-1; dc<=1; dc++){
+    if((dc||dr) && inGrid(t.c+dc,t.r+dr) && state.grid[idx(t.c+dc,t.r+dr)].terrain==='trees') return true;
+  }
+  return false;
+}
+function healthyNeighbors(t){
+  let n=0;
+  [[t.c-1,t.r],[t.c+1,t.r],[t.c,t.r-1],[t.c,t.r+1]].forEach(([c,r])=>{
+    if(!inGrid(c,r)) return;
+    const nb = state.grid[idx(c,r)];
+    if(nb.terrain==='soil' && nb.health>=65) n++;
+    if(nb.terrain==='trees' || isWaterT(nb)) n += 0.5;   // living edges help too
+  });
+  return n;
+}
+
+/* ===================== SPRITE REGISTRY — the art-swap layer =================
+   EVERY visual element (tiles, crops, trees, buildings, animals, wildlife)
+   renders through drawSprite(name, x, y, w, h, fallback).
+   - By default the procedural `fallback` painter runs (shapes/emoji below).
+   - To drop in real illustrated art later WITHOUT touching game logic, call
+     registerSprite('name', srcOrDataURI) inside loadSprites(). Once the image
+     loads, drawSprite uses it automatically: drawn bottom-centered at (x,y)
+     with width w and height h, in WORLD coordinates (camera transform applied).
+   - Tile sprites ('tile_soil','tile_water','tile_trees') should be TILE_W-wide
+     diamonds with transparent corners; (x,y) = bottom vertex of the diamond.
+   Registered names used by the game:
+     tile_soil tile_water tile_trees barn coop cow chicken
+     crop_sisters crop_wheat crop_clover bee butterfly bird worm flower
+   ========================================================================== */
+const SPRITES = {};
+function registerSprite(name, src){
+  const img = new Image();
+  img.onload = ()=>{ SPRITES[name] = img; };
+  img.src = src;
+}
+function loadSprites(){
+  // FULL illustrated art set — cohesive isometric cartoon sprites in sprites/
+  // (background-keyed transparent PNGs; procedural fallbacks stay intact if any
+  // file is missing or still loading).
+  const MAP = {
+    // ground tiers (health-driven) + degraded features
+    tile_dead:      'tile_dead',            // ☠️ the lowest tier — cracked, gray, lifeless
+    tile_dirt:      'tile_dirt_cracked',    // cracked, thirsty land (health < 45)
+    tile_soil:      'tile_soil_rich',       // dark worked loam (health 45–70)
+    tile_grass:     'tile_grass_lush',      // flowering lush turf (health > 70)
+    tile_water:     'tile_water_pond',      // BUILT ponds
+    tile_gully:     'tile_gully',
+    tile_saltflat:  'tile_saltflat',
+    tile_riverbed:  'tile_riverbed_dry',
+    tile_swale:     'tile_swale',
+    tile_wildflower:'tile_wildflower',
+    tile_pasture:   'tile_pasture',
+    tile_path:      'tile_path',
+    // river tileset (chosen per-tile by water-neighbor connectivity)
+    river_ns:       'tile_river_ns',
+    river_ew:       'tile_river_ew',
+    river_ne:       'tile_river_bend_ne',
+    river_nw:       'tile_river_bend_nw',
+    river_se:       'tile_river_bend_se',
+    river_sw:       'tile_river_bend_sw',
+    river_x:        'tile_river',
+    // crops
+    crop_sisters:   'crop_threesisters',
+    crop_wheat:     'crop_wheat',
+    crop_clover:    'crop_clover',
+    crop_covercrop: 'crop_covercrop',
+    crop_sprout:    'crop_sprout',
+    crop_corn:      'crop_corn',            // sisters mid-stage: corn shoots first
+    crop_pumpkin:   'crop_pumpkin',
+    crop_beans:     'crop_beans',
+    // animals
+    cow:            'animal_cow',
+    chicken:        'animal_chicken',
+    sheep:          'animal_sheep',
+    goat:           'animal_goat',
+    pig:            'animal_pig',
+    duckT:          'animal_duck',
+    horse:          'animal_horse',
+    bees:           'animal_bees',
+    // buildings & land blocks
+    barn:           'build_barn',
+    coop:           'build_coop',
+    tile_trees_obj: 'build_tree',
+    hedgerow:       'build_hedgerow',
+    compost:        'build_compost',
+    market:         'build_market',
+    silo:           'build_silo',
+    greenhouse:     'build_greenhouse',
+    beehive:        'build_beehive',
+    orchard:        'build_orchard',
+    raintank:       'build_raintank',
+    wetland:        'build_wetland',
+    bridge:         'build_bridge',
+    fence:          'build_fence',
+    stable:         'build_stable',
+    wormfarm:       'build_wormfarm',
+    birdhouse:      'build_birdhouse',
+    well:           'build_well',
+    windmill:       'build_windmill',
+    solar:          'build_solar',
+    mushroom:       'build_mushroom',
+    berrybush:      'build_berrybush',
+    // decorations
+    deco_deadtree:  'deco_deadtree',
+    deco_stump:     'deco_stump',
+    deco_bones:     'deco_bones',
+    deco_boulder:   'deco_boulder',
+    deco_rock:      'deco_rock',
+    deco_haybales:  'deco_haybales',
+    deco_cart:      'deco_cart',
+    deco_flowerbed: 'deco_flowerbed',
+    deco_gate:      'deco_gate',
+    deco_signpost:  'deco_signpost',
+    deco_stonewall: 'deco_stonewall',
+    deco_lamp:      'deco_lamp',
+    deco_scarecrow: 'deco_scarecrow',
+    // wildlife critters
+    bee:            'critter_bee',
+    butterfly:      'critter_butterfly',
+    bird:           'critter_bird',
+    fish:           'critter_fish',
+    duck:           'critter_duck',
+    heron:          'critter_heron',
+    worm:           'critter_worm',
+    ladybug:        'critter_ladybug',
+    frog:           'critter_frog',
+    dragonfly:      'critter_dragonfly',
+    rabbit:         'critter_rabbit',
+  };
+  Object.entries(MAP).forEach(([name,file])=>registerSprite(name, 'sprites/'+file+'.png'));
+  registerSprite('bg_hills', 'sprites/bg_hills.jpg');   // horizon panorama (opaque scene)
+}
+function drawSprite(name, x, y, w, h, fallback){
+  const img = SPRITES[name];
+  if(img){ ctx.drawImage(img, x-w/2, y-h, w, h); return; }
+  if(fallback) fallback();
+}
+// height that keeps a registered sprite's natural aspect at width w (def if unloaded)
+function spriteH(name, w, def){
+  const img = SPRITES[name];
+  return img ? w*img.height/img.width : def;
+}
+function drawEmoji(e, x, y, size){
+  ctx.font = `${size}px "Segoe UI Emoji","Apple Color Emoji",sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(e, x, y);
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+}
+
+// ---------------------------------------------------------------- sound
+function ensureAudio(){
+  if(actx) return;
+  try{ actx = new (window.AudioContext || window.webkitAudioContext)(); }catch(e){ actx = null; }
+}
+function play(notes){
+  if(!soundOn) return;
+  ensureAudio();
+  if(!actx) return;
+  try{
+    if(actx.state==='suspended') actx.resume();
+    const t0 = actx.currentTime;
+    notes.forEach(([f,off,dur])=>{
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.type = 'triangle'; o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t0+off);
+      g.gain.linearRampToValueAtTime(0.1, t0+off+0.015);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0+off+dur);
+      o.connect(g).connect(actx.destination);
+      o.start(t0+off); o.stop(t0+off+dur+0.05);
+    });
+  }catch(e){}
+}
+const SND = {
+  pop:   ()=>play([[520,0,.09]]),
+  place: ()=>play([[392,0,.07],[523,.06,.1]]),
+  coin:  ()=>play([[880,0,.08],[1318,.08,.14]]),
+  moo:   ()=>play([[196,0,.18],[165,.12,.22]]),
+  cluck: ()=>play([[740,0,.05],[880,.07,.06]]),
+  splash:()=>play([[330,0,.12],[262,.1,.18]]),
+  badge: ()=>play([[523,0,.1],[659,.1,.1],[784,.2,.2]]),
+  win:   ()=>play([[523,0,.12],[659,.12,.12],[784,.24,.12],[1047,.36,.4]]),
+  uhoh:  ()=>play([[330,0,.14],[262,.13,.2]]),
+  season:()=>play([[440,0,.08],[554,.09,.1]]),
+};
+
+// ---------------------------------------------------------------- particles
+// world-space particles (floaters/bursts at tiles) + screen-space (confetti)
+function tileWorld(i){
+  const t = state.grid[i];
+  return { x:(t.c-t.r)*TW2, y:(t.c+t.r)*TH2 + TH2 };   // diamond center
+}
+function floater(i, text, color, size){
+  const p = tileWorld(i);
+  worldParts.push({kind:'float', x:p.x, y:p.y-10, vy:-30, age:0, life:1.4, text, color:color||'#fff', size:size||15});
+}
+function burst(i, color, n){
+  const p = tileWorld(i);
+  for(let k=0;k<(n||10);k++){
+    const a = Math.random()*Math.PI*2, sp = 30+Math.random()*55;
+    worldParts.push({kind:'dot', x:p.x, y:p.y-6, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp*0.5-38, g:110, age:0, life:0.7+Math.random()*0.5, color, r:2+Math.random()*2.5});
+  }
+}
+function ringAt(i, color){
+  const p = tileWorld(i);
+  worldParts.push({kind:'ring', x:p.x, y:p.y, age:0, life:0.55, color});
+}
+function confetti(n){
+  const colors = ['#f2b93b','#4a8f4d','#e06666','#6fa8dc','#cc7ee0','#ff9f5a'];
+  for(let i=0;i<(n||60);i++){
+    screenParts.push({kind:'conf', x:Math.random()*viewW, y:-10-Math.random()*40,
+      vx:(Math.random()-0.5)*60, vy:60+Math.random()*100, g:50, rot:Math.random()*6.28, vr:(Math.random()-0.5)*8,
+      age:0, life:2.4+Math.random()*1.2, color:colors[i%colors.length], w:5+Math.random()*4, h:8+Math.random()*5});
+  }
+}
+function updateParts(list, dt){
+  for(let i=list.length-1;i>=0;i--){
+    const p = list[i];
+    p.age += dt;
+    if(p.age >= p.life){ list.splice(i,1); continue; }
+    if(p.kind==='float'){ p.y += p.vy*dt; }
+    else if(p.kind==='dot' || p.kind==='conf'){
+      p.vy += p.g*dt; p.x += p.vx*dt; p.y += p.vy*dt;
+      if(p.kind==='conf') p.rot += p.vr*dt;
+    }
+  }
+}
+function drawParts(list){
+  list.forEach(p=>{
+    const k = 1 - p.age/p.life;
+    if(p.kind==='float'){
+      ctx.globalAlpha = Math.min(1, k*1.6);
+      ctx.font = `800 ${p.size}px "Segoe UI",sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(40,30,10,.55)';
+      ctx.strokeText(p.text, p.x, p.y);
+      ctx.fillStyle = p.color;
+      ctx.fillText(p.text, p.x, p.y);
+      ctx.textAlign = 'left';
+    }else if(p.kind==='dot'){
+      ctx.globalAlpha = k;
+      ctx.fillStyle = p.color;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 6.29); ctx.fill();
+    }else if(p.kind==='ring'){
+      ctx.globalAlpha = k*0.9;
+      ctx.strokeStyle = p.color; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.ellipse(p.x, p.y, 6+(p.age/p.life)*34, 3+(p.age/p.life)*17, 0, 0, 6.29); ctx.stroke();
+    }else if(p.kind==='conf'){
+      ctx.globalAlpha = Math.min(1, k*2);
+      ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot);
+      ctx.fillStyle = p.color; ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h);
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+  });
+}
+
+// ---------------------------------------------------------------- live sim
+// WATER QUALITY — what the farm's practices deserve, 0..100. The river drifts
+// toward this target. Bare soil, monocrops and riverside grazing muddy it;
+// cover crops, healthy soil, ponds and ESPECIALLY riparian buffers clean it.
+function computeWaterTarget(){
+  let score = 50, buffers = 0, risk = 0;
+  state.grid.forEach(t=>{
+    if(t.terrain==='trees' || t.terrain==='orchard'){ if(waterAdj(t)) buffers++; return; }
+    if(t.terrain==='pond'){ score += 2; return; }
+    if(t.terrain==='wetland'){ score += waterAdj(t) ? 8 : 4; return; }   // nature's kidney
+    if(t.terrain==='raintank'){ score += 1; return; }
+    if(t.terrain==='dead'){
+      if(waterAdj(t)) risk += 0.15;                         // dust & crust sliding in
+      score -= 0.08;
+      return;
+    }
+    if(t.terrain!=='soil') return;
+    if(t.crop){
+      const c = CROPS[t.crop.type];
+      score += c.cover ? 0.5 : c.diverse ? 0.3 : -0.5;      // clover & sisters vs lonely wheat
+    }else if(!t.graze && t.health<40) score -= 0.35;        // bare, crumbling dirt erodes
+    if(t.health>70) score += 0.25;                          // spongy soil holds its ground
+    if(t.soil.erosion<30) score -= 0.15;
+    if(waterAdj(t)){                                        // the riparian zone matters most
+      if(t.graze && t.graze.kind!=='duckT') risk += 1;      // hooves on the bank (ducks belong)
+      if(t.graze && t.graze.kind==='duckT') score += 1;
+      if(t.crop && !CROPS[t.crop.type].diverse) risk += 0.5;
+      if(!t.crop && !t.graze && t.health<40) risk += 0.6;   // mud sliding straight in
+    }
+  });
+  score += buffers*6;      // riparian buffers are the big lever — roots filter runoff
+  score -= risk*4;
+  return Math.max(5, Math.min(100, score));
+}
+// small daily trickle so an engaged player always has a next move; scales a
+// little with restored land but never enough to win a neglected farm by itself
+function dailyIncome(){
+  const f = farmCache || farmStats();
+  let inc = 2 + Math.min(4, (f.restored/6)|0);
+  if(state.unlocks.upg_trickle) inc += 2;
+  inc += (f.b.market||0)*3 + ((f.b.windmill||0)+(f.b.solar||0))*2;
+  state.coins += inc;
+  state.stats.coinsEarned += inc;
+  if(!state.incomeTip && state.day>=2){
+    state.incomeTip = true;
+    toast('🧺 Farm stand: a few coins trickle in every day. Keep going!');
+  }
+}
+// dd = game-days elapsed this frame (delta-time scaled; frame-rate independent)
+function simStep(dt){
+  const dd = dt / DAY_LEN;
+  const f = farmCache || farmStats();
+  const sn = SEASONS[state.season];
+  state.tod = (state.tod + dt/TOD_CYCLE) % 1;        // the sun wheels overhead
+  state.grid.forEach((t,i)=>{
+    // ---- DEAD GROUND never heals itself — only the player's care wakes it.
+    // Remediation succession: compost / pioneer cover crops / goats (+ nearby
+    // water helps the medicine work) raise it until it crosses into workable soil.
+    if(t.terrain==='dead'){
+      let feed = 0;
+      if(t.compost>0){ feed += (t.feature==='saltflat'?0.55:0.9); t.compost = Math.max(0, t.compost-dd); }
+      if(t.crop){                                    // pioneer roots cracking the crust
+        feed += (t.feature==='saltflat'?0.5:0.75);
+        t.crop.growth += CROPS[t.crop.type].growPerDay * Math.max(sn.growMult,0.5) * 0.8 * dd;
+        if(t.crop.growth >= 1) harvestCrop(t, i);
+      }
+      if(t.graze){                                   // goats browsing the dead brush
+        const g = t.graze;
+        feed += 0.5 * (t.fence?1.5:1);
+        g.days -= dd;
+        if(g.days<=0){
+          t.graze = null;
+          agents = agents.filter(a=>a.tile!==i);
+          if(t.deco){ t.deco = null; floater(i, '🐐 brush cleared!', '#e8d8a8'); }
+          else floater(i, '🐐 browsed!', '#e8d8a8');
+        }
+      }
+      if(feed>0){
+        if(pondNear(t)) feed *= 1.3;                 // moisture helps amendments work
+        SOIL_ATTRS.forEach(k=>{
+          let d = feed;
+          if(t.crop && (k==='om'||k==='microbial'||k==='erosion')) d *= 1.4;
+          t.soil[k] = clamp(t.soil[k] + d*dd);
+        });
+      }
+      recalc(t);
+      const need = t.feature==='saltflat' ? 30 : 25;
+      if(t.health >= need){                          // 🌅 the ground WAKES UP
+        t.terrain = 'soil';
+        if(t.feature==='saltflat' || t.feature==='gully' || t.feature==='swale') t.feature = null;
+        state.stats.revived++;
+        floater(i, '🌅 REVIVED!', '#ffe89a', 17);
+        burst(i, '#c8f0a0', 14); ringAt(i, '#c8f0a0');
+        SND.badge();
+        if(state.tutStep===1) setTut(2);
+      }
+      return;
+    }
+    if(t.terrain!=='soil') return;
+    // ---- grazing animals work the land over several days
+    if(t.graze){
+      const g = t.graze;
+      const fm = t.fence ? 1.5 : 1;                  // paddock fences: rotational magic
+      const apply = (rates, mult)=>{ SOIL_ATTRS.forEach(k=>{ t.soil[k] = clamp(t.soil[k] + rates[k]*(mult||1)*fm*dd); }); };
+      if(g.kind==='team'){ apply(GRAZE.cattle.rates); apply(GRAZE.chicken.rates, SYNERGY_MULT); }
+      else if(g.kind==='chicken') apply(GRAZE.chicken.rates, g.synergy?SYNERGY_MULT:1);
+      else if(GRAZE[g.kind]) apply(GRAZE[g.kind].rates);
+      g.days -= dd;
+      if(g.days<=0){
+        if(g.kind==='cattle' || g.kind==='team') t.sinceCattle = 0;
+        t.graze = null;
+        agents = agents.filter(a=>a.tile!==i);
+        floater(i, '💚 grazed!', '#c8f0a0');
+      }
+    }else{
+      t.sinceCattle = Math.min(999, t.sinceCattle+dd);
+    }
+    // ---- baseline regeneration / degradation per day
+    // (kept gentle: nature heals slowly — the PLAYER's practices are the engine)
+    let base = 0.05*sn.regenMult;
+    if(!t.crop && !t.graze) base += 0.04;            // open land rests & recovers (slowly)
+    base += 0.02*healthyNeighbors(t);                // life spreads outward
+    base += f.bio/100*0.05;                          // a wilder farm heals itself
+    if(t.compost>0){ base += 0.35; t.compost = Math.max(0, t.compost-dd); }
+    const nearWorm = buildNear(t,'wormfarm',1), nearMush = buildNear(t,'mushroom',1);
+    SOIL_ATTRS.forEach(k=>{
+      let d = base;
+      if(t.crop){
+        const c = CROPS[t.crop.type];
+        d = c.diverse ? 0.6*sn.regenMult : -0.12;    // diversity builds; mono extracts
+        if((k==='om'||k==='microbial') && c.diverse) d *= 1.4;
+        if(c.cover && (k==='om'||k==='microbial'||k==='erosion')) d *= 1.5;
+        if(t.compost>0) d += 0.35;
+      }
+      if(k==='water' && pondNear(t)) d += 0.09;      // ponds, wells & tanks keep ground moist
+      if(k==='erosion' && treeAdj(t)) d += 0.08;     // hedgerows shelter the soil
+      if(k==='microbial' && treeAdj(t)) d += 0.03;
+      if(k==='microbial' && nearWorm) d += 0.12;     // the worm army
+      if((k==='om'||k==='microbial') && nearMush) d += 0.07;  // fungal threads
+      t.soil[k] = clamp(t.soil[k] + d*dd);
+    });
+    // ---- crops grow live
+    if(t.crop){
+      const c = CROPS[t.crop.type];
+      let gm = sn.growMult;
+      if(buildNear(t,'greenhouse',2)) gm = Math.max(gm, 0.75) * 1.15;   // warmth all year
+      if(state.unlocks.upg_growth) gm *= 1.2;
+      t.crop.growth += c.growPerDay * gm * (0.65 + t.health/140) * dd;
+      if(t.crop.growth >= 1) harvestCrop(t, i);
+    }
+    // ---- flowers drift with health
+    if(t.health < 40) t.flowers = Math.max(0, t.flowers - 0.01*dd);
+    else if(!t.crop && t.health > 60) t.flowers = Math.min(1, t.flowers + 0.005*dd);
+    if(t.crop && CROPS[t.crop.type].cover && t.crop.growth>0.5) t.flowers = Math.min(1, t.flowers + 0.02*dd);
+    recalc(t);
+  });
+  // ---- the river listens to the land (gentle drift toward the practice target)
+  const wqTarget = computeWaterTarget();
+  state.waterQuality = clamp(state.waterQuality + (wqTarget-state.waterQuality)*Math.min(1, 0.06*dd));
+  // ---- calendar
+  state.dayFrac += dd;
+  while(state.dayFrac >= 1){
+    state.dayFrac -= 1;
+    state.day++;
+    dailyIncome();
+    updateQuests();
+    if(state.day > DAYS_PER_SEASON){ state.day = 1; advanceSeason(); }
+  }
+  // periodic autosave + passive badge/win check (bio & health cross thresholds on their own)
+  autosaveT += dt;
+  if(autosaveT > 15){ autosaveT = 0; checkBadges(); save(); }
+}
+function harvestCrop(t, i){
+  const c = CROPS[t.crop.type];
+  const f = farmCache || farmStats();
+  let mult = 0.4 + t.health/100;
+  if(c.yield>0 && buildNear(t,'beehive',2)) mult *= 1.2;   // pollination bonus
+  if(c.yield>0 && (f.b.silo||0)>0) mult *= 1.15;           // silo: stored & sold well
+  const coins = Math.round(c.yield * mult);
+  if(coins>0){
+    state.coins += coins;
+    state.stats.coinsEarned += coins;
+    floater(i, '+🪙'+coins, '#ffd45e', 17);
+    burst(i, '#ffd45e', 12);
+    SND.coin();
+  }else{
+    floater(i, '🌼 soil fed!', '#fff2b0');
+    burst(i, '#a8d5a8', 8);
+  }
+  state.stats.harvests++;
+  t.soil.om = clamp(t.soil.om + (c.cover?6:3));
+  t.soil.microbial = clamp(t.soil.microbial + (c.cover?4:1.5));
+  if(c.pioneer && t.terrain==='dead'){   // a finished pioneer stand is a feast for dead ground
+    t.soil.structure = clamp(t.soil.structure+5);
+    t.soil.erosion = clamp(t.soil.erosion+5);
+    t.soil.nutrients = clamp(t.soil.nutrients+4);
+  }
+  if(c.cover) t.flowers = Math.min(1, t.flowers+0.35);
+  if(!c.diverse && Math.random()<0.35) toast('🌾 Quick Wheat paid fast… but that soil feels tired.');
+  t.crop = null;
+  recalc(t);
+  checkBadges();
+}
+function advanceSeason(){
+  state.season = (state.season+1)%4;
+  if(state.season===0) state.year++;
+  state.seasonCount++;
+  const sn = SEASONS[state.season];
+  toast(`${sn.emoji} ${sn.name} begins — Year ${state.year}`);
+  SND.season();
+  // perennials pay every season (except deep winter)
+  if(state.season!==3){
+    let per = 0;
+    state.grid.forEach((t,i)=>{
+      if(t.terrain==='orchard'){ per += 6; floater(i, '+🪙6 🍎', '#ffd45e', 13); }
+      else if(t.terrain==='berrybush'){ per += 3; floater(i, '+🪙3 🫐', '#ffd45e', 12); }
+    });
+    if(per>0){ state.coins += per; state.stats.coinsEarned += per; SND.coin(); }
+  }
+  const ev = rollEvent();
+  if(ev) setTimeout(()=>showEvent(ev), 800);
+  checkBadges();
+  save();
+}
+
+// ---------------------------------------------------------------- regions & quests
+function regionProgress(reg){
+  const g = reg.goal;
+  let cur = 0;
+  state.grid.forEach(t=>{
+    if(t.region!==reg.id) return;
+    const green = t.terrain==='trees' || t.terrain==='pond' || BUILD_SET.has(t.terrain);
+    if(g.type==='healthy'){ if((isLandT(t) && t.health>=g.hp) || green) cur++; }
+    else if(g.type==='alive'){ if(t.terrain==='soil' || green) cur++; }
+    else if(g.type==='grove'){ if(t.terrain==='trees' || t.terrain==='orchard') cur++; }
+  });
+  return Math.min(cur, g.n);
+}
+function taskDef(id){ return TASKS.find(x=>x.id===id); }
+function newTask(){
+  const f = farmCache || farmStats();
+  const active = new Set(state.tasks.map(x=>x.id));
+  const pool = TASKS.filter(td=>{
+    if(active.has(td.id)) return false;
+    if(td.abs && (state.tasksDone[td.id] || td.abs(f))) return false;   // one-shot goals
+    if(td.id==='build2' && !Object.keys(state.unlocks).some(u=>{
+      const s = SHOP.find(x=>x.id===u); return s && s.cat==='Build';
+    })) return false;
+    return true;
+  });
+  if(!pool.length) return null;
+  const td = pool[(Math.random()*pool.length)|0];
+  return {id:td.id, base: td.stat ? (state.stats[td.stat]||0) : 0};
+}
+function updateQuests(){
+  while(state.tasks.length<2){ const t = newTask(); if(!t) break; state.tasks.push(t); }
+  const f = farmCache || farmStats();
+  for(let k=state.tasks.length-1; k>=0; k--){
+    const task = state.tasks[k], td = taskDef(task.id);
+    if(!td){ state.tasks.splice(k,1); continue; }
+    const done = td.abs ? td.abs(f) : ((state.stats[td.stat]||0) - task.base) >= td.n;
+    if(done){
+      state.tasks.splice(k,1);
+      if(td.abs) state.tasksDone[td.id] = true;
+      state.coins += td.reward;
+      toast(`✅ ${td.em} ${td.desc} — +${td.reward}🪙!`);
+      confetti(24); SND.badge();
+    }
+  }
+  // ---- the current region's restore goal
+  if(state.regionIdx < REGIONS.length){
+    const reg = REGIONS[state.regionIdx];
+    if(regionProgress(reg) >= reg.goal.n){
+      state.regionIdx++;
+      state.coins += reg.reward;
+      confetti(90); SND.win();
+      if(reg.id==='wash') restoreWash();
+      const next = state.regionIdx < REGIONS.length ? REGIONS[state.regionIdx] : null;
+      setTimeout(()=>showModal(`
+        <h2>${reg.em} ${reg.name} Restored!</h2>
+        <div class="eventbig">${reg.em}✨</div>
+        <div class="eventkid">${reg.id==='wash' ? 'And listen… WATER! The dry creek is flowing again!' : 'Life is spreading back through '+reg.name+'.'}</div>
+        <div class="eventlines"><div>🪙 +${reg.reward} restoration reward!</div></div>
+        ${next ? `<div class="lesson">🎯 Next: <b>${next.name}</b> — ${next.story}</div>`
+               : `<div class="lesson">🏆 Every region breathes again — now heal every last tile, clean the river, and welcome the wildlife home!</div>`}
+        <div class="modalbtns"><button class="mbtn big" data-act="close">Onward! 🌱</button></div>`), 500);
+      checkBadges(); save();
+    }
+  }
+  renderQuests();
+}
+function restoreWash(){
+  state.washRestored = true;
+  state.grid.forEach((t,i)=>{
+    if(t.terrain==='riverbed'){ t.terrain = 'water'; t.feature = null; burst(i, '#7fc4ee', 14); }
+  });
+  state.waterQuality = clamp(state.waterQuality + 5);
+  SND.splash();
+}
+function renderQuests(){
+  const regEl = document.getElementById('qRegion');
+  const body = document.getElementById('qBody');
+  if(!regEl || !body) return;
+  let html = '';
+  if(state.regionIdx >= REGIONS.length){
+    regEl.textContent = 'The Living Valley';
+    html = `<div class="qgoal">🏆 Every region restored! Heal every last tile & keep the river clean.</div>`;
+  }else{
+    const reg = REGIONS[state.regionIdx];
+    regEl.textContent = reg.name;
+    const cur = regionProgress(reg);
+    html = `<div class="qgoal">${reg.em} ${reg.desc} <span style="color:var(--soft)">(${cur}/${reg.goal.n})</span></div>
+      <div class="qbarw"><div class="qbar" style="width:${(cur/reg.goal.n*100).toFixed(0)}%"></div></div>`;
+  }
+  const f = farmCache || farmStats();
+  state.tasks.forEach(task=>{
+    const td = taskDef(task.id);
+    if(!td) return;
+    const n = td.abs ? 1 : td.n;
+    const cur = td.abs ? (td.abs(f)?1:0) : Math.max(0, Math.min(td.n, (state.stats[td.stat]||0) - task.base));
+    html += `<div class="qtask"><span class="qem">${td.em}</span><span>${td.desc}</span><span class="qprog">${td.abs?'':cur+'/'+n} +${td.reward}🪙</span></div>`;
+  });
+  body.innerHTML = html;
+}
+
+// ---------------------------------------------------------------- tools
+function toolDef(id){ return TOOLS.find(t=>t.id===id); }
+function spend(cost){
+  if(state.coins < cost){ toast(`Not enough coins! Need 🪙${cost}. Harvest crops to earn more.`); SND.uhoh(); return false; }
+  state.coins -= cost;
+  return true;
+}
+const AGENT_SPEED = {cow:0.05, chicken:0.11, sheep:0.055, goat:0.075, pig:0.06, duckT:0.085, horse:0.04};
+function spawnAnimals(i, kind, n){
+  for(let k=0;k<n;k++){
+    agents.push({tile:i, kind, u:0.25+Math.random()*0.5, v:0.25+Math.random()*0.5,
+      tu:0.15+Math.random()*0.7, tv:0.15+Math.random()*0.7, speed:(AGENT_SPEED[kind]||0.08)+Math.random()*0.03, phase:Math.random()*6.28});
+  }
+}
+// returns true if the tool did something (used for paint-drag)
+const DECO_CYCLE = ['deco_haybales','deco_flowerbed','deco_scarecrow','deco_cart','deco_signpost','deco_stonewall','deco_lamp','deco_gate'];
+let decoIdx = 0;
+function applyTool(i){
+  const t = state.grid[i];
+  const td = toolDef(tool);
+  if(!t || !td) return false;
+  const GRAZE_TOOLS = {cattle:'cow', chicken:'chicken', sheep:'sheep', goat:'goat', pig:'pig', duckT:'duckT'};
+  if(tool==='select'){
+    selected = i; openInfo();
+    ringAt(i, '#ffe89a'); SND.pop();
+    return true;
+  }
+  if(t.terrain==='barn' || t.terrain==='coop'){ toast('That\'s the farmstead! 🏠'); return false; }
+  if(t.terrain==='riverbed'){ toast('🏜️ A dry creekbed… revive the land of the Dry Wash and the water will come back!'); return false; }
+  if(t.terrain==='water'){
+    if(tool==='bridge'){
+      if(t.bridge) return false;
+      if(!spend(td.cost)) return false;
+      t.bridge = true;
+      state.stats.buildings++;
+      floater(i, '🌉 bridge!', '#e8dcc0'); SND.place();
+      afterBuild(); return true;
+    }
+    if(tool==='bulldoze' && t.bridge){
+      if(!spend(td.cost)) return false;
+      t.bridge = false;
+      floater(i, '🚜 cleared', '#e8dcc0'); SND.place();
+      afterBuild(); return true;
+    }
+    toast('The river flows here! 🌊 Plant 🌳 trees BESIDE it to filter the runoff.');
+    return false;
+  }
+  if(tool==='bridge'){ toast('🌉 Bridges go ON the river!'); return false; }
+  if(tool==='bulldoze'){
+    let did = null;
+    if(isLandT(t) && t.crop) did = ()=>{ t.crop = null; };
+    else if(isLandT(t) && t.graze) did = ()=>{ t.graze = null; agents = agents.filter(a=>a.tile!==i); };
+    else if(isLandT(t) && t.deco) did = ()=>{ t.deco = null; };
+    else if(isLandT(t) && t.fence) did = ()=>{ t.fence = false; };
+    else if(isLandT(t) && t.feature==='path') did = ()=>{ t.feature = null; };
+    else if(t.terrain==='pond' || t.terrain==='trees') did = ()=>{ t.terrain = 'soil'; };
+    else if(BUILD_SET.has(t.terrain)) did = ()=>{ t.terrain = 'soil'; agents = agents.filter(a=>a.tile!==i); };
+    if(!did){ toast('Nothing to clear here.'); return false; }
+    if(!spend(td.cost)) return false;
+    did();
+    floater(i, '🚜 cleared', '#e8dcc0'); burst(i, '#c9b896', 8); SND.place();
+    afterBuild(); return true;
+  }
+  if(!isLandT(t)){ toast(isWaterT(t) ? 'That\'s water! 💧' : t.terrain==='trees' ? 'Trees live here! 🌳' : 'Something is already built here! 🏗️'); return false; }
+  const dead = t.terrain==='dead';
+  // ======== THE REMEDIATION GATE: dead ground rejects productive crops ========
+  if(tool==='sisters' || tool==='wheat'){
+    if(dead){
+      if(!state.deadTip){ state.deadTip = true; }
+      toast('💀 This ground is DEAD — feed it first! Try 🪣 compost or 🌿 pioneer plants.');
+      SND.uhoh();
+      return false;
+    }
+  }
+  if(tool==='sisters' || tool==='wheat' || tool==='clover' || tool==='covercrop'){
+    const canWinter = buildNear(t,'greenhouse',2);
+    if(!SEASONS[state.season].canPlant && !canWinter){ toast('❄️ Too cold to plant! Wait for spring — or build a 🪴 greenhouse.'); return false; }
+    if(t.crop){ return false; }
+    if(t.graze){ toast('The animals would trample the seedlings! 🐄'); return false; }
+    let cost = td.cost;
+    if(state.unlocks.upg_seeds) cost = Math.max(1, cost-1);
+    if(!spend(cost)) return false;
+    t.crop = {type:tool, growth:0.05};
+    if(tool==='sisters'){ t.soil.om+=3.5; t.soil.nutrients+=3.5; t.soil.microbial+=2.5; t.soil.water+=1; state.stats.sistersPlanted++; }
+    if(tool==='clover'){ t.soil.om+=2.5; t.soil.microbial+=3; t.soil.erosion+=3; }
+    if(tool==='covercrop'){ t.soil.om+=2; t.soil.microbial+=2; t.soil.erosion+=3.5; t.soil.structure+=1.5; }
+    if(tool==='clover' || tool==='covercrop') state.stats.coverPlanted++;
+    SOIL_ATTRS.forEach(k=>t.soil[k]=clamp(t.soil[k]));
+    recalc(t);
+    state.stats.planted++;
+    floater(i, CROPS[tool].em+' planted!', dead?'#e8d8a8':'#dff7c8');
+    burst(i, dead?'#c9b896':'#8fce6e', 8); SND.pop();
+    if(dead && !state.deadTip2){ state.deadTip2 = true; toast('🌿 Pioneer roots are cracking the dead crust — watch it wake up!'); }
+    if(state.tutStep===1 && dead) toast('🌱 Good! Now let it work — or paint more dead tiles.');
+    if(state.tutStep===2 && !dead) setTut(3);
+    afterBuild(); return true;
+  }
+  if(GRAZE_TOOLS[tool]){
+    if(dead && tool!=='goat'){
+      toast('💀 Nothing to eat on dead ground… only 🐐 goats can browse this scrub!');
+      SND.uhoh();
+      return false;
+    }
+    if(t.crop){ toast('The animals would munch your crop! 🌽'); return false; }
+    if(tool==='chicken'){
+      if(t.graze && (t.graze.kind==='chicken' || t.graze.kind==='team')) return false;
+    }else if(t.graze){ return false; }
+    if(!spend(td.cost)) return false;
+    if(tool==='chicken' && t.graze && t.graze.kind==='cattle'){
+      t.graze.kind = 'team';
+      t.graze.days = Math.max(t.graze.days, GRAZE.chicken.days);
+      t.graze.synergy = true;
+      state.stats.synergy++;
+      floater(i, '✨ Team graze!', '#ffe89a', 17); burst(i, '#ffd45e', 16);
+    }else if(tool==='chicken'){
+      const syn = t.sinceCattle <= 8;
+      t.graze = {kind:'chicken', days:GRAZE.chicken.days, total:GRAZE.chicken.days, synergy:syn};
+      if(syn){ state.stats.synergy++; floater(i, '✨ following the herd!', '#ffe89a', 15); burst(i, '#ffd45e', 14); }
+      else floater(i, '🐔 scratching!', '#ffe0b0');
+    }else{
+      const g = GRAZE[tool];
+      t.graze = {kind:tool, days:g.days, total:g.days, synergy:false};
+      const words = {cattle:'🐄 mob grazing!', sheep:'🐑 mowing!', goat:'🐐 browsing!', pig:'🐖 tilling!', duckT:'🦆 on patrol!'};
+      floater(i, words[tool], '#ffe0b0');
+    }
+    if(tool==='cattle') state.stats.cattle++;
+    if(tool==='chicken') state.stats.chickens++;
+    state.stats.grazes++;
+    spawnAnimals(i, GRAZE_TOOLS[tool], tool==='chicken'?3 : tool==='duckT'?3 : 2);
+    if(tool==='cattle'){ SND.moo(); if(state.tutStep===3) tutHintCattle(); }
+    else if(tool==='chicken'){ SND.cluck(); if(state.tutStep===3) setTut(4); }
+    else SND.place();
+    afterBuild(); return true;
+  }
+  if(tool==='pond'){
+    if(t.crop || t.graze){ toast('Clear this tile first! 🚜'); return false; }
+    if(!spend(td.cost)) return false;
+    t.terrain = 'pond'; t.flowers = 0; t.deco = null; t.feature = null;
+    state.stats.ponds++;
+    floater(i, '💧 pond dug!', '#bfe3ff'); burst(i, '#7fc4ee', 14); SND.splash();
+    afterBuild(); return true;
+  }
+  if(tool==='trees'){
+    if(dead){ toast('💀 Saplings can\'t root in dead ground — feed it first with 🪣 or 🌿!'); SND.uhoh(); return false; }
+    if(t.crop || t.graze){ toast('Clear this tile first! 🚜'); return false; }
+    if(!spend(td.cost)) return false;
+    t.terrain = 'trees'; t.flowers = Math.min(1, t.flowers+0.3); t.deco = null;
+    state.stats.trees++;
+    floater(i, '🌳 hedgerow!', '#c8f0a0'); burst(i, '#6fae5f', 12); SND.place();
+    if(waterAdj(t)){
+      // riparian buffer! the key clean-water move — make cause→effect obvious
+      state.waterQuality = clamp(state.waterQuality + 4);
+      state.stats.buffers++;
+      setTimeout(()=>floater(i, '💧 riparian buffer!', '#bfe3ff', 16), 350);
+      ringAt(i, '#7fd4f0');
+      if(!state.riparianTip){
+        state.riparianTip = true;
+        setTimeout(()=>toast('🌳 Buffer roots filter runoff before it reaches the river — water quality rising!'), 600);
+      }
+    }
+    afterBuild(); return true;
+  }
+  if(tool==='compost'){
+    if(t.compost > 5){ return false; }
+    const cost = state.unlocks.upg_compost ? 2 : td.cost;
+    if(!spend(cost)) return false;
+    t.compost = state.unlocks.upg_compost ? 14 : 10;
+    state.stats.composts++;
+    floater(i, '🪣 +compost', '#d8c8a0'); burst(i, '#9a7d54', 10); SND.place();
+    if(dead && !state.deadTip2){ state.deadTip2 = true; toast('🪣 Food for the dead ground — keep feeding and it will wake!'); }
+    afterBuild(); return true;
+  }
+  if(tool==='fence'){
+    if(t.fence) return false;
+    if(!spend(td.cost)) return false;
+    t.fence = true;
+    floater(i, '🚧 paddock!', '#e8dcc0'); SND.place();
+    afterBuild(); return true;
+  }
+  if(tool==='decor'){
+    if(t.crop || t.graze){ toast('Clear this tile first! 🚜'); return false; }
+    if(!spend(td.cost)) return false;
+    t.deco = DECO_CYCLE[decoIdx % DECO_CYCLE.length];
+    decoIdx++;
+    state.stats.decos++;
+    floater(i, '🎀 cozy!', '#ffd9e8'); SND.place();
+    afterBuild(); return true;
+  }
+  if(BUILD_SET.has(tool)){
+    if(t.crop || t.graze){ toast('Clear this tile first! 🚜'); return false; }
+    if(tool==='wetland' && dead){ toast('💀 Wetland plants need living ground — revive this tile first!'); SND.uhoh(); return false; }
+    if(tool==='orchard' && dead){ toast('💀 Fruit trees can\'t root in dead ground — feed it first!'); SND.uhoh(); return false; }
+    if(!spend(td.cost)) return false;
+    t.terrain = tool; t.deco = null; t.feature = null; t.crop = null;
+    state.stats.buildings++;
+    const bWords = {market:'🏪 open for business!', silo:'🌾 grain store!', greenhouse:'🪴 warm glass!', beehive:'🐝 buzzing!',
+      orchard:'🍎 orchard planted!', raintank:'🛢️ catching rain!', wetland:'🌾 wetland born!', stable:'🐴 neigh!',
+      wormfarm:'🪱 worm army!', birdhouse:'🐦 new tenants!', well:'⛲ sweet water!', windmill:'🌬️ spinning!',
+      solar:'☀️ plugged in!', mushroom:'🍄 mycelium!', berrybush:'🫐 berries!'};
+    floater(i, bWords[tool]||'built!', '#ffe0b0'); burst(i, '#e8c87a', 12); SND.place();
+    if(tool==='stable') spawnAnimals(i, 'horse', 1);
+    if(tool==='wetland' && waterAdj(t)){
+      state.waterQuality = clamp(state.waterQuality + 5);
+      setTimeout(()=>floater(i, '💧 filtering the river!', '#bfe3ff', 15), 350);
+    }
+    afterBuild(); return true;
+  }
+  return false;
+}
+function afterBuild(){
+  checkBadges();
+  updateQuests();
+  save();
+  updateHUD();
+  if(selected>=0) openInfo(true);
+}
+let tutCattleFlag = false;
+function tutHintCattle(){
+  if(tutCattleFlag) return;
+  tutCattleFlag = true;
+  toast('Now tap 🐔 Chickens and send them to the SAME tile! ✨');
+}
+
+// ---------------------------------------------------------------- events
+function rollEvent(){
+  if(state.seasonCount < 2) return null;
+  if(Math.random() > 0.45) return null;
+  const anyCrop = state.grid.some(t=>t.crop);
+  const anyMono = state.grid.some(t=>t.crop && !CROPS[t.crop.type].diverse);
+  const deadCount = state.grid.filter(t=>t.terrain==='dead').length;
+  const s = state.season;
+  const pool = [];
+  if(s===1){ pool.push('drought','drought','sunny','beeVisit','gift'); }
+  if(s===0){ pool.push('downpour','gentleRain','beeVisit','gift'); if(anyCrop) pool.push('pests'); }
+  if(s===2){ pool.push('downpour','gentleRain','gift'); if(anyCrop) pool.push('pests'); }
+  if(s===3){ pool.push('snow','gift','snow'); }
+  if(anyMono && s!==3) pool.push('pests');
+  if(deadCount>40 && s!==3) pool.push('duststorm','duststorm');   // the dying land bites back
+  if(!pool.length) return null;
+  return pool[(Math.random()*pool.length)|0];
+}
+function showEvent(id){
+  const f = farmStats();
+  let em='', title='', kid='', lines=[], lesson='', bad=false;
+  const soils = soilTiles();
+  if(id==='drought'){
+    bad=true; em='🌵'; title='Drought!'; kid='The sun blazed for weeks and the land got thirsty!';
+    let prot=0;
+    soils.forEach(t=>{
+      const p = Math.min(0.85, t.soil.om/100*0.55 + (pondNear(t)?0.3:0) + ((t.crop&&CROPS[t.crop.type].diverse)?0.12:0) + t.flowers*0.05);
+      t.soil.water = clamp(t.soil.water - 13*(1-p));
+      if(t.crop) t.crop.growth = Math.max(0.05, t.crop.growth - 0.06*(1-p));
+      if(p>0.4) prot++;
+      recalc(t);
+    });
+    if(prot>0) lines.push(`💪 ${prot} tile${prot>1?'s':''} with spongy soil or a pond nearby held onto water!`);
+    else lines.push('😟 The dry soil couldn\'t hold much water…');
+    lesson='Soil full of organic matter soaks up rain like a sponge — and ponds share their water. Droughts can\'t beat a living farm.';
+  }else if(id==='downpour'){
+    bad=true; em='🌧️'; title='Heavy Rain!'; kid='A huge storm pounded the farm all night!';
+    let bare=0, safe=0;
+    soils.forEach(t=>{
+      if(t.crop || t.soil.erosion>55 || treeAdj(t)){
+        t.soil.water = clamp(t.soil.water+7); safe++;
+      }else{
+        t.soil.structure = clamp(t.soil.structure-5);
+        t.soil.nutrients = clamp(t.soil.nutrients-4);
+        t.soil.erosion   = clamp(t.soil.erosion-4);
+        bare++;
+      }
+      recalc(t);
+    });
+    if(safe>0) lines.push(`🌿 ${safe} covered or tree-sheltered tile${safe>1?'s':''} drank the rain safely!`);
+    if(bare>0) lines.push(`😟 ${bare} bare tile${bare>1?'s':''} lost some soil to the storm.`);
+    // storms flush whatever the land can't hold straight into the river
+    let buffers=0; state.grid.forEach(t2=>{ if(t2.terrain==='trees' && waterAdj(t2)) buffers++; });
+    const wash = Math.max(0, (bare>0 ? 7 : 2) - buffers*2);
+    if(wash>0){
+      state.waterQuality = clamp(state.waterQuality - wash);
+      lines.push('🟤 Muddy runoff washed into the river…');
+    }else{
+      lines.push('🌊 Your riverside buffers caught the runoff — the river stayed clean!');
+    }
+    lesson='Living roots, ground cover and hedgerows hold the soil tight when rain pounds down — and keep the mud out of the river.';
+  }else if(id==='pests'){
+    bad=true; em='🐛'; title='Pest Invasion!'; kid='Hungry bugs marched onto the farm!';
+    let hit=0, safe=0;
+    const guarded = f.bio>=45;
+    soils.forEach(t=>{
+      if(!t.crop) return;
+      if(CROPS[t.crop.type].diverse || guarded) safe++;
+      else{ t.crop.growth = Math.max(0.05, t.crop.growth-0.22); hit++; }
+    });
+    if(guarded) lines.push('🐞 Your ladybugs and birds gobbled the pests right up!');
+    if(safe>0 && !guarded) lines.push(`🌽 ${safe} diverse tile${safe>1?'s':''} confused the bugs — no damage!`);
+    if(hit>0) lines.push(`😟 ${hit} lonely crop${hit>1?'s':''} got munched…`);
+    if(hit===0 && safe===0) lines.push('The bugs found nothing to eat and moved on!');
+    lesson='A patchwork of different plants confuses pests — and wildlife eats them for free!';
+  }else if(id==='duststorm'){
+    bad=true; em='🌪️'; title='Dust Storm!'; kid='A wall of dust rolled off the dead flats and swallowed the sky!';
+    let hit=0, safe=0;
+    soils.forEach(t=>{
+      if(t.crop || t.soil.erosion>50 || treeAdj(t)){ safe++; }
+      else{
+        t.soil.water = clamp(t.soil.water-6);
+        t.soil.om = clamp(t.soil.om-3);
+        t.soil.erosion = clamp(t.soil.erosion-3);
+        hit++;
+      }
+      recalc(t);
+    });
+    if(safe>0) lines.push(`🌿 ${safe} covered tile${safe>1?'s':''} held tight against the wind!`);
+    if(hit>0) lines.push(`😟 The storm scoured ${hit} bare tile${hit>1?'s':''}…`);
+    lines.push('🏜️ Every DEAD tile you revive makes the storms weaker.');
+    lesson='Bare, dead land feeds dust storms. Living roots and hedgerows pin the soil down — heal the land, calm the wind.';
+  }else if(id==='gentleRain'){
+    em='🌦️'; title='Gentle Rain'; kid='Soft rain fell for three cozy days.';
+    soils.forEach(t=>{ t.soil.water = clamp(t.soil.water+8); recalc(t); });
+    state.grid.forEach(t=>{   // rain even kisses the dead ground (it helps amendments work)
+      if(t.terrain==='dead' && (t.compost>0 || t.crop)){ t.soil.water = clamp(t.soil.water+6); recalc(t); }
+    });
+    lines.push('💧 Every tile got a lovely drink.');
+    lesson='Slow, gentle water is exactly what living soil loves best.';
+  }else if(id==='sunny'){
+    em='🌞'; title='Sunny Spell'; kid='A stretch of perfect sunshine!';
+    let n=0;
+    soils.forEach(t=>{ if(t.crop){ t.crop.growth = Math.min(0.99, t.crop.growth+0.12); n++; } });
+    lines.push(n>0 ? `🌱 ${n} crop${n>1?'s':''} shot up in the sunshine!` : 'The open fields soaked up the warmth.');
+    lesson='Sunshine is free energy — plants turn it into food for the whole soil web.';
+  }else if(id==='gift'){
+    em='🎁'; title='Neighborly Gift'; kid='A neighbor loved watching the farm come back — and left a gift!';
+    state.coins += 10;
+    lines.push('🪙 +10 coins! How kind!');
+    lesson='Healthy farms inspire whole neighborhoods.';
+  }else if(id==='beeVisit'){
+    em='🐝'; title='Wandering Bees'; kid='A cloud of friendly bees buzzed through!';
+    soils.forEach(t=>{ if(t.health>45) t.flowers = Math.min(1, t.flowers+0.1); });
+    lines.push('🌼 They left extra wildflowers on your healthiest tiles.');
+    lesson='Pollinators visit where flowers bloom — and help even more grow.';
+  }else if(id==='snow'){
+    em='☃️'; title='Snow Blanket'; kid='Thick fluffy snow tucked the whole farm in!';
+    soils.forEach(t=>{ t.soil.water = clamp(t.soil.water+6); recalc(t); });
+    lines.push('❄️ Melting snow means spring water for everyone.');
+    lesson='Winter is not empty time — the soil rests and stores up for spring.';
+  }else return;
+  if(bad) SND.uhoh(); else SND.badge();
+  showModal(`
+    <h2>${em} ${title}</h2>
+    <div class="eventbig">${em}</div>
+    <div class="eventkid">${kid}</div>
+    <div class="eventlines">${lines.map(l=>`<div>${l}</div>`).join('')}</div>
+    <div class="lesson">🌱 ${lesson}</div>
+    <div class="modalbtns"><button class="mbtn" data-act="close">OK!</button></div>
+  `);
+  checkBadges(); save(); updateHUD();
+}
+
+// ---------------------------------------------------------------- badges & win
+function checkBadges(){
+  const f = farmStats();
+  BADGES.forEach(b=>{
+    if(state.badges[b.id]) return;
+    let ok = false;
+    try{ ok = b.check(f); }catch(e){ ok = false; }
+    if(!ok) return;
+    state.badges[b.id] = true;
+    state.coins += b.id==='cleanwater' ? 15 : 5;
+    toast(`⭐ ${b.em} ${b.name}! +${b.id==='cleanwater'?15:5}🪙`);
+    confetti(b.id==='win'?150:36);
+    if(b.id==='win'){ SND.win(); if(!state.won){ state.won = true; setTimeout(showWin, 900); } }
+    else SND.badge();
+    if(b.id==='cleanwater') setTimeout(showCleanWater, 800);
+  });
+}
+function showCleanWater(){
+  showModal(`
+    <h2>🌊 The River Runs Clear!</h2>
+    <div class="eventbig">💧🐟🦆</div>
+    <div class="eventkid">Look at that water — you can see right to the bottom!<br>Fish are back, and ducks came to paddle.</div>
+    <div class="lesson">🌱 Healthy soil and buffer plants along the river filter the water — regenerative farms send clean water downstream, not mud and fertilizer.</div>
+    <div class="modalbtns"><button class="mbtn big" data-act="close">Amazing! 🎉</button></div>
+  `);
+}
+function showWin(){
+  const earned = Object.keys(state.badges).length;
+  const f = farmStats();
+  showModal(`
+    <h2>🏆 The Farm Is ALIVE!</h2>
+    <div class="eventbig">🌻🐝🦋🐦🌈</div>
+    <div class="eventkid">You wove the roots back together!<br>Every tile is thriving, the wildlife has come home${state.waterQuality>=80?', and the river runs clean to the sea':''}.</div>
+    <div class="winstats">Finished in <b>${state.year} year${state.year>1?'s':''}</b> · ${earned}/${BADGES.length} badges · 🪙${state.stats.coinsEarned} earned · Wildness ${Math.round(f.bio)} · River 💧${Math.round(state.waterQuality)}</div>
+    <div class="lesson">🌱 Real farms heal the same way: many plants, moving animals, resting land — and patience. You just practiced regenerative farming!</div>
+    <div class="modalbtns"><button class="mbtn big" data-act="close">Keep Growing! 🌿</button></div>
+  `);
+  confetti(160);
+}
+function openGoals(){
+  const f = farmStats();
+  const rows = BADGES.map(b=>{
+    const done = !!state.badges[b.id];
+    return `<div class="goalitem ${done?'done':'todo'}"><div class="gm">${b.em}</div>
+      <div>${b.name}<div style="font-size:11.5px;font-weight:600;opacity:.8">${b.desc}</div></div>
+      <div style="margin-left:auto">${done?'⭐':''}</div></div>`;
+  }).join('');
+  showModal(`
+    <h2>⭐ Your Mission</h2>
+    <div class="sub">Restore the <b>dying valley</b> into a living ecosystem: revive every 💀 dead tile, bring <b>every tile</b> to 💚 70+ health, restore all ${REGIONS.length} regions, grow Wildness to 60 — and send <b>clean water</b> 🌊 downstream!</div>
+    <div class="sub" style="margin-top:-4px">Farm Life ${Math.round(f.avgHealth)} · Wildness ${Math.round(f.bio)} · River 💧${Math.round(state.waterQuality)} · Restored ${f.restored}/${f.totalSoil} ${state.won?'· 🏆 WON!':''}</div>
+    ${rows}
+    <div class="modalbtns">
+      <button class="mbtn wood" data-act="reset">🔄 New Farm</button>
+      <button class="mbtn" data-act="close">Back</button>
+    </div>
+  `);
+}
+function resetGame(){
+  if(!confirm('Start a brand-new farm? Your current farm will be lost.')) return;
+  try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
+  state = newGame();
+  selected = -1; hovered = -1;
+  agents = []; wildlife = []; birds = []; worldParts = []; screenParts = [];
+  tutCattleFlag = false; decoIdx = 0;
+  closeModal(); closeInfo();
+  centerCamera();
+  buildPalette();
+  updateQuests();
+  refreshAnchors();
+  toast('🌄 A fresh dying valley awaits. Bring it back to life!');
+  setTut(0);
+  updateHUD(); updateClockUI();
+}
+
+// ---------------------------------------------------------------- iso helpers
+function tileOrigin(t){ return {x:(t.c-t.r)*TW2, y:(t.c+t.r)*TH2}; }   // N (top) vertex
+// point inside a tile's diamond, u,v in 0..1 (u→E edge, v→W edge)
+function pt(t, u, v){
+  const o = tileOrigin(t);
+  return {x:o.x + (u-v)*TW2, y:o.y + (u+v)*TH2};
+}
+function diamondPath(x0, y0){
+  ctx.beginPath();
+  ctx.moveTo(x0, y0);
+  ctx.lineTo(x0+TW2, y0+TH2);
+  ctx.lineTo(x0, y0+TILE_H);
+  ctx.lineTo(x0-TW2, y0+TH2);
+  ctx.closePath();
+}
+function screenToTile(sx, sy){
+  const wx = (sx - cam.x)/cam.zoom, wy = (sy - cam.y)/cam.zoom;
+  const fx = wx/TW2, fy = wy/TH2;
+  const c = Math.floor((fy+fx)/2), r = Math.floor((fy-fx)/2);
+  return inGrid(c,r) ? idx(c,r) : -1;
+}
+function centerCamera(){
+  fitZoom = Math.min((viewW-30)/(GRID*TILE_W+60), (viewH-170)/(GRID*TILE_H+120));
+  fitZoom = Math.max(0.3, fitZoom);
+  cam.zoom = Math.min(2.2, Math.max(fitZoom*0.95, 0.85));
+  cam.x = viewW/2;
+  cam.y = viewH/2 - GRID*TH2*cam.zoom + 14;
+  clampCam();
+}
+function clampCam(){
+  cam.zoom = Math.max(fitZoom*0.55, Math.min(2.4, cam.zoom));
+  const minX=-GRID*TW2-60, maxX=GRID*TW2+60, minY=-90, maxY=GRID*TILE_H+120;
+  let cx = (viewW/2 - cam.x)/cam.zoom, cy = (viewH/2 - cam.y)/cam.zoom;
+  cx = Math.max(minX, Math.min(maxX, cx));
+  cy = Math.max(minY, Math.min(maxY, cy));
+  cam.x = viewW/2 - cx*cam.zoom;
+  cam.y = viewH/2 - cy*cam.zoom;
+}
+
+// ---------------------------------------------------------------- colors
+function soilColor(h){
+  // cracked pale dust -> rich dark loam
+  const t = Math.max(0, Math.min(1, (h-15)/55));
+  return `rgb(${lerp(202,92,t)|0},${lerp(174,66,t)|0},${lerp(134,42,t)|0})`;
+}
+function heatColor(v){ return `hsl(${lerp(8,118,Math.max(0,Math.min(1,v/100)))},68%,50%)`; }
+function waterColor(v){ return `hsl(${lerp(46,212,Math.max(0,Math.min(1,v/100)))},72%,55%)`; }
+function tileBioScore(t){
+  if(t.terrain==='trees') return 95;
+  if(t.terrain==='pond') return 70;
+  if(t.terrain==='wetland') return 92;
+  if(t.terrain==='orchard' || t.terrain==='berrybush' || t.terrain==='beehive') return 82;
+  if(t.terrain==='water') return 30 + state.waterQuality*0.5;
+  if(t.terrain==='dead') return 3;
+  if(t.terrain==='riverbed') return 8;
+  if(t.terrain!=='soil') return 40;
+  return Math.min(100, t.flowers*40 + t.soil.microbial*0.55 + (t.crop&&CROPS[t.crop.type].diverse?15:0) + (treeAdj(t)?14:0));
+}
+// how clean this tile's runoff is (for the Runoff overlay): buffers & living
+// cover filter; bare dirt, monocrops and riverside grazing shed mud
+function tileRunoffScore(t){
+  if(t.terrain==='trees' || t.terrain==='orchard') return 92;
+  if(t.terrain==='wetland') return 96;
+  if(t.terrain==='pond') return 80;
+  if(isWaterT(t)) return state.waterQuality;
+  if(t.terrain==='dead') return 18;
+  if(t.terrain==='riverbed') return 25;
+  if(t.terrain!=='soil') return 70;
+  let v = 15 + t.health*0.42 + t.soil.erosion*0.18;
+  if(t.crop){ const c = CROPS[t.crop.type]; v += c.cover ? 25 : c.diverse ? 12 : -14; }
+  else if(!t.graze && t.health<40) v -= 12;
+  if(t.graze && waterAdj(t)) v -= 22;
+  return clamp(v);
+}
+function runoffColor(v){
+  // muddy brown → gray-teal → clear blue (skips green so "muddy" never reads as "fine")
+  const q = Math.max(0, Math.min(1, v/100));
+  const A = [124,92,52], B = [118,138,142], C = [58,158,214];
+  const c = q<0.5 ? A.map((a,i)=>lerp(a,B[i],q*2)|0) : B.map((b,i)=>lerp(b,C[i],(q-0.5)*2)|0);
+  return `rgb(${c[0]},${c[1]},${c[2]})`;
+}
+function overlayColor(t){
+  if(overlay==='health') return heatColor(isLandT(t)? t.health : isWaterT(t)?85 : t.terrain==='riverbed'?12 : 80);
+  if(overlay==='water')  return waterColor(isWetT(t)? 100 : isLandT(t)? t.soil.water : t.terrain==='riverbed'?8 : 60);
+  if(overlay==='bio')    return heatColor(tileBioScore(t));
+  if(overlay==='om')     return heatColor(isLandT(t)? t.soil.om : t.terrain==='riverbed'?10 : 60);
+  if(overlay==='runoff') return runoffColor(tileRunoffScore(t));
+  return null;
+}
+
+// ---------------------------------------------------------------- sky, time-of-day & horizon
+function hex2rgb(h){
+  if(h[0]==='#') return [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
+  const m = h.match(/(\d+),\s*(\d+),\s*(\d+)/);   // accept rgb(...) so mixes can chain
+  return m ? [+m[1], +m[2], +m[3]] : [128,128,128];
+}
+function mixHex(a,b,t){
+  const A = hex2rgb(a), B = hex2rgb(b);
+  return `rgb(${lerp(A[0],B[0],t)|0},${lerp(A[1],B[1],t)|0},${lerp(A[2],B[2],t)|0})`;
+}
+// day-night curves from state.tod (0..1): sun crosses 0→0.6, night peaks ~0.8
+function todInfo(){
+  const T = state.tod;
+  const dayT = T<0.6 ? T/0.6 : 0;                       // 0..1 across the daylight arc
+  const sunEl = T<0.6 ? Math.sin(Math.PI*dayT) : 0;     // sun elevation
+  const night = T<0.6 ? 0 : Math.sin(Math.PI*(T-0.6)/0.4);
+  const dawnD = Math.min(Math.abs(T), Math.abs(T-1));
+  const warm = Math.max(0, 1-Math.abs(T-0.57)/0.09) + Math.max(0, 1-dawnD/0.07);   // dusk & dawn glow
+  return {T, dayT, sunEl, night:Math.max(0,Math.min(1,night)), warm:Math.max(0,Math.min(1,warm))};
+}
+function drawSky(t){
+  const sn = SEASONS[state.season];
+  const td = todInfo();
+  let top = sn.sky0, bot = sn.sky1;
+  if(td.warm>0){ top = mixHex(top, '#e88a4a', td.warm*0.55); bot = mixHex(bot, '#f7ce96', td.warm*0.6); }
+  if(td.night>0){ top = mixHex(top, '#0b1130', td.night*0.92); bot = mixHex(bot, '#1c2a4e', td.night*0.88); }
+  const g = ctx.createLinearGradient(0,0,0,viewH);
+  g.addColorStop(0, top);
+  g.addColorStop(1, bot);
+  ctx.fillStyle = g;
+  ctx.fillRect(0,0,viewW,viewH);
+  // stars & moon at night
+  if(td.night>0.25){
+    ctx.globalAlpha = (td.night-0.25)/0.75;
+    ctx.fillStyle = '#f4f0dc';
+    for(let i=0;i<34;i++){
+      const x = sr(i*3+1)*viewW, y = sr(i*7+2)*viewH*0.55;
+      const tw = 0.5 + Math.sin(t*1.5 + i)*0.5;
+      ctx.beginPath(); ctx.arc(x, y, 0.8 + sr(i)*1.1*tw, 0, 6.29); ctx.fill();
+    }
+    // moon
+    const mx = viewW*0.8, my = viewH*0.14, mr = Math.min(viewW,viewH)*0.035;
+    ctx.fillStyle = '#f2ecd4';
+    ctx.beginPath(); ctx.arc(mx,my,mr,0,6.29); ctx.fill();
+    ctx.fillStyle = top;
+    ctx.beginPath(); ctx.arc(mx-mr*0.42,my-mr*0.22,mr*0.82,0,6.29); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  // the sun wheels across the sky with the time of day
+  if(td.sunEl>0.02){
+    const sx = viewW*(0.12 + td.dayT*0.76);
+    const sy = viewH*(0.32 - td.sunEl*0.24);
+    const r0 = Math.min(viewW,viewH)*0.05;
+    ctx.globalAlpha = Math.min(1, td.sunEl*2.2);
+    ctx.fillStyle = td.warm>0.3 ? '#ffb257' : state.season===3 ? '#f2f4f7' : '#ffd75e';
+    ctx.beginPath(); ctx.arc(sx,sy,r0,0,6.29); ctx.fill();
+    if(state.season<2 && td.night<0.1){
+      ctx.strokeStyle = 'rgba(255,215,94,.55)'; ctx.lineWidth = 2.5;
+      for(let i=0;i<8;i++){
+        const a = t*0.15 + i*Math.PI/4;
+        ctx.beginPath();
+        ctx.moveTo(sx+Math.cos(a)*r0*1.25, sy+Math.sin(a)*r0*1.25);
+        ctx.lineTo(sx+Math.cos(a)*r0*1.6,  sy+Math.sin(a)*r0*1.6);
+        ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+  // drifting clouds (dimmer at night)
+  ctx.fillStyle = `rgba(255,255,255,${0.8 - td.night*0.62})`;
+  for(let i=0;i<4;i++){
+    const spd = 6 + sr(i*3)*6;
+    const cx = ((t*spd + sr(i)*1400) % (viewW+220)) - 110;
+    const cy = viewH*(0.05 + sr(i*7)*0.16);
+    const s = viewH*(0.02 + sr(i*5)*0.02);
+    ctx.beginPath();
+    ctx.arc(cx,cy,s,0,6.29); ctx.arc(cx+s*1.1,cy+s*0.2,s*0.8,0,6.29); ctx.arc(cx-s,cy+s*0.25,s*0.7,0,6.29);
+    ctx.fill();
+  }
+}
+// rolling-hills panorama behind the plot so the valley sits IN a world.
+// Anchored to the world-space horizon (just behind the grid's north corner),
+// with a soft parallax on camera pan.
+function drawHorizon(t){
+  const img = SPRITES['bg_hills'];
+  const td = todInfo();
+  // world y=0 is the grid's north corner; place the horizon line there (screen space)
+  const horizonY = cam.y + (-26)*cam.zoom;
+  if(horizonY <= 0) return;
+  if(img){
+    // COVER-fit the panorama into the sky band [0..horizonY] so it fills cleanly
+    // on ANY screen/aspect (no thin-sliver clipping, no side gaps). Bottom-anchored
+    // to the horizon line, tiled horizontally so parallax never exposes an edge.
+    const bandH = horizonY;
+    const targetW = viewW * 1.25;                          // a touch wider than screen for parallax room
+    const scale = Math.max(targetW / img.width, bandH / img.height);   // cover both axes
+    const dw = img.width * scale, dh = img.height * scale;
+    const iy = horizonY - dh;                              // painting's base sits on the horizon line
+    const drift = -((cam.x * 0.12) % dw);                  // gentle parallax on pan
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, 0, viewW, horizonY);
+    ctx.clip();
+    // tile across the full width so there's never a gap, whatever the drift
+    for(let dx = drift - dw; dx < viewW + dw; dx += dw){ ctx.drawImage(img, dx, iy, dw, dh); }
+    // blend the panorama's top into our sky
+    ctx.globalAlpha = 0.6;
+    const skyG = ctx.createLinearGradient(0, iy, 0, iy+dh*0.3);
+    const sn = SEASONS[state.season];
+    skyG.addColorStop(0, sn.sky0); skyG.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = skyG;
+    ctx.fillRect(0, 0, viewW, horizonY);
+    ctx.globalAlpha = 1;
+    // time-of-day & season wash over the distant hills
+    if(state.season===3){ ctx.fillStyle = 'rgba(235,242,250,.42)'; ctx.fillRect(0,0,viewW,horizonY); }
+    if(td.warm>0){ ctx.fillStyle = `rgba(240,150,70,${td.warm*0.22})`; ctx.fillRect(0,0,viewW,horizonY); }
+    if(td.night>0){ ctx.fillStyle = `rgba(10,16,44,${td.night*0.6})`; ctx.fillRect(0,0,viewW,horizonY); }
+    ctx.restore();
+  }
+  // below the horizon: dusty plain that greens as the valley heals
+  const f = farmCache;
+  const heal = f ? Math.max(0, Math.min(1, (f.avgHealth-15)/55)) : 0;
+  let ground = mixHex(mixHex('#b3a077', '#6f9c55', heal), '#28304a', td.night*0.55);
+  if(state.season===3) ground = mixHex('#dfe6ee', '#28304a', td.night*0.5);
+  ctx.fillStyle = ground;
+  ctx.fillRect(0, horizonY, viewW, viewH-horizonY);
+  ctx.globalAlpha = 0.3;
+  const gg = ctx.createLinearGradient(0,horizonY,0,viewH);
+  gg.addColorStop(0,'rgba(255,255,255,.35)'); gg.addColorStop(1,'rgba(30,20,5,.25)');
+  ctx.fillStyle = gg;
+  ctx.fillRect(0, horizonY, viewW, viewH-horizonY);
+  ctx.globalAlpha = 1;
+}
+function drawWeather(t){
+  if(state.season===2){
+    for(let i=0;i<14;i++){
+      const x = fract(sr(i) + t*0.012*(0.5+sr(i*3))) * viewW;
+      const y = ((t*(20+sr(i*7)*24) + sr(i*5)*900) % (viewH+30)) - 15;
+      drawEmoji('🍂', x + Math.sin(t+i)*8, y, 11);
+    }
+  }
+  if(state.season===3){
+    ctx.fillStyle = 'rgba(255,255,255,.9)';
+    for(let i=0;i<30;i++){
+      const x = fract(sr(i) + t*0.008*(0.5+sr(i*3))) * viewW + Math.sin(t*0.8+i)*6;
+      const y = ((t*(16+sr(i*7)*20) + sr(i*5)*900) % (viewH+20)) - 10;
+      ctx.beginPath(); ctx.arc(x, y, 1.6+sr(i*11)*1.4, 0, 6.29); ctx.fill();
+    }
+  }
+}
+
+// ---------------------------------------------------------------- ground pass
+function drawGround(t, time){
+  const o = tileOrigin(t);
+  const seed = idx(t.c,t.r)*17+3;
+  const ov = overlay!=='none' ? overlayColor(t) : null;
+  const sn = SEASONS[state.season];
+  // side faces (visible on south & east map edges; covered elsewhere by later tiles)
+  const S = {x:o.x, y:o.y+TILE_H}, E = {x:o.x+TW2, y:o.y+TH2}, W = {x:o.x-TW2, y:o.y+TH2};
+  ctx.fillStyle = ov ? 'rgba(60,44,26,1)' : '#5c4226';
+  ctx.beginPath(); ctx.moveTo(W.x,W.y); ctx.lineTo(S.x,S.y); ctx.lineTo(S.x,S.y+TDEPTH); ctx.lineTo(W.x,W.y+TDEPTH); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = ov ? 'rgba(46,33,19,1)' : '#49341d';
+  ctx.beginPath(); ctx.moveTo(S.x,S.y); ctx.lineTo(E.x,E.y); ctx.lineTo(E.x,E.y+TDEPTH); ctx.lineTo(S.x,S.y+TDEPTH); ctx.closePath(); ctx.fill();
+  // DATA OVERLAY active: flat heatmap diamonds so the data always reads clearly
+  // (illustrated art is skipped on purpose — heatmap > prettiness here)
+  if(ov){
+    diamondPath(o.x,o.y);
+    ctx.fillStyle = ov; ctx.fill();
+    ctx.strokeStyle = 'rgba(30,22,10,.22)'; ctx.lineWidth = 0.8;
+    diamondPath(o.x,o.y); ctx.stroke();
+    if(isWaterT(t)){   // keep water recognizable inside heatmaps
+      ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 1.1;
+      ctx.beginPath(); ctx.ellipse(o.x, o.y+TH2, 13, 6, 0, 0, 6.29); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(o.x, o.y+TH2, 6, 2.6, 0, 0, 6.29); ctx.stroke();
+    }
+    return;
+  }
+  // ---------- water (river + ponds), tinted by water quality ----------
+  if(isWaterT(t)){
+    const q = Math.max(0, Math.min(1, state.waterQuality/100));
+    // RIVER TILESET: pick the illustrated piece from water-neighbor connectivity
+    // (straights vs bends) so the waterway reads as one continuous stream.
+    // Built ponds keep the self-contained pond art.
+    let img = null;
+    if(t.terrain==='pond'){
+      img = SPRITES['tile_water'];
+    }else{
+      const wat = (c,r)=>{
+        if(!inGrid(c,r)) return r<0 || r>=GRID;   // the river flows off-map north & south
+        const nb = state.grid[idx(c,r)];
+        return nb.terrain==='water';
+      };
+      const N = wat(t.c, t.r-1), S = wat(t.c, t.r+1), E = wat(t.c+1, t.r), W = wat(t.c-1, t.r);
+      const n = (N?1:0)+(S?1:0)+(E?1:0)+(W?1:0);
+      // what each art piece ACTUALLY connects (verified by pixel-sampling the edges):
+      //   river_ns → N↔S straight · river_ew/river_sw → N↔E bend · river_nw/river_se → W↔S bend
+      // E↔W runs & 3-way junctions (the restored wash) fall back to procedural water
+      let nm = null;
+      if(n===2){
+        if(N&&S) nm = 'river_ns';
+        else if(N&&E) nm = 'river_ew';                        // widest N↔E connector
+        else if(S&&W) nm = (t.c+t.r)%2 ? 'river_nw' : 'river_se';
+      }else if(n===1 && (N||S)){
+        nm = 'river_ns';
+      }
+      img = nm ? SPRITES[nm] : null;
+    }
+    if(img){
+      // illustrated tile: TILE_W wide + natural depth below; top diamond aligned to grid
+      const w = TILE_W+3, hh = w*img.height/img.width;
+      ctx.drawImage(img, o.x-w/2, o.y-1.5, w, hh);
+      // murky film clears as quality rises (dirty rivers still look dirty)
+      if(q<0.85){
+        ctx.globalAlpha = (0.85-q)*0.68;
+        ctx.fillStyle = '#6e5b31';
+        diamondPath(o.x,o.y); ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+    }else{
+      diamondPath(o.x,o.y);
+      const wg = ctx.createLinearGradient(o.x-TW2,o.y,o.x+TW2,o.y+TILE_H);
+      if(state.season===3){ wg.addColorStop(0,'#cfe4f2'); wg.addColorStop(1,'#a8cce2'); }
+      else{
+        // murky brown-green → clear blue
+        wg.addColorStop(0, `rgb(${lerp(128,99,q)|0},${lerp(122,181,q)|0},${lerp(66,232,q)|0})`);
+        wg.addColorStop(1, `rgb(${lerp(96,61,q)|0},${lerp(94,142,q)|0},${lerp(48,199,q)|0})`);
+      }
+      ctx.fillStyle = wg; ctx.fill();
+      // sandy banks along edges that meet land — makes the river read as one band
+      const EDGES = [
+        [o.x,o.y,          o.x+TW2,o.y+TH2,  t.c,   t.r-1],
+        [o.x+TW2,o.y+TH2,  o.x,o.y+TILE_H,   t.c+1, t.r  ],
+        [o.x,o.y+TILE_H,   o.x-TW2,o.y+TH2,  t.c,   t.r+1],
+        [o.x-TW2,o.y+TH2,  o.x,o.y,          t.c-1, t.r  ],
+      ];
+      ctx.lineWidth = 2.4; ctx.lineCap = 'round';
+      ctx.strokeStyle = state.season===3 ? 'rgba(226,232,240,.9)' : 'rgba(211,186,136,.9)';
+      EDGES.forEach(([ax,ay,bx,by,nc,nr])=>{
+        if(inGrid(nc,nr) && isWaterT(state.grid[idx(nc,nr)])) return;
+        ctx.beginPath(); ctx.moveTo(ax,ay); ctx.lineTo(bx,by); ctx.stroke();
+      });
+      ctx.lineCap = 'butt';
+    }
+    // animated ripples (brighter on clean water)
+    ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 1.2;
+    for(let k2=0;k2<2;k2++){
+      const ph = fract(time*0.25 + k2*0.5 + seed*0.13);
+      ctx.globalAlpha = (1-ph)*(0.2+q*0.45);
+      ctx.beginPath();
+      ctx.ellipse(o.x, o.y+TH2, 6+ph*22, 3+ph*11, 0, 0, 6.29);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    if(q>0.55){
+      ctx.fillStyle = 'rgba(255,255,255,.7)';
+      ctx.beginPath(); ctx.arc(o.x+Math.sin(time*1.3+seed)*12, o.y+TH2+Math.cos(time*1.1+seed)*5, 1.4, 0, 6.29); ctx.fill();
+    }
+    // the payoff: fish LEAP from clean water (with a splash)
+    const jphase = Math.sin(time*0.9+seed*3);
+    if(q>=0.7 && state.season!==3 && jphase>0.86){
+      const jt = (jphase-0.86)/0.14;               // 0..1 across the leap window
+      const arc = Math.sin(jt*Math.PI);            // up and back down
+      const fx = o.x+Math.sin(seed)*10, fy = o.y+TH2-2-arc*9;
+      drawSprite('fish', fx, fy+5, 13, spriteH('fish', 13, 11), ()=>drawEmoji('🐟', fx, fy, 10));
+      if(jt<0.12 || jt>0.9){                       // splash at entry & exit
+        ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.ellipse(fx, o.y+TH2, 4+arc*3, 2, 0, 0, 6.29); ctx.stroke();
+      }
+    }
+    if(state.season===3){
+      ctx.globalAlpha = 0.3; ctx.fillStyle = '#e8f0f8';
+      diamondPath(o.x,o.y); ctx.fill(); ctx.globalAlpha = 1;
+    }
+    return;
+  }
+  // ---------- land / trees / building ground ----------
+  // HEALTH-DRIVEN TILE ART — the land heals visibly through the tiers:
+  //   dead → cracked dirt (<45) → rich worked soil (45–70) → lush grass (>70)
+  //   plus degraded features (salt pan, gullies, dry creekbed) and living
+  //   variants (wildflower meadows, grazed pasture, paths)
+  let gname;
+  if(t.terrain==='riverbed'){
+    gname = 'tile_riverbed';
+  }else if(t.terrain==='dead'){
+    gname = t.feature==='saltflat' ? 'tile_saltflat'
+          : t.feature==='gully'    ? 'tile_gully'
+          : t.feature==='swale'    ? 'tile_swale'
+          : 'tile_dead';
+  }else if(t.terrain==='soil'){
+    if(t.feature==='path') gname = 'tile_path';
+    else if(t.graze && t.health>=45) gname = 'tile_pasture';
+    else if(t.health<45) gname = 'tile_dirt';
+    else if(t.health<=70) gname = 'tile_soil';
+    else gname = (t.flowers>0.6 && sr(seed*3)>0.5) ? 'tile_wildflower' : 'tile_grass';
+  }else{
+    gname = 'tile_grass';   // green pad under trees & buildings
+  }
+  const gimg = SPRITES[gname];
+  if(gimg){
+    const w = TILE_W+3, ar = gimg.height/gimg.width, hh = w*ar;
+    // Anchor every ground tile's BASE to a common baseline (reference aspect .60)
+    // so a tile whose art rises ABOVE the diamond (e.g. tile_wildflower, ~.95)
+    // grows UPWARD instead of shoving its footprint down and tearing a grid gap.
+    // Normal ~.60 tiles are unaffected (offset ≈ 0).
+    const iy = o.y - 1.5 + (0.60 - ar)*w;
+    ctx.drawImage(gimg, o.x-w/2, iy, w, hh);
+    if(t.terrain==='dead' && !t.feature){
+      // an ashen pall over truly dead ground — lifts the moment it revives
+      ctx.globalAlpha = 0.26;
+      ctx.fillStyle = '#8c8578';
+      diamondPath(o.x,o.y); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    if(state.season===3){   // winter snow veil
+      ctx.globalAlpha = 0.45; ctx.fillStyle = '#eef4fb';
+      diamondPath(o.x,o.y); ctx.fill(); ctx.globalAlpha = 1;
+    }
+    return;
+  }
+  // procedural fallback (unchanged look from v3)
+  (()=>{
+    diamondPath(o.x,o.y);
+    const h = t.terrain==='soil' ? t.health : 72;
+    ctx.fillStyle = soilColor(h);
+    ctx.fill();
+    // grass overlay as it heals (cracked dirt -> lush green)
+    const grassA = Math.max(0, Math.min(1, (h-42)/42));
+    if(grassA>0){
+      ctx.globalAlpha = grassA*0.85;
+      ctx.fillStyle = sn.grass;
+      diamondPath(o.x,o.y); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    // cracks on sad soil
+    if(t.terrain==='soil' && h<46){
+      ctx.strokeStyle = `rgba(90,64,40,${(46-h)/46*0.6})`;
+      ctx.lineWidth = 1;
+      for(let cn=0;cn<4;cn++){
+        let p0 = pt(t, 0.2+sr(seed+cn*5)*0.6, 0.2+sr(seed+cn*9)*0.6);
+        ctx.beginPath(); ctx.moveTo(p0.x,p0.y);
+        for(let s2=0;s2<2;s2++){
+          p0 = {x:p0.x+(sr(seed+cn*3+s2)-0.5)*14, y:p0.y+(sr(seed+cn*7+s2)-0.3)*7};
+          ctx.lineTo(p0.x,p0.y);
+        }
+        ctx.stroke();
+      }
+    }
+    // grass tufts on healthy soil
+    if(t.terrain==='soil'){
+      const tufts = Math.max(0, Math.min(1,(h-48)/52)) * 7 | 0;
+      ctx.strokeStyle = state.season===3 ? '#9fb49b' : '#3f7a38';
+      ctx.lineWidth = 1.1;
+      for(let g2=0; g2<tufts; g2++){
+        const gp = pt(t, 0.15+sr(seed+g2*13)*0.7, 0.15+sr(seed+g2*29)*0.7);
+        const sway = Math.sin(time*1.6+seed+g2)*1.3;
+        ctx.beginPath();
+        ctx.moveTo(gp.x,gp.y); ctx.lineTo(gp.x-2+sway, gp.y-4);
+        ctx.moveTo(gp.x,gp.y); ctx.lineTo(gp.x+sway, gp.y-5);
+        ctx.moveTo(gp.x,gp.y); ctx.lineTo(gp.x+2+sway, gp.y-3.5);
+        ctx.stroke();
+      }
+    }
+    // winter snow veil
+    if(state.season===3){
+      ctx.globalAlpha = 0.45;
+      ctx.fillStyle = '#eef4fb';
+      diamondPath(o.x,o.y); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    // faint grid line
+    ctx.strokeStyle = 'rgba(60,42,22,.18)'; ctx.lineWidth = 0.8;
+    diamondPath(o.x,o.y); ctx.stroke();
+  })();
+}
+function drawHighlight(i, time, color){
+  const t = state.grid[i];
+  const o = tileOrigin(t);
+  diamondPath(o.x, o.y);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2.5 + Math.sin(time*5)*0.8;
+  ctx.stroke();
+  ctx.globalAlpha = 0.14;
+  ctx.fillStyle = color;
+  diamondPath(o.x,o.y); ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+// ---------------------------------------------------------------- object pass
+function drawCropObj(t, time, seed){
+  const c = t.crop, def = CROPS[c.type];
+  const g = Math.min(1, c.growth);
+  const base = pt(t, 0.5, 0.5);
+  // illustrated crops: young plants show the sprout sprite, then the full crop
+  // scales up with growth, standing on the tile (bottom just above the S vertex)
+  const CROP_ART = {
+    sisters:  {w:46, yo:13},   // tall bundle — corn/beans/squash
+    wheat:    {w:60, yo:14},   // wide golden bed
+    clover:   {w:56, yo:12},   // low flowering patch
+    covercrop:{w:56, yo:12},   // scrappy pioneer tangle
+  };
+  const ca = CROP_ART[c.type] || {w:46, yo:12};
+  let sprName = 'crop_'+c.type;
+  if(g<0.35 && SPRITES['crop_sprout']) sprName = 'crop_sprout';
+  else if(c.type==='sisters' && g<0.72 && SPRITES['crop_corn']) sprName = 'crop_corn';   // corn shoots first
+  const scl = sprName==='crop_sprout' ? (0.45+g*1.1) : (0.62+0.38*g);
+  const sw = (sprName==='crop_sprout' ? 30 : sprName==='crop_corn' ? 40 : ca.w) * scl;
+  const sh = spriteH(sprName, sw, 30+g*26);
+  drawSprite(sprName, base.x, base.y+ca.yo, sw, sh, ()=>{
+    if(c.type==='sisters'){
+      for(let s=0;s<3;s++){
+        const bp = pt(t, 0.3+s*0.2, 0.62-s*0.14);
+        const x = bp.x + Math.sin(time*1.4+seed*6+s)*1.6*g;
+        const hgt = 34*g;
+        if(hgt<3) { ctx.fillStyle='#4d7c3a'; ctx.beginPath(); ctx.arc(bp.x,bp.y,1.6,0,6.29); ctx.fill(); continue; }
+        ctx.strokeStyle = '#3e7c3a'; ctx.lineWidth = 1.8;
+        ctx.beginPath(); ctx.moveTo(bp.x, bp.y); ctx.lineTo(x, bp.y-hgt); ctx.stroke();
+        ctx.lineWidth = 1.1;
+        for(let L=1; L<=2; L++){
+          const ly = bp.y - hgt*L/3;
+          ctx.beginPath(); ctx.moveTo(x, ly);
+          ctx.quadraticCurveTo(x+(L%2?7:-7), ly-3, x+(L%2?11:-11), ly-1);
+          ctx.stroke();
+        }
+        if(g>0.7) drawEmoji('🌽', x, bp.y-hgt-5, 11);
+        if(g>0.4){
+          ctx.fillStyle = '#7db35b';
+          for(let b=0;b<3;b++){
+            ctx.beginPath(); ctx.arc(x+Math.sin(b*2.5+seed)*3, bp.y-hgt*(0.25+b*0.22), 1.6, 0, 6.29); ctx.fill();
+          }
+        }
+      }
+      if(g>0.3){
+        for(let s=0;s<2;s++){
+          const sp = pt(t, 0.42+s*0.2, 0.72);
+          const r = 4.5*g;
+          ctx.fillStyle = '#5e8f45';
+          ctx.beginPath(); ctx.arc(sp.x-3, sp.y-2, r*1.15, 0, 6.29); ctx.fill();
+          ctx.fillStyle = '#e8a33d';
+          ctx.beginPath(); ctx.arc(sp.x, sp.y, r, 0, 6.29); ctx.fill();
+        }
+      }
+    }else if(c.type==='wheat'){
+      const col = g<0.6 ? '#7da85b' : '#d9b44a';
+      for(let s=0;s<9;s++){
+        const bp = pt(t, 0.18+sr(seed+s*3)*0.64, 0.18+sr(seed+s*7)*0.64);
+        const x = bp.x + Math.sin(time*1.8+seed*4+s)*1.4*g;
+        const hgt = 20*g;
+        if(hgt<2) continue;
+        ctx.strokeStyle = col; ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.moveTo(bp.x, bp.y); ctx.lineTo(x, bp.y-hgt); ctx.stroke();
+        if(g>0.6){
+          ctx.fillStyle = '#e6c463';
+          ctx.beginPath(); ctx.ellipse(x, bp.y-hgt-2, 1.7, 3.8, 0, 0, 6.29); ctx.fill();
+        }
+      }
+    }else if(c.type==='clover' || c.type==='covercrop'){
+      const n = Math.max(2, (g*12)|0);
+      for(let s=0;s<n;s++){
+        const cp = pt(t, 0.15+sr(seed+s*3)*0.7, 0.15+sr(seed+s*7)*0.7);
+        ctx.fillStyle = c.type==='covercrop' ? '#7a9448' : '#4d9448';
+        ctx.beginPath(); ctx.arc(cp.x, cp.y-1, 2.3+sr(s)*1.4, 0, 6.29); ctx.fill();
+        if(g>0.6 && sr(seed+s*11)>0.55){
+          ctx.fillStyle = '#fef6ee';
+          ctx.beginPath(); ctx.arc(cp.x+2, cp.y-4, 1.4, 0, 6.29); ctx.fill();
+        }
+      }
+    }
+  });
+  // kid-readable growth bar
+  const o = tileOrigin(t);
+  const bx = o.x-14, by = o.y+TILE_H-6, bw = 28;
+  ctx.fillStyle = 'rgba(30,22,10,.45)';
+  ctx.fillRect(bx, by, bw, 4);
+  ctx.fillStyle = g>=0.99 ? '#8fe06e' : '#ffd45e';
+  ctx.fillRect(bx, by, Math.max(2, bw*g), 4);
+}
+function drawTreesObj(t, time, seed){
+  const base = pt(t, 0.5, 0.5);
+  // riverside plantings read as flowering hedgerows (riparian buffers);
+  // inland ones as a single big tree — both stand ON the tile
+  const useHedge = SPRITES['hedgerow'] && waterAdj(t);
+  const nm = useHedge ? 'hedgerow' : 'tile_trees_obj';
+  const tw = useHedge ? 64 : 52;
+  const th = spriteH(nm, tw, 52);
+  const ty = useHedge ? base.y+15 : base.y+13;
+  drawSprite(nm, base.x, ty, tw, th, ()=>{
+    const cols = state.season===2 ? ['#c77b2e','#a8642a'] : state.season===3 ? ['#7d8f86','#6c7d75'] : ['#3f7d3a','#356b31'];
+    [[0.36,0.4,1],[0.66,0.62,0.85],[0.5,0.75,0.7]].forEach(([u,v,s],k)=>{
+      const b = pt(t,u,v);
+      const sway = Math.sin(time*0.9+seed+k)*1.2;
+      ctx.fillStyle = '#6b4a2a';
+      ctx.fillRect(b.x-1.6*s, b.y-14*s, 3.2*s, 14*s);
+      if(state.season===3){
+        ctx.strokeStyle = '#8a97a2'; ctx.lineWidth = 1.4*s;
+        for(let br=0;br<3;br++){
+          ctx.beginPath(); ctx.moveTo(b.x, b.y-12*s);
+          ctx.lineTo(b.x+(br-1)*6*s+sway, b.y-20*s);
+          ctx.stroke();
+        }
+        ctx.fillStyle = 'rgba(240,246,252,.9)';
+        ctx.beginPath(); ctx.arc(b.x+sway, b.y-16*s, 5*s, 0, 6.29); ctx.fill();
+      }else{
+        ctx.fillStyle = cols[k%2];
+        ctx.beginPath();
+        ctx.arc(b.x+sway, b.y-18*s, 8.5*s, 0, 6.29);
+        ctx.arc(b.x-5*s+sway, b.y-13*s, 6*s, 0, 6.29);
+        ctx.arc(b.x+5*s+sway, b.y-13*s, 6*s, 0, 6.29);
+        ctx.fill();
+        if(state.season===0 && sr(seed+k)>0.4){
+          ctx.fillStyle = '#f7c8dd';
+          ctx.beginPath(); ctx.arc(b.x+3*s+sway, b.y-20*s, 1.8*s, 0, 6.29); ctx.fill();
+        }
+      }
+    });
+  });
+}
+function drawBuilding(t, time){
+  const o = tileOrigin(t);
+  const S = {x:o.x, y:o.y+TILE_H}, E = {x:o.x+TW2, y:o.y+TH2}, W = {x:o.x-TW2, y:o.y+TH2}, N = {x:o.x, y:o.y};
+  const barn = t.terrain==='barn';
+  const H = barn ? 30 : 17;
+  const wallL = barn ? '#9e3c30' : '#8a6b42';
+  const wallR = barn ? '#b8493a' : '#a07d4e';
+  const roof = barn ? '#75342a' : '#6e5433';
+  const bw = barn ? 82 : 62;
+  drawSprite(t.terrain, S.x, S.y+3, bw, spriteH(t.terrain, bw, H+TILE_H), ()=>{
+    // grass pad
+    diamondPath(o.x,o.y);
+    ctx.fillStyle = state.season===3 ? '#dfe6ee' : '#7aa85f';
+    ctx.fill();
+    // walls
+    ctx.fillStyle = wallL;
+    ctx.beginPath(); ctx.moveTo(W.x,W.y); ctx.lineTo(S.x,S.y); ctx.lineTo(S.x,S.y-H); ctx.lineTo(W.x,W.y-H); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = wallR;
+    ctx.beginPath(); ctx.moveTo(S.x,S.y); ctx.lineTo(E.x,E.y); ctx.lineTo(E.x,E.y-H); ctx.lineTo(S.x,S.y-H); ctx.closePath(); ctx.fill();
+    // roof (raised top diamond)
+    ctx.fillStyle = roof;
+    ctx.beginPath();
+    ctx.moveTo(N.x, N.y-H-8); ctx.lineTo(E.x, E.y-H); ctx.lineTo(S.x, S.y-H); ctx.lineTo(W.x, W.y-H);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,.25)'; ctx.lineWidth = 1;
+    ctx.stroke();
+    if(barn){
+      // big door + X brace on the SE face
+      const mx = (S.x+E.x)/2, my = (S.y+E.y)/2;
+      ctx.fillStyle = '#7d2f26';
+      ctx.beginPath(); ctx.moveTo(mx-8,my-2); ctx.lineTo(mx+8,my-6); ctx.lineTo(mx+8,my-22); ctx.lineTo(mx-8,my-18); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#e8d9b8'; ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(mx-8,my-18); ctx.lineTo(mx+8,my-6);
+      ctx.moveTo(mx-8,my-2); ctx.lineTo(mx+8,my-22);
+      ctx.stroke();
+    }else{
+      drawEmoji('🐔', S.x, S.y-H-9, 11);
+    }
+  });
+}
+// generic shop buildings — illustrated sprites standing on their tile
+const BUILD_ART = {
+  market:{w:76,yo:4}, silo:{w:50,yo:3}, greenhouse:{w:78,yo:4}, beehive:{w:42,yo:2}, orchard:{w:72,yo:3},
+  raintank:{w:44,yo:2}, wetland:{w:78,yo:3}, stable:{w:76,yo:4}, wormfarm:{w:46,yo:2}, birdhouse:{w:30,yo:0},
+  well:{w:46,yo:2}, windmill:{w:54,yo:3}, solar:{w:66,yo:3}, mushroom:{w:48,yo:2}, berrybush:{w:54,yo:2},
+};
+const BUILD_EMS = {market:'🏪',silo:'🏗️',greenhouse:'🪴',beehive:'🐝',orchard:'🍎',raintank:'🛢️',wetland:'🌾',
+  stable:'🐴',wormfarm:'🪱',birdhouse:'🐦',well:'⛲',windmill:'🌬️',solar:'☀️',mushroom:'🍄',berrybush:'🫐'};
+function drawBuildObj(t, time){
+  const o = tileOrigin(t);
+  const ba = BUILD_ART[t.terrain] || {w:56, yo:3};
+  drawSprite(t.terrain, o.x, o.y+TILE_H+ba.yo, ba.w, spriteH(t.terrain, ba.w, 42), ()=>{
+    drawEmoji(BUILD_EMS[t.terrain]||'🏗️', o.x, o.y+TH2-6, 22);
+  });
+  if(t.terrain==='beehive' && state.season!==3){   // a working hive hums
+    for(let b=0;b<3;b++){
+      const a = time*1.6+b*2.1;
+      const bx = o.x+Math.cos(a)*(14+b*4), by = o.y+TH2-16+Math.sin(a*1.3+b)*6;
+      drawSprite('bee', bx, by+4, 9, spriteH('bee',9,8), ()=>drawEmoji('🐝', bx, by, 8));
+    }
+  }
+}
+const DECO_ART = {
+  deco_deadtree:{w:52}, deco_stump:{w:30}, deco_bones:{w:42}, deco_boulder:{w:42}, deco_rock:{w:34},
+  deco_haybales:{w:42}, deco_cart:{w:46}, deco_flowerbed:{w:42}, deco_gate:{w:40}, deco_signpost:{w:30},
+  deco_stonewall:{w:54}, deco_lamp:{w:20}, deco_scarecrow:{w:34},
+};
+function drawDecoObj(t, time, seed){
+  const b = pt(t, 0.5, 0.5);
+  const da = DECO_ART[t.deco] || {w:34};
+  drawSprite(t.deco, b.x, b.y+12, da.w, spriteH(t.deco, da.w, 28), ()=>{
+    drawEmoji(t.deco==='deco_deadtree'?'🥀':t.deco==='deco_bones'?'🦴':'🪨', b.x, b.y-6, 15);
+  });
+}
+function drawFenceObj(t){
+  const o = tileOrigin(t);
+  // a paddock fence along the back edges so animals graze "inside" it
+  drawSprite('fence', o.x, o.y+TILE_H-16, 52, spriteH('fence', 52, 18), ()=>{
+    ctx.strokeStyle = '#8a6b42'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(o.x-TW2+8, o.y+TH2-2); ctx.lineTo(o.x, o.y+2); ctx.lineTo(o.x+TW2-8, o.y+TH2-2); ctx.stroke();
+  });
+}
+function drawBridgeObj(t, time){
+  const o = tileOrigin(t);
+  drawSprite('bridge', o.x, o.y+TILE_H+4, 72, spriteH('bridge', 72, 40), ()=>{
+    ctx.fillStyle = '#8a6b42';
+    ctx.fillRect(o.x-26, o.y+TH2-6, 52, 10);
+  });
+}
+function drawCompostObj(t){
+  const b = pt(t, 0.82, 0.18);
+  drawSprite('compost', b.x, b.y+2, 20, spriteH('compost', 20, 19), ()=>{
+    ctx.fillStyle = '#7a5b36';
+    ctx.beginPath(); ctx.ellipse(b.x, b.y-2, 6, 3.4, 0, 0, 6.29); ctx.fill();
+    ctx.fillStyle = '#93744a';
+    ctx.beginPath(); ctx.ellipse(b.x, b.y-4, 4.4, 2.4, 0, 0, 6.29); ctx.fill();
+  });
+}
+function drawFlowersObj(t, time, seed){
+  if(state.season===3) return;   // tucked under the snow
+  const fn = (t.flowers*5)|0;
+  const flEm = ['🌼','🌸','🌻'];
+  for(let f2=0; f2<fn; f2++){
+    const fp = pt(t, 0.12+sr(seed+f2*31)*0.76, 0.12+sr(seed+f2*41)*0.76);
+    drawSprite('flower', fp.x, fp.y, 9, 9, ()=>drawEmoji(flEm[f2%3], fp.x, fp.y-3+Math.sin(time+f2)*0.8, 8+sr(seed+f2)*3));
+  }
+}
+const AGENT_ART = {
+  cow:    {w:26, em:'🐄', s:19}, chicken:{w:12, em:'🐔', s:11}, sheep:{w:22, em:'🐑', s:16},
+  goat:   {w:22, em:'🐐', s:16}, pig:    {w:22, em:'🐖', s:16}, duckT:{w:15, em:'🦆', s:13},
+  horse:  {w:28, em:'🐴', s:20},
+};
+function drawAgentsOn(i, time){
+  const t = state.grid[i];
+  for(let a=0;a<agents.length;a++){
+    const ag = agents[a];
+    if(ag.tile!==i) continue;
+    const p = pt(t, ag.u, ag.v);
+    const bob = Math.sin(time*3+ag.phase)*1.2;
+    const art = AGENT_ART[ag.kind] || AGENT_ART.chicken;
+    ctx.fillStyle = 'rgba(30,20,8,.22)';
+    ctx.beginPath(); ctx.ellipse(p.x, p.y, art.w*0.32, art.w*0.14, 0, 0, 6.29); ctx.fill();
+    drawSprite(ag.kind, p.x, p.y+3+bob*0.4, art.w, spriteH(ag.kind, art.w, art.w*0.95), ()=>drawEmoji(art.em, p.x, p.y-art.s*0.45+bob, art.s));
+  }
+  // graze timer arc
+  if(t.graze){
+    const o = tileOrigin(t);
+    const frac = Math.max(0, t.graze.days/t.graze.total);
+    ctx.fillStyle = 'rgba(30,22,10,.45)';
+    ctx.fillRect(o.x-12, o.y+TILE_H-6, 24, 4);
+    ctx.fillStyle = t.graze.synergy ? '#ffd45e' : '#c9e8a8';
+    ctx.fillRect(o.x-12, o.y+TILE_H-6, Math.max(2, 24*frac), 4);
+    if(t.graze.synergy && Math.sin(time*4+i)>0.6) drawEmoji('✨', o.x+10, o.y+8, 10);
+  }
+}
+function drawTileObjects(t, i, time){
+  const seed = i*17+3;
+  if(t.terrain==='barn' || t.terrain==='coop'){ drawBuilding(t, time); return; }
+  if(t.terrain==='trees'){ drawTreesObj(t, time, seed); return; }
+  if(BUILD_SET.has(t.terrain)){
+    if(overlay!=='none') ctx.globalAlpha = 0.4;
+    drawBuildObj(t, time);
+    drawAgentsOn(i, time);          // the stable's horse grazes beside it
+    ctx.globalAlpha = 1;
+    return;
+  }
+  if(isWaterT(t)){ if(t.bridge) drawBridgeObj(t, time); return; }
+  if(t.terrain==='riverbed') return;
+  if(overlay!=='none') ctx.globalAlpha = 0.4;
+  if(t.fence) drawFenceObj(t);
+  if(t.deco) drawDecoObj(t, time, seed);
+  if(t.compost>0) drawCompostObj(t);
+  drawFlowersObj(t, time, seed);
+  if(t.crop) drawCropObj(t, time, seed);
+  drawAgentsOn(i, time);
+  // worms surface in thriving soil (not through snow)
+  if(t.terrain==='soil' && state.season!==3 && t.soil.microbial>=70 && Math.sin(time*0.7+seed*9)>0.84){
+    const wp = pt(t, 0.78, 0.62);
+    drawSprite('worm', wp.x, wp.y, 12, spriteH('worm', 12, 10), ()=>drawEmoji('🪱', wp.x, wp.y-3, 10));
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ---------------------------------------------------------------- agents & wildlife
+function updateAgents(simDt){
+  agents.forEach(a=>{
+    const du = a.tu-a.u, dv = a.tv-a.v;
+    const d = Math.hypot(du,dv);
+    if(d < 0.03){
+      a.tu = 0.15+Math.random()*0.7;
+      a.tv = 0.15+Math.random()*0.7;
+    }else if(simDt>0){
+      a.u += du/d * a.speed * simDt;
+      a.v += dv/d * a.speed * simDt;
+    }
+  });
+}
+function flowerTargets(){
+  const list = [];
+  state.grid.forEach((t,i)=>{ if(t.terrain==='trees' || (t.terrain==='soil' && (t.flowers>0.2 || t.health>62))) list.push(i); });
+  return list.length ? list : [idx(GRID>>1,GRID>>1)];
+}
+function countKind(k){ let n=0; for(const w of wildlife) if(w.kind===k) n++; return n; }
+function dropKind(k){ const j = wildlife.findIndex(w=>w.kind===k); if(j>=0) wildlife.splice(j,1); }
+function updateWildlife(dt, bio){
+  // desired counts scale with biodiversity & water quality (capped, lightweight)
+  const wq = state.waterQuality;
+  const wTiles = waterTileIdx();
+  const pondTiles = [];
+  const lushTiles = [];
+  state.grid.forEach((t,i)=>{
+    if(t.terrain==='pond' || t.terrain==='wetland') pondTiles.push(i);
+    if(t.terrain==='soil' && t.health>70) lushTiles.push(i);
+  });
+  const targets = flowerTargets();
+  const wants = {
+    bee:       bio>=30 ? Math.min(6, 2+(((bio-30)/10)|0)) : 0,
+    butterfly: bio>=45 ? Math.min(5, 1+(((bio-45)/10)|0)) : 0,
+    duck:      (wq>=70 && wTiles.length) ? (wq>=88?3:2) : 0,
+    heron:     (wq>=85 && wTiles.length) ? 1 : 0,
+    dragonfly: (pondTiles.length && bio>=25) ? Math.min(3, 1+(bio/30|0)) : 0,
+    frog:      (pondTiles.length && bio>=38) ? Math.min(2, pondTiles.length) : 0,
+    rabbit:    (lushTiles.length>=8 && bio>=50) ? 2 : lushTiles.length>=4&&bio>=50 ? 1 : 0,
+  };
+  const anchorFor = (kind)=>{
+    let list = targets;
+    if(kind==='duck' || kind==='heron') list = wTiles.length?wTiles:targets;
+    else if(kind==='dragonfly' || kind==='frog') list = pondTiles.length?pondTiles:targets;
+    else if(kind==='rabbit') list = lushTiles.length?lushTiles:targets;
+    return tileWorld(list[(Math.random()*list.length)|0]);
+  };
+  const SPD = {bee:34, butterfly:22, duck:11, heron:7, dragonfly:46, frog:9, rabbit:16};
+  Object.entries(wants).forEach(([kind, want])=>{
+    const have = countKind(kind);
+    if(have<want && Math.random()<dt*0.5){
+      const p = anchorFor(kind);
+      wildlife.push({kind, x:p.x+(Math.random()-0.5)*26, y:p.y-(kind==='duck'||kind==='frog'?4:14)-Math.random()*8,
+        tx:p.x, ty:p.y-8, sp:SPD[kind]||20, ph:Math.random()*6.28, retarget:0});
+    }
+    if(have>want) dropKind(kind);
+  });
+  wildlife.forEach(w=>{
+    w.retarget -= dt;
+    if(w.retarget<=0){
+      const p = anchorFor(w.kind);
+      if(w.kind==='duck' || w.kind==='heron' || w.kind==='frog'){
+        w.tx = p.x+(Math.random()-0.5)*22;
+        w.ty = p.y-3-Math.random()*4;
+        w.retarget = 3.5+Math.random()*4;
+      }else if(w.kind==='rabbit'){
+        w.tx = p.x+(Math.random()-0.5)*30;
+        w.ty = p.y-4;
+        w.retarget = 2+Math.random()*3;
+      }else{
+        w.tx = p.x+(Math.random()-0.5)*36;
+        w.ty = p.y-12-Math.random()*20;
+        w.retarget = w.kind==='dragonfly' ? 1.2+Math.random()*1.5 : 2.5+Math.random()*3;
+      }
+    }
+    const dx = w.tx-w.x, dy = w.ty-w.y, d = Math.hypot(dx,dy);
+    if(d>2){ w.x += dx/d*w.sp*dt; w.y += dy/d*w.sp*dt; }
+    w.ph += dt*4;
+  });
+  // birds: screen-space fliers across the sky
+  const wantBirds = bio>=60 ? Math.min(4, 1+(((bio-60)/14)|0)) : 0;
+  while(birds.length<wantBirds) birds.push({x:-40-Math.random()*200, y:0.06+Math.random()*0.16, sp:26+Math.random()*20, ph:Math.random()*6.28});
+  if(birds.length>wantBirds) birds.pop();
+  birds.forEach(b=>{
+    b.x += b.sp*dt;
+    if(b.x > viewW+50){ b.x = -50-Math.random()*150; b.y = 0.06+Math.random()*0.16; }
+  });
+}
+// wildlife sprites (with emoji fallbacks while loading)
+const WILD_ART = {
+  bee:      {w:12, em:'🐝'}, butterfly:{w:13, em:'🦋'}, duck:{w:15, em:'🦆'}, heron:{w:20, em:'🦩'},
+  dragonfly:{w:15, em:'🪰'}, frog:{w:14, em:'🐸'}, rabbit:{w:14, em:'🐇'},
+};
+function drawWildlifeWorld(time){
+  wildlife.forEach(w=>{
+    const art = WILD_ART[w.kind];
+    if(!art) return;
+    let bobY = 0;
+    if(w.kind==='duck') bobY = Math.sin(w.ph*0.6)*1.2;
+    else if(w.kind==='heron') bobY = Math.sin(w.ph*0.3)*0.8;
+    else if(w.kind==='frog') bobY = -Math.abs(Math.sin(w.ph*1.4))*4;      // hop!
+    else if(w.kind==='rabbit') bobY = -Math.abs(Math.sin(w.ph*1.8))*5;    // bound!
+    else bobY = Math.sin(w.ph)*(w.kind==='bee'?3:w.kind==='dragonfly'?2:5);
+    drawSprite(w.kind, w.x, w.y+bobY+art.w*0.45, art.w, spriteH(w.kind, art.w, art.w*0.9),
+      ()=>drawEmoji(art.em, w.x, w.y+bobY, art.w-1));
+  });
+}
+function drawBirdsScreen(time){
+  birds.forEach(b=>{
+    const by = viewH*b.y + Math.sin(time*2+b.ph)*4;
+    drawSprite('bird', b.x, by+8, 15, spriteH('bird', 15, 14), ()=>drawEmoji('🐦', b.x, by, 14));
+  });
+}
+
+// ------------------------------------------------- ambient life & atmosphere
+let deadAnchors = [], lushAnchors = [], anchorT = 99;
+function refreshAnchors(){
+  deadAnchors = []; lushAnchors = [];
+  state.grid.forEach((t,i)=>{
+    if(t.terrain==='dead' || t.terrain==='riverbed'){ if(sr(i*3)>0.5) deadAnchors.push(tileWorld(i)); }
+    else if(t.terrain==='soil' && t.health>70){ if(sr(i*5)>0.35) lushAnchors.push(tileWorld(i)); }
+    else if((t.terrain==='trees' || t.terrain==='wetland') && sr(i*7)>0.4) lushAnchors.push(tileWorld(i));
+  });
+}
+function drawAmbient(time){
+  const td = todInfo();
+  // dust motes drifting over the dead ground
+  if(deadAnchors.length && state.season!==3 && td.night<0.5){
+    ctx.fillStyle = 'rgb(214,190,140)';
+    const n = Math.min(26, deadAnchors.length*2);
+    for(let k=0;k<n;k++){
+      const a = deadAnchors[k % deadAnchors.length];
+      const ph = fract(time*0.07*(0.6+sr(k*3)) + sr(k*7));
+      const x = a.x - 30 + ph*70 + Math.sin(time*0.9+k)*6;
+      const y = a.y - 4 - Math.sin(ph*Math.PI)*14 - sr(k*5)*8;
+      ctx.globalAlpha = Math.sin(ph*Math.PI)*(0.3+sr(k)*0.25)*(1-td.night);
+      ctx.beginPath(); ctx.arc(x, y, 1+sr(k*11)*1.3, 0, 6.29); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+  // pollen & petals sparkling over thriving land
+  if(lushAnchors.length && state.season!==3 && td.night<0.4){
+    const n = Math.min(20, lushAnchors.length*2);
+    for(let k=0;k<n;k++){
+      const a = lushAnchors[k % lushAnchors.length];
+      const ph = fract(time*0.05*(0.5+sr(k*13)) + sr(k*17));
+      const x = a.x + Math.sin(time*0.6+k*2)*18;
+      const y = a.y - 6 - ph*26;
+      ctx.globalAlpha = Math.sin(ph*Math.PI)*0.55*(1-td.night*2);
+      ctx.fillStyle = k%3===0 ? '#ffd9e8' : '#fff7c8';
+      ctx.beginPath(); ctx.arc(x, y, 1.1+sr(k*19), 0, 6.29); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+  // fireflies rise at night over the living land
+  if(lushAnchors.length && td.night>0.45 && state.season!==3){
+    const n = Math.min(16, lushAnchors.length*2);
+    for(let k=0;k<n;k++){
+      const a = lushAnchors[k % lushAnchors.length];
+      const x = a.x + Math.sin(time*0.5+k*2.3)*22 + Math.sin(time*1.3+k)*6;
+      const y = a.y - 10 - Math.sin(time*0.4+k*1.7)*8;
+      const gl = 0.4+0.6*Math.abs(Math.sin(time*1.8+k*2.9));
+      ctx.globalAlpha = (td.night-0.45)/0.55 * gl;
+      ctx.fillStyle = '#fff2a0';
+      ctx.shadowColor = '#ffe36e'; ctx.shadowBlur = 6;
+      ctx.beginPath(); ctx.arc(x, y, 1.5, 0, 6.29); ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ---------------------------------------------------------------- render
+// cull tiles outside the viewport (the 14x14 world can be zoomed way in)
+function tileVisible(t){
+  const z = cam.zoom;
+  const sx = (t.c-t.r)*TW2*z + cam.x;
+  const sy = (t.c+t.r)*TH2*z + cam.y;
+  return sx > -120*z && sx < viewW+120*z && sy > -140*z && sy < viewH+90*z;
+}
+function render(time){
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  drawSky(time);
+  drawHorizon(time);
+  // world pass
+  ctx.setTransform(DPR*cam.zoom, 0, 0, DPR*cam.zoom, DPR*cam.x, DPR*cam.y);
+  for(let r=0;r<GRID;r++) for(let c=0;c<GRID;c++){
+    const t = state.grid[idx(c,r)];
+    if(tileVisible(t)) drawGround(t, time);
+  }
+  if(hovered>=0 && hovered!==selected) drawHighlight(hovered, time, tool==='select' ? '#ffffff' : '#ffe270');
+  if(selected>=0) drawHighlight(selected, time, '#ffd45e');
+  for(let r=0;r<GRID;r++) for(let c=0;c<GRID;c++){
+    const t = state.grid[idx(c,r)];
+    if(tileVisible(t)) drawTileObjects(t, idx(c,r), time);
+  }
+  drawWildlifeWorld(time);
+  drawAmbient(time);
+  drawParts(worldParts);
+  // screen pass
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  // time-of-day lighting wash (dusk glow, night blue)
+  const td = todInfo();
+  if(td.warm>0){ ctx.fillStyle = `rgba(255,150,60,${(td.warm*0.10).toFixed(3)})`; ctx.fillRect(0,0,viewW,viewH); }
+  if(td.night>0){ ctx.fillStyle = `rgba(13,20,52,${(td.night*0.32).toFixed(3)})`; ctx.fillRect(0,0,viewW,viewH); }
+  drawBirdsScreen(time);
+  drawWeather(time);
+  drawParts(screenParts);
+  if(state.paused || modalOpen){
+    ctx.fillStyle = 'rgba(20,16,8,.14)';
+    ctx.fillRect(0,0,viewW,viewH);
+  }
+}
+
+// ---------------------------------------------------------------- main loop
+let hudT = 0;
+function frame(now){
+  const dt = Math.min(0.1, (now-lastT)/1000 || 0.016);
+  lastT = now;
+  farmCache = farmStats();
+  const simDt = (state.paused || modalOpen) ? 0 : dt*state.speed;
+  if(simDt>0) simStep(simDt);
+  updateAgents(simDt);
+  updateWildlife(dt, farmCache.bio);
+  anchorT += dt;
+  if(anchorT > 4){ anchorT = 0; refreshAnchors(); }   // ambient dust/pollen/firefly anchors
+  updateParts(worldParts, dt);
+  updateParts(screenParts, dt);
+  render(now/1000);
+  hudT += dt;
+  if(hudT > 0.3){ hudT = 0; updateHUD(); if(document.getElementById('infoPanel').classList.contains('show') && selected>=0) openInfo(true); }
+  requestAnimationFrame(frame);
+}
+
+// ---------------------------------------------------------------- input
+const pointers = new Map();
+let panState = null, pinchState = null, downInfo = null, paintSet = null;
+
+function evPos(e){
+  const rect = canvas.getBoundingClientRect();
+  return {x:e.clientX-rect.left, y:e.clientY-rect.top};
+}
+function startPan(p){ panState = {x:p.x, y:p.y, camX:cam.x, camY:cam.y}; }
+function tryPaint(p){
+  const i = screenToTile(p.x, p.y);
+  if(i<0 || !paintSet || paintSet.has(i)) return;
+  paintSet.add(i);
+  applyTool(i);
+}
+function onPointerDown(e){
+  if(e.target!==canvas) return;
+  ensureAudio();
+  canvas.setPointerCapture && canvas.setPointerCapture(e.pointerId);
+  const p = evPos(e);
+  pointers.set(e.pointerId, p);
+  if(pointers.size===2){
+    // two fingers: always pan+pinch, cancel painting
+    downInfo = null; paintSet = null; panState = null;
+    const pts = [...pointers.values()];
+    pinchState = {
+      d0: Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y) || 1,
+      zoom0: cam.zoom,
+      mx:(pts[0].x+pts[1].x)/2, my:(pts[0].y+pts[1].y)/2,
+      camX:cam.x, camY:cam.y,
+    };
+    return;
+  }
+  if(pointers.size>2) return;
+  downInfo = {x:p.x, y:p.y, moved:false, button:e.button};
+  const td = toolDef(tool);
+  if(e.button===1 || e.button===2 || tool==='select'){
+    startPan(p);
+  }else if(td && td.paint){
+    paintSet = new Set();
+    tryPaint(p);
+  }
+  // non-paint build tools (pond) apply on clean click at pointerup
+}
+function onPointerMove(e){
+  const p = evPos(e);
+  if(pointers.has(e.pointerId)) pointers.set(e.pointerId, p);
+  if(e.target===canvas || pointers.has(e.pointerId)) hovered = screenToTile(p.x, p.y);
+  if(pinchState && pointers.size>=2){
+    const pts = [...pointers.values()];
+    const d = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y) || 1;
+    const mx = (pts[0].x+pts[1].x)/2, my = (pts[0].y+pts[1].y)/2;
+    const wx = (pinchState.mx - pinchState.camX)/pinchState.zoom0;
+    const wy = (pinchState.my - pinchState.camY)/pinchState.zoom0;
+    cam.zoom = pinchState.zoom0 * d/pinchState.d0;
+    cam.zoom = Math.max(fitZoom*0.55, Math.min(2.4, cam.zoom));
+    cam.x = mx - wx*cam.zoom;
+    cam.y = my - wy*cam.zoom;
+    clampCam();
+    return;
+  }
+  if(!pointers.has(e.pointerId)) return;
+  if(downInfo && Math.hypot(p.x-downInfo.x, p.y-downInfo.y)>6) downInfo.moved = true;
+  if(panState){
+    cam.x = panState.camX + (p.x-panState.x);
+    cam.y = panState.camY + (p.y-panState.y);
+    clampCam();
+  }else if(paintSet){
+    tryPaint(p);
+  }
+}
+function onPointerUp(e){
+  const p = evPos(e);
+  const wasDown = pointers.has(e.pointerId);
+  pointers.delete(e.pointerId);
+  if(!wasDown) return;
+  if(e.pointerType!=='mouse') hovered = -1;
+  if(pointers.size<2) pinchState = null;
+  if(pointers.size===1){
+    // one finger remains: resume panning from it
+    startPan([...pointers.values()][0]);
+    downInfo = null; paintSet = null;
+    return;
+  }
+  const clicked = downInfo && !downInfo.moved && downInfo.button!==1 && downInfo.button!==2;
+  if(clicked){
+    const i = screenToTile(p.x, p.y);
+    const td = toolDef(tool);
+    if(tool==='select'){
+      if(i>=0) applyTool(i);
+      else { selected = -1; closeInfo(); }
+    }else if(td && !td.paint && i>=0){
+      applyTool(i);
+    }
+  }
+  panState = null; paintSet = null; downInfo = null;
+}
+function onWheel(e){
+  e.preventDefault();
+  const p = evPos(e);
+  const wx = (p.x - cam.x)/cam.zoom, wy = (p.y - cam.y)/cam.zoom;
+  cam.zoom *= (e.deltaY<0 ? 1.12 : 0.89);
+  cam.zoom = Math.max(fitZoom*0.55, Math.min(2.4, cam.zoom));
+  cam.x = p.x - wx*cam.zoom;
+  cam.y = p.y - wy*cam.zoom;
+  clampCam();
+}
+
+// ---------------------------------------------------------------- UI
+let lastToastMsg = '', lastToastT = 0;
+function toast(msg){
+  // throttle identical messages (paint-drag can fire many at once)
+  const now = performance.now();
+  if(msg===lastToastMsg && now-lastToastT<1200) return;
+  lastToastMsg = msg; lastToastT = now;
+  const box = document.getElementById('toasts');
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = msg;
+  box.appendChild(el);
+  while(box.children.length>3) box.removeChild(box.firstChild);
+  setTimeout(()=>{ if(el.parentNode) el.parentNode.removeChild(el); }, 3700);
+}
+function showModal(html){
+  document.getElementById('modalBox').innerHTML = html;
+  document.getElementById('modalWrap').classList.add('show');
+  modalOpen = true;
+}
+function closeModal(){
+  document.getElementById('modalWrap').classList.remove('show');
+  modalOpen = false;
+}
+function toolCost(td){
+  if(td.id==='compost' && state.unlocks.upg_compost) return 2;
+  if((td.id==='sisters'||td.id==='wheat'||td.id==='clover'||td.id==='covercrop') && state.unlocks.upg_seeds) return Math.max(1, td.cost-1);
+  return td.cost;
+}
+function buildPalette(){
+  const pal = document.getElementById('palette');
+  pal.innerHTML = '';
+  const groups = {};
+  TOOLS.forEach(t=>{
+    if(t.shopId && !state.unlocks[t.shopId]) return;   // locked until bought in the shop
+    (groups[t.group] = groups[t.group]||[]).push(t);
+  });
+  Object.entries(groups).forEach(([gname, tools])=>{
+    const g = document.createElement('div');
+    g.className = 'toolgroup';
+    g.innerHTML = `<div class="grouplabel">${gname}</div>`;
+    const row = document.createElement('div');
+    row.className = 'grouprow';
+    tools.forEach(td=>{
+      const b = document.createElement('button');
+      b.className = 'tool';
+      b.id = 'tool_'+td.id;
+      b.title = td.tip;
+      const cost = toolCost(td);
+      b.innerHTML = `<span class="tem">${td.em}</span><span class="tnm">${td.name}</span><span class="tcost">${cost>0?'🪙'+cost:'free'}</span>`;
+      b.addEventListener('click', ()=>{
+        tool = td.id;
+        document.querySelectorAll('.tool').forEach(el=>el.classList.toggle('active', el.id==='tool_'+td.id));
+        canvas.classList.toggle('tooling', td.id!=='select');
+        toast(`${td.em} ${td.name}: ${td.tip}`);
+        SND.pop();
+      });
+      row.appendChild(b);
+    });
+    g.appendChild(row);
+    pal.appendChild(g);
+  });
+  // the shop lives at the end of the palette too
+  const g = document.createElement('div');
+  g.className = 'toolgroup';
+  g.innerHTML = `<div class="grouplabel">More</div>`;
+  const row = document.createElement('div');
+  row.className = 'grouprow';
+  const b = document.createElement('button');
+  b.className = 'tool shopbtn';
+  b.innerHTML = `<span class="tem">🛒</span><span class="tnm">Shop</span><span class="tcost">unlocks!</span>`;
+  b.addEventListener('click', ()=>{ openShop(); SND.pop(); });
+  row.appendChild(b);
+  g.appendChild(row);
+  pal.appendChild(g);
+  const sel = document.getElementById('tool_'+tool) || document.getElementById('tool_select');
+  if(sel) sel.classList.add('active');
+}
+// ---------------------------------------------------------------- shop
+let shopCat = 'Build';
+function openShop(cat){
+  if(cat) shopCat = cat;
+  const cats = ['Build','Animals','Upgrades'];
+  const tabs = cats.map(c=>`<button class="shoptab ${c===shopCat?'on':''}" data-shopcat="${c}">${c==='Build'?'🏗️':c==='Animals'?'🐑':'⬆️'} ${c}</button>`).join('');
+  const items = SHOP.filter(s=>s.cat===shopCat).map(s=>{
+    const owned = !!state.unlocks[s.id];
+    const can = state.coins>=s.cost;
+    return `<div class="shopitem ${owned?'owned':''}">
+      <div class="sem">${s.em}</div>
+      <div><div class="snm">${s.name}</div><div class="sds">${s.desc}</div></div>
+      <button class="shopbuy" data-buy="${s.id}" ${owned||!can?'disabled':''}>${owned?'✓ owned':'🪙'+s.cost}</button>
+    </div>`;
+  }).join('');
+  showModal(`
+    <h2>🛒 The Valley Shop</h2>
+    <div class="sub">Spend your surplus on new ways to heal the land. 🪙 <b>${state.coins}</b></div>
+    <div class="shoptabs">${tabs}</div>
+    ${items}
+    <div class="modalbtns"><button class="mbtn" data-act="close">Back to the land</button></div>
+  `);
+}
+function buyShopItem(id){
+  const s = SHOP.find(x=>x.id===id);
+  if(!s || state.unlocks[id]) return;
+  if(state.coins < s.cost){ toast(`Not enough coins! Need 🪙${s.cost}.`); SND.uhoh(); return; }
+  state.coins -= s.cost;
+  state.unlocks[id] = true;
+  toast(`🛒 ${s.em} ${s.name} unlocked!`);
+  confetti(30); SND.badge();
+  buildPalette();
+  checkBadges(); updateQuests(); save(); updateHUD();
+  openShop();   // refresh the open modal
+}
+function updateHUD(){
+  const f = farmCache || farmStats();
+  const sn = SEASONS[state.season];
+  document.getElementById('seasonPill').textContent = `${sn.emoji} ${sn.name} · Y${state.year} · D${state.day}`;
+  document.getElementById('coinsEl').textContent = state.coins;
+  document.getElementById('restoredEl').textContent = `${f.restored}/${f.totalSoil}`;
+  document.getElementById('goalFill').style.width = (f.totalSoil? f.restored/f.totalSoil*100 : 0)+'%';
+  const wq = Math.round(state.waterQuality);
+  const wqEl = document.getElementById('wqEl');
+  wqEl.textContent = wq;
+  wqEl.style.color = wq>=80 ? '#2c7fb8' : wq>=50 ? '#4a8f4d' : '#8a6b3a';
+  document.getElementById('wqFill').style.width = wq+'%';
+  document.getElementById('chipBees').classList.toggle('on', f.bio>=30);
+  document.getElementById('chipFlies').classList.toggle('on', f.bio>=45);
+  document.getElementById('chipBirds').classList.toggle('on', f.bio>=60);
+  TOOLS.forEach(td=>{
+    const el = document.getElementById('tool_'+td.id);
+    if(el) el.classList.toggle('cant', td.cost>0 && state.coins<td.cost);
+  });
+}
+function updateClockUI(){
+  document.getElementById('btnPause').textContent = state.paused ? '▶️' : '⏸️';
+  document.getElementById('btnPause').classList.toggle('on', state.paused);
+  document.getElementById('btnSpeed').textContent = state.speed+'×';
+  document.getElementById('btnSpeed').classList.toggle('on', state.speed>1);
+}
+const LEGENDS = {
+  health:{title:'Soil Health', lo:'poor', hi:'rich', c0:'hsl(8,68%,50%)', c1:'hsl(118,68%,50%)'},
+  water: {title:'Water & Moisture', lo:'dry', hi:'wet', c0:'hsl(46,72%,55%)', c1:'hsl(212,72%,55%)'},
+  bio:   {title:'Biodiversity', lo:'quiet', hi:'wild', c0:'hsl(8,68%,50%)', c1:'hsl(118,68%,50%)'},
+  om:    {title:'Organic Matter', lo:'thin', hi:'spongy', c0:'hsl(8,68%,50%)', c1:'hsl(118,68%,50%)'},
+  runoff:{title:'Runoff → River', lo:'muddy', hi:'clean', c0:'rgb(124,92,52)', c1:'rgb(58,158,214)'},
+};
+function setOverlay(ov){
+  overlay = ov;
+  document.querySelectorAll('.ovbtn').forEach(b=>b.classList.toggle('on', b.dataset.ov===ov));
+  const leg = document.getElementById('legend');
+  if(ov==='none'){ leg.classList.remove('show'); return; }
+  const L = LEGENDS[ov];
+  document.getElementById('legendTitle').textContent = L.title;
+  document.getElementById('legendBar').style.background = `linear-gradient(90deg,${L.c0},${L.c1})`;
+  document.getElementById('legendLo').textContent = L.lo;
+  document.getElementById('legendHi').textContent = L.hi;
+  leg.classList.add('show');
+  if(state.tutStep===4) setTut(5);
+}
+// ---------------------------------------------------------------- info panel
+let sciOpen = false;
+function healthFace(h){
+  if(h>=80) return '🤩'; if(h>=70) return '😊'; if(h>=55) return '🙂';
+  if(h>=40) return '😐'; return '😟';
+}
+function openInfo(refreshOnly){
+  const panel = document.getElementById('infoPanel');
+  if(selected<0){ panel.classList.remove('show'); return; }
+  const t = state.grid[selected];
+  const names = {soil:'Field', dead:'Dead Ground 💀', riverbed:'Dry Creekbed 🏜️', pond:'Pond 💧', water:'The River 🌊',
+    trees:'Hedgerow 🌳', barn:'The Barn 🏠', coop:'Chicken Coop 🐔',
+    market:'Farm Market 🏪', silo:'Grain Silo 🌾', greenhouse:'Greenhouse 🪴', beehive:'Beehive 🐝', orchard:'Orchard 🍎',
+    raintank:'Rain Tank 🛢️', wetland:'Wetland 🌾', stable:'Stable 🐴', wormfarm:'Worm Farm 🪱', birdhouse:'Birdhouse 🐦',
+    well:'Well ⛲', windmill:'Windmill 🌬️', solar:'Solar Panels ☀️', mushroom:'Mushroom Logs 🍄', berrybush:'Berry Bushes 🫐'};
+  const BUILD_INFO = {
+    market:'Sells your produce every day: +3🪙.', silo:'Every harvest sells +15%.',
+    greenhouse:'Nearby tiles can be planted even in winter, and crops grow faster.',
+    beehive:'Nearby crops yield +20% — and the air hums with bees.',
+    orchard:'A perennial food forest — fruit coins every season, roots that hold the bank.',
+    raintank:'Keeps nearby soil moist through droughts.', wetland:'Filters runoff before it reaches the river. Frogs approve.',
+    stable:'A gentle horse watches over the fields.', wormfarm:'Soil life blooms nearby — and compost gets cheap.',
+    birdhouse:'Songbirds eat pests for free.', well:'Sweet groundwater for the soil beside it.',
+    windmill:'Clean power: +2🪙 a day.', solar:'Sunshine to coins: +2🪙 a day.',
+    mushroom:'Fungal threads knit nearby soil together.', berrybush:'Berries each season + blossoms for pollinators.'};
+  let body = '';
+  if(t.terrain==='dead'){
+    const feat = t.feature==='saltflat' ? '🧂 A crust of salt poisons this ground — it needs extra feeding.'
+               : t.feature==='gully' ? '⛏️ An erosion gully — the storms carved this scar.'
+               : t.feature==='swale' ? '〰️ An old swale scar in the dust.'
+               : '';
+    const need = t.feature==='saltflat' ? 30 : 25;
+    body = `
+      <div class="hbarw"><div class="hbar" style="width:${Math.max(3,(t.health/need*100)|0).toFixed(0)}%; background:linear-gradient(90deg,#9a8340,#c98a3d)"></div></div>
+      <div style="font-weight:800; font-size:13px">Waking up: <b>${t.health.toFixed(0)}</b>/${need}</div>
+      <div class="chiprow">💀 Nothing can grow here yet — the soil is DEAD.</div>
+      ${feat?`<div class="chiprow">${feat}</div>`:''}
+      ${t.compost>0?`<div class="chiprow">🪣 compost working — ${t.compost.toFixed(0)}d left</div>`:''}
+      ${t.crop?`<div class="chiprow">🌿 pioneers cracking the crust — ${Math.round(Math.min(1,t.crop.growth)*100)}%</div>`:''}
+      ${t.graze?`<div class="chiprow">🐐 goats browsing the scrub</div>`:''}
+      <div class="chiprow">💡 Feed it: 🪣 compost, 🌿 pioneer plants, or 🐐 goats. Water nearby helps it all work faster.</div>`;
+  }else if(t.terrain==='riverbed'){
+    body = `<div class="chiprow">🏜️ A cracked creekbed where water once ran. Complete the <b>Dry Wash</b> restore goal and the creek will flow again!</div>`;
+  }else if(BUILD_SET.has(t.terrain)){
+    body = `<div class="chiprow">${BUILD_INFO[t.terrain]||''}</div>`;
+  }else if(t.terrain==='soil'){
+    const chips = [];
+    if(t.crop){
+      const c = CROPS[t.crop.type];
+      chips.push(`${c.em} ${c.name} — ${Math.round(Math.min(1,t.crop.growth)*100)}% grown`);
+    }
+    if(t.graze){
+      const g = t.graze;
+      const who = g.kind==='team' ? '🐄+🐔 team' : (GRAZE[g.kind]?GRAZE[g.kind].em:'🐾')+' '+(g.kind==='duckT'?'ducks':g.kind);
+      chips.push(`${who} grazing — ${Math.max(0,g.days).toFixed(1)} days left${g.synergy?' ✨':''}`);
+    }
+    if(!t.crop && !t.graze) chips.push('💤 resting & regenerating');
+    if(t.compost>0) chips.push(`🪣 compost — ${t.compost.toFixed(0)}d`);
+    if(t.flowers>0.3) chips.push('🌼 wildflowers');
+    if(t.soil.microbial>=70) chips.push('🪱 worms!');
+    if(t.health>=70) chips.push('💚 restored!');
+    body = `
+      <div class="hbarw"><div class="hbar" style="width:${t.health.toFixed(0)}%"></div></div>
+      <div style="font-weight:800; font-size:13px">Health <b>${t.health.toFixed(0)}</b>/100</div>
+      <div class="chiprow">${chips.join(' · ')}</div>
+      <button class="sciBtn" id="sciToggle">🔬 Soil Science ${sciOpen?'▲':'▼'}</button>
+      <div id="sciBox" class="${sciOpen?'show':''}"></div>`;
+  }else if(t.terrain==='pond'){
+    body = `<div class="chiprow">Stores rain, waters nearby soil, and keeps the farm safe in droughts. Dragonflies love it.</div>`;
+  }else if(t.terrain==='water'){
+    const wq = Math.round(state.waterQuality);
+    const mood = wq>=80 ? '✨ Crystal clear — fish and ducks are home!' : wq>=55 ? '🙂 Clearing up — keep the banks planted!' : '🟤 Murky with runoff from bare soil…';
+    body = `
+      <div class="hbarw"><div class="hbar" style="width:${wq}%; background:linear-gradient(90deg,#9a8340,#4a9fd0)"></div></div>
+      <div style="font-weight:800; font-size:13px">Water Quality <b>${wq}</b>/100</div>
+      <div class="chiprow">${mood}</div>
+      <div class="chiprow">💡 Plant 🌳 trees on the banks — riparian buffer roots filter the runoff. Keep bare soil and grazing away from the water.</div>`;
+  }else if(t.terrain==='trees'){
+    body = `<div class="chiprow">A living hedgerow — shelter from wind and rain for neighbors, and a home for bees, butterflies and songbirds.</div>`;
+  }else{
+    body = `<div class="chiprow">${t.terrain==='barn'?'Home sweet home. The heart of the farm.':'Cozy quarters for the cluck crew.'}</div>`;
+  }
+  const regName = (REGIONS.find(r=>r.id===t.region)||{}).name || '';
+  panel.innerHTML = `<h3>${healthFace(isLandT(t)?t.health:80)} ${names[t.terrain]||t.terrain} <span style="font-size:11px;color:var(--soft)">${regName}</span>
+    <button class="closex" id="infoClose">✕</button></h3>${body}`;
+  panel.classList.add('show');
+  document.getElementById('infoClose').onclick = ()=>{ selected = -1; closeInfo(); };
+  const sci = document.getElementById('sciToggle');
+  if(sci){
+    sci.onclick = ()=>{ sciOpen = !sciOpen; openInfo(true); };
+    if(sciOpen) fillSci(t);
+  }
+  if(!refreshOnly) SND.pop();
+}
+function fillSci(t){
+  const box = document.getElementById('sciBox');
+  if(!box) return;
+  let rows = '';
+  SOIL_ATTRS.forEach(k=>{
+    const v = t.soil[k];
+    rows += `<div class="soilrow"><div class="lbl" title="${ATTR_INFO[k].tip}">${ATTR_INFO[k].label}</div>
+      <div class="bar"><div class="fill" style="width:${v.toFixed(0)}%; background:${v>=70?'#4a8f4d':v>=45?'#a8c04a':'#c98a3d'}"></div></div>
+      <div class="num">${v.toFixed(0)}</div></div>`;
+  });
+  const f = farmCache || farmStats();
+  box.innerHTML = rows + `<div class="scinote">Farm Wildness: <b>${f.bio.toFixed(0)}</b>/100 — grows with microbes, flowers, diverse crops, ponds & trees. Wildlife returns at 30 🐝 · 45 🦋 · 60 🐦.</div>`;
+}
+function closeInfo(){ document.getElementById('infoPanel').classList.remove('show'); }
+
+// ---------------------------------------------------------------- tutorial
+const TUT = [
+  {html:'🌄 <b>This valley is DYING.</b><br>Gray dust, dead trees, a muddy trickle of a river. Only the little green corner by the barn still breathes.<br><br>You\'re going to bring it ALL back.<br><br>🖐️ <b>Drag</b> to look around · 🔍 <b>scroll or pinch</b> to zoom.', btn:'Show me'},
+  {html:'💀 <b>Dead ground won\'t grow crops.</b><br>It has to be FED first. Pick 🪣 <b>Compost</b> or 🌿 <b>Pioneers</b> from the palette and paint some gray DEAD tiles near your green corner.<br><br>Watch them wake up: 🌅 <b>REVIVED!</b>', btn:null},
+  {html:'🌅 <b>It\'s working!</b><br>Revived ground becomes cracked-but-workable soil. Days pass on their own — try ⏸️ pause and <b>1×/2×/3×</b> speed up top.<br><br>Now plant a real crop on your WORKABLE soil: 🌽 <b>3 Sisters</b> feeds the soil while it grows.', btn:null},
+  {html:'🐄 <b>Animal teamwork!</b><br>Tap 🐄 <b>Cattle</b> and place them on open workable land. Then send 🐔 <b>Chickens</b> to the <b>same tile</b> — they follow the herd for ✨ soil magic!', btn:null},
+  {html:'🎯 <b>Heal region by region.</b><br>The 🎯 quest panel (top left) shows the region you\'re restoring and side tasks that pay coins.<br><br>🌊 The river is <b>murky</b> — plant 🌳 trees on its banks to filter runoff.<br><br>🛒 Surplus coins? The <b>Shop</b> unlocks goats, wetlands, greenhouses & more.<br><br>🏆 <b>Restore the whole valley</b>: every tile alive, clean water, wildlife home!', btn:'Restore the land! 🚜'},
+];
+function setTut(step){
+  state.tutStep = step;
+  const el = document.getElementById('tut');
+  if(state.tutDone || step>=TUT.length){
+    el.classList.remove('show');
+    state.tutDone = true;
+    save();
+    return;
+  }
+  const t = TUT[step];
+  el.innerHTML = `<span class="skip" id="tutSkip">skip tutorial</span>${t.html}`
+    + (t.btn ? `<button class="tnext" id="tutNext">${t.btn}</button>` : '');
+  el.classList.add('show');
+  document.getElementById('tutSkip').onclick = ()=>{ state.tutDone = true; el.classList.remove('show'); save(); };
+  const nx = document.getElementById('tutNext');
+  if(nx) nx.onclick = ()=>setTut(step+1);
+  save();
+}
+
+// ---------------------------------------------------------------- save/load
+function save(){
+  try{
+    state.sound = soundOn;
+    localStorage.setItem(SAVE_KEY, JSON.stringify(state));
+  }catch(e){}
+}
+function load(){
+  try{
+    const raw = localStorage.getItem(SAVE_KEY);
+    if(!raw) return false;
+    const d = JSON.parse(raw);
+    // v5 saves only — older keys (rootweave_v4 etc.) describe a different, smaller
+    // world and simply start a fresh valley rather than crash
+    if(!d || d.v!==5 || !Array.isArray(d.grid) || d.grid.length!==GRID*GRID) return false;
+    const fresh = newGame();
+    state = Object.assign(fresh, d);
+    state.stats = Object.assign({}, DEFAULT_STATS, d.stats||{});
+    // defensive: every field added after launch must never crash an older save
+    if(typeof state.waterQuality!=='number' || isNaN(state.waterQuality)) state.waterQuality = 28;
+    state.waterQuality = clamp(state.waterQuality);
+    if(typeof state.tod!=='number' || isNaN(state.tod)) state.tod = 0.3;
+    state.tod = ((state.tod%1)+1)%1;
+    if(typeof state.regionIdx!=='number' || isNaN(state.regionIdx) || state.regionIdx<0) state.regionIdx = 0;
+    state.regionIdx = Math.min(REGIONS.length, state.regionIdx|0);
+    if(!Array.isArray(state.tasks)) state.tasks = [];
+    state.tasks = state.tasks.filter(x=>x && taskDef(x.id));
+    if(!state.tasksDone || typeof state.tasksDone!=='object') state.tasksDone = {};
+    if(!state.unlocks || typeof state.unlocks!=='object') state.unlocks = {};
+    if(typeof state.washRestored!=='boolean') state.washRestored = false;
+    ['riparianTip','incomeTip','deadTip','deadTip2'].forEach(k=>{ if(typeof state[k]!=='boolean') state[k] = false; });
+    const VALID_TERRAIN = new Set(['soil','dead','water','pond','trees','barn','coop','riverbed'].concat(BUILDINGS));
+    state.grid = d.grid.map((st,i)=>{
+      const t = Object.assign(newTile(i%GRID, (i/GRID)|0), st);
+      t.region = regionOf(t.c, t.r);
+      if(!VALID_TERRAIN.has(t.terrain)) t.terrain = 'soil';
+      if(t.crop && !CROPS[t.crop.type]) t.crop = null;
+      if(t.graze && t.graze.kind!=='team' && !GRAZE[t.graze.kind]) t.graze = null;
+      SOIL_ATTRS.forEach(k=>{ if(typeof t.soil[k]!=='number' || isNaN(t.soil[k])) t.soil[k] = 10; });
+      recalc(t);
+      return t;
+    });
+    // respawn animals
+    agents = [];
+    state.grid.forEach((t,i)=>{
+      if(t.terrain==='stable') spawnAnimals(i, 'horse', 1);
+      if(!t.graze) return;
+      const kind = t.graze.kind;
+      if(kind==='cattle' || kind==='team') spawnAnimals(i, 'cow', 2);
+      if(kind==='chicken' || kind==='team') spawnAnimals(i, 'chicken', 3);
+      if(kind==='sheep' || kind==='goat' || kind==='pig') spawnAnimals(i, kind, 2);
+      if(kind==='duckT') spawnAnimals(i, 'duckT', 3);
+    });
+    soundOn = state.sound!==false;
+    return true;
+  }catch(e){ return false; }
+}
+
+// ---------------------------------------------------------------- init
+function layout(){
+  viewW = window.innerWidth;
+  viewH = window.innerHeight;
+  DPR = Math.min(2, window.devicePixelRatio || 1);
+  canvas.width = Math.round(viewW*DPR);
+  canvas.height = Math.round(viewH*DPR);
+  fitZoom = Math.max(0.3, Math.min((viewW-30)/(GRID*TILE_W+60), (viewH-170)/(GRID*TILE_H+120)));
+  clampCam();
+}
+function init(){
+  canvas = document.getElementById('game');
+  ctx = canvas.getContext('2d');
+  state = newGame();
+  const loaded = load();
+  loadSprites();
+  layout();
+  centerCamera();
+  buildPalette();
+  // canvas input
+  canvas.addEventListener('pointerdown', onPointerDown);
+  window.addEventListener('pointermove', onPointerMove);
+  window.addEventListener('pointerup', onPointerUp);
+  window.addEventListener('pointercancel', onPointerUp);
+  canvas.addEventListener('wheel', onWheel, {passive:false});
+  canvas.addEventListener('contextmenu', e=>e.preventDefault());
+  window.addEventListener('resize', layout);
+  // HUD buttons
+  document.getElementById('btnPause').addEventListener('click', ()=>{
+    state.paused = !state.paused;
+    updateClockUI();
+    toast(state.paused ? '⏸️ Paused — build freely, time waits for you.' : '▶️ Time flows again!');
+    SND.pop(); save();
+  });
+  document.getElementById('btnSpeed').addEventListener('click', ()=>{
+    state.speed = state.speed>=3 ? 1 : state.speed+1;
+    if(state.paused){ state.paused = false; }
+    updateClockUI();
+    toast(`⏩ Speed ${state.speed}×`);
+    SND.pop(); save();
+  });
+  document.getElementById('btnGoals').addEventListener('click', openGoals);
+  document.getElementById('btnSound').addEventListener('click', function(){
+    soundOn = !soundOn;
+    this.textContent = soundOn ? '🔊' : '🔇';
+    if(soundOn) SND.pop();
+    save();
+  });
+  document.getElementById('btnSound').textContent = soundOn ? '🔊' : '🔇';
+  // overlays
+  document.querySelectorAll('.ovbtn').forEach(b=>{
+    b.addEventListener('click', ()=>{ setOverlay(b.dataset.ov); SND.pop(); });
+  });
+  // modal delegation (incl. shop buys & tabs)
+  document.getElementById('modalWrap').addEventListener('click', e=>{
+    const buyEl = e.target.closest('[data-buy]');
+    if(buyEl){ buyShopItem(buyEl.dataset.buy); return; }
+    const catEl = e.target.closest('[data-shopcat]');
+    if(catEl){ openShop(catEl.dataset.shopcat); SND.pop(); return; }
+    const actEl = e.target.closest('[data-act]');
+    if(!actEl){ if(e.target===document.getElementById('modalWrap')) closeModal(); return; }
+    const act = actEl.dataset.act;
+    if(act==='close') closeModal();
+    else if(act==='reset') resetGame();
+  });
+  // shop + quest panel
+  document.getElementById('btnShop').addEventListener('click', ()=>{ openShop(); SND.pop(); });
+  document.getElementById('qHead').addEventListener('click', ()=>{
+    const qp = document.getElementById('questPanel');
+    qp.classList.toggle('min');
+    document.getElementById('qCaret').textContent = qp.classList.contains('min') ? '▲' : '▼';
+    SND.pop();
+  });
+  // keyboard (desktop bonus)
+  window.addEventListener('keydown', e=>{
+    if(e.target.tagName==='INPUT') return;
+    if(e.key===' '){ e.preventDefault(); document.getElementById('btnPause').click(); }
+    if(e.key==='Escape'){
+      if(modalOpen) closeModal();
+      else { tool='select'; document.querySelectorAll('.tool').forEach(el=>el.classList.toggle('active', el.id==='tool_select')); canvas.classList.remove('tooling'); }
+    }
+    if(e.key==='+'||e.key==='='){ cam.zoom=Math.min(2.4,cam.zoom*1.15); clampCam(); }
+    if(e.key==='-'){ cam.zoom=Math.max(fitZoom*0.55,cam.zoom*0.87); clampCam(); }
+    const n = parseInt(e.key,10);
+    if(n>=1 && n<=TOOLS.length){
+      const el = document.getElementById('tool_'+TOOLS[n-1].id);
+      if(el) el.click();
+    }
+  });
+  updateHUD();
+  updateClockUI();
+  updateQuests();
+  refreshAnchors();
+  if(!state.tutDone) setTut(state.tutStep||0);
+  if(loaded) toast('🌄 Welcome back to the valley!');
+  else showSplash();
+  requestAnimationFrame(frame);
+}
+function showSplash(){
+  showModal(`
+    <h2>🌱 Rootweave</h2>
+    <img src="sprites/title_farm.jpg" alt="" style="width:100%; border-radius:14px; border:2px solid var(--line); display:block" onerror="this.style.display='none'">
+    <div class="eventkid"><b>The valley is dying.</b><br>Dust where wheat once stood, a dry creek, a muddy river — and one small green corner by the barn.<br><br>Weave the roots back together. Restore the dying land.</div>
+    <div class="lesson">🌱 Feed the dead ground, plant many kinds, move the animals, shelter the river — and life returns, field by field.</div>
+    <div class="modalbtns"><button class="mbtn big" data-act="close">Restore the land! 🚜</button></div>
+  `);
+}
+window.addEventListener('load', init);
+</script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+# dev files & backups — not part of the published game
+index_original_backup.html
+index_v2_turnbased.html
+index_v3_iso.html
+index_v4_water.html
+CLAUDE.md
+SPRITE_PROMPTS.md
+data/
+docs/
+public/
+src/
+scripts/
+node_modules/
+# ship only the two jpgs the game loads at runtime
+sprites/*.jpg
+!sprites/bg_hills.jpg
+!sprites/title_farm.jpg
