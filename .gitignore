@@ -3,6 +3,8 @@ index_original_backup.html
 index_v2_turnbased.html
 index_v3_iso.html
 index_v4_water.html
+index_v5_dyingland.html
+index_v6_campaign.html
 CLAUDE.md
 SPRITE_PROMPTS.md
 data/
@@ -14,3 +16,23 @@ node_modules/
 # ship only WebP sprites (small, fast on mobile); source PNG/JPG stay local
 sprites/*.png
 sprites/*.jpg
+
+# Grok animation source clips (large; not shippable as-is) + dev scratch
+sprites/animations/
+sprites/_sheet.html
+play_now.js
+playtest*.js
+revive_test.js
+
+# local art pipeline / failed experiments (not for phone)
+sprites/cartoon_backup/
+sprites/realistic_flat_parked/
+sprites/realistic_slab_failed/
+sprites/tile_hero_src/
+sprites/tile_pre_hero/
+sprites/tile_pre_rebuild/
+sprites/prop_pre_hero/
+sprites/diorama/
+sprites/*_old.webp
+sprites/*_bad.webp
+sprites/river_fix_plan.json
