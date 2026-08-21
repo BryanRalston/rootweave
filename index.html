@@ -13018,9 +13018,9 @@ function basinShore(kind, cx, cy, s){
 function fadePlateEdges(pctx, w, h){
   pctx.save();
   pctx.globalCompositeOperation = 'destination-in';
-  pctx.filter = 'blur(26px)';
+  pctx.filter = 'blur(42px)';
   pctx.fillStyle = '#fff';
-  pctx.fillRect(40, 32, w-80, h-58);
+  pctx.fillRect(70, 54, w-140, h-96);
   pctx.restore();
 }
 function offsetPath(pts, px){
@@ -13219,6 +13219,22 @@ function paintValleyAtlas(cv){
     lctx.drawImage(plate, 0, 0);
     fadePlateEdges(lctx, land.width, land.height);
     blitAtlasImageToView(ctx, land);
+    const north = ctx.createLinearGradient(0, V.sky-8, 0, V.sky+78);
+    north.addColorStop(0, 'rgba(214,190,150,0.55)');
+    north.addColorStop(0.45, 'rgba(160,150,110,0.18)');
+    north.addColorStop(1, 'rgba(160,150,110,0)');
+    ctx.fillStyle = north;
+    ctx.fillRect(0, V.sky-12, V.w, 92);
+    const side = ctx.createLinearGradient(0, 0, 70, 0);
+    side.addColorStop(0, 'rgba(14,26,18,0.28)');
+    side.addColorStop(1, 'rgba(14,26,18,0)');
+    ctx.fillStyle = side;
+    ctx.fillRect(0, V.sky, 80, V.h);
+    const sideR = ctx.createLinearGradient(V.w, 0, V.w-70, 0);
+    sideR.addColorStop(0, 'rgba(14,26,18,0.28)');
+    sideR.addColorStop(1, 'rgba(14,26,18,0)');
+    ctx.fillStyle = sideR;
+    ctx.fillRect(V.w-80, V.sky, 80, V.h);
   }
 
   const wq = campaignWaterQuality();
@@ -13253,8 +13269,9 @@ function paintValleyAtlas(cv){
     const deep = mixHex('#10282c', '#163034', 0.2-murk*0.12);
     const body = mixHex('#163438', '#1c4040', 0.22-murk*0.1);
     function stemHalf(i, t){
-      const taper = t>0.68 ? Math.max(0.08, 1-(t-0.68)/0.32) : 1;
-      return (10 + 4.2*Math.sin(t*10.5) + 2.4*Math.sin(t*4.8) + (t>0.2&&t<0.38?4:0)) * taper;
+      const bodyW = 10 + 4.2*Math.sin(t*10.5) + 2.4*Math.sin(t*4.8) + (t>0.2&&t<0.38?4:0);
+      if(t>0.74) return bodyW*0.7 + (t-0.74)*42;
+      return bodyW;
     }
     function creekHalf(i, t){ return 5.6 + 2.1*Math.sin(t*12) + Math.sin(t*6); }
     fillWidthStrip(wx, stemPts, (i,t)=> stemHalf(i,t)+12, 'rgba(62,50,28,0.28)');
