@@ -32,7 +32,7 @@
   box-shadow:0 0 0 3px rgba(234,181,67,.35);
 }
 button:focus-visible, .tool:focus-visible, .hudbtn:focus-visible, .mbtn:focus-visible,
-.jnode:focus-visible, .vmap-cell:focus-visible, .prestige-pill:focus-visible, .ovbtn:focus-visible{
+.jnode:focus-visible, .vmap-cell:focus-visible, .vland:focus-visible, .prestige-pill:focus-visible, .ovbtn:focus-visible{
   outline:2px solid rgba(234,181,67,.95);
   outline-offset:2px;
 }
@@ -459,74 +459,133 @@ body.home-plot #questPanel{
   font-weight:800; font-size:14px; padding:10px; cursor:pointer; color:#5a3d10; box-shadow:0 3px 0 var(--gold2);
 }
 #tut .tnext:active{transform:translateY(2px); box-shadow:0 1px 0 var(--gold2)}
-/* ---------- journey (level select) ---------- */
+/* ---------- journey (valley atlas) ---------- */
 #journey{position:fixed; inset:0; z-index:62; display:none; flex-direction:column; align-items:center; overflow-y:auto; background:#0e1a12}
 #journey.show{display:flex}
 #journey .jbg{position:fixed; inset:0; background:url('sprites/title_farm.webp') center/cover no-repeat; opacity:.55; pointer-events:none}
 #journey .jshade{position:fixed; inset:0; background:linear-gradient(180deg, rgba(8,14,8,.74) 0%, rgba(8,14,8,.38) 42%, rgba(8,14,8,.8) 100%); pointer-events:none}
-#journey .jwrap{position:relative; z-index:1; width:100%; max-width:520px; padding:24px 18px calc(30px + env(safe-area-inset-bottom,0px))}
+#journey .jwrap{position:relative; z-index:1; width:100%; max-width:680px; padding:20px 16px calc(30px + env(safe-area-inset-bottom,0px))}
 #journey h1{color:#ffeece; font-size:30px; margin:4px 0 2px; text-align:center; text-shadow:0 2px 8px rgba(0,0,0,.6)}
 #journey .jsub{color:#e8d9ae; font-size:13.5px; font-weight:700; text-align:center; margin-bottom:12px; text-shadow:0 1px 4px rgba(0,0,0,.7)}
-/* Pack 0 schematic valley map */
-.vmap-board{z-index:2; background:transparent}
-.vmap-plate{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center;
-  pointer-events:none;z-index:0;opacity:.62;filter:saturate(.88) brightness(.72) contrast(1.05)}
-.vmap-cell{border:none;border-radius:12px;padding:6px 4px;font-family:inherit;cursor:pointer;
-  background:linear-gradient(180deg,rgba(255,248,228,.42),rgba(232,214,170,.28));
-  border:1px solid rgba(255,236,200,.38);display:flex;flex-direction:column;align-items:center;justify-content:center;
-  min-height:0;box-shadow:inset 0 1px 0 rgba(255,255,255,.28), 0 2px 8px rgba(8,12,6,.18);text-align:center;
-  backdrop-filter:blur(1.5px)}
-.vmap-cell.empty{opacity:.28;cursor:default;background:rgba(40,50,30,.10);border:1px dashed rgba(220,200,160,.22);box-shadow:none}
-.vmap-cell.scenic{opacity:.62;cursor:default;background:linear-gradient(180deg,rgba(210,230,190,.28),rgba(160,180,140,.16));
-  border:1px dashed rgba(230,220,180,.28); box-shadow:none}
-.vmap-cell.river-col{box-shadow:inset 0 0 0 1px rgba(70,140,190,.18)}
-.vmap-cell.vmap-span{min-height:100%; display:flex; flex-direction:column; justify-content:center}
-.vmap-cell.locked{filter:grayscale(.7) sepia(.18) brightness(.88);opacity:.62;cursor:default;
-  background:linear-gradient(180deg,rgba(180,160,120,.28),rgba(120,100,70,.22))}
-.vmap-cell.available{box-shadow:0 0 0 2px rgba(234,181,67,.5), inset 0 1px 0 rgba(255,255,255,.35)}
-.vmap-cell.in_progress{box-shadow:0 0 0 2px rgba(100,180,255,.5)}
-.vmap-cell.restored,.vmap-cell.mastered{
-  background:linear-gradient(180deg,rgba(186,228,150,.52),rgba(120,176,80,.38)); border:1.5px solid rgba(70,130,48,.7);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.4), 0 2px 8px rgba(40,80,30,.22);
-  position:relative;
-}
-.vmap-cell.restored::after,.vmap-cell.mastered::after{
-  content:'✓'; position:absolute; top:3px; right:4px; font-size:11px; font-weight:900; color:#2a6a20;
-  text-shadow:0 1px 0 rgba(255,255,255,.7);
-}
-.vmap-cell.mastered::after{ content:'★'; color:#8a6010; }
-.vmap-cell.restored .vmap-cell-sub,.vmap-cell.mastered .vmap-cell-sub{color:#2a5a20;opacity:1;font-weight:800}
+/* One-farm valley map — land, house, water; locked neighbors fog (not a padlock grid) */
+.vmap{position:relative; width:100%; aspect-ratio:4/3; min-height:260px; border-radius:18px; overflow:hidden; margin:0 0 14px;
+  border:2px solid var(--line);
+  box-shadow:0 0 0 3px #6b4423, 0 0 0 5px #c4a06a, 0 10px 28px rgba(0,0,0,.5);
+  background:
+    url('sprites/bg_hills_summer.webp') center top / 100% 44% no-repeat,
+    linear-gradient(180deg, #8eb56e 0%, #6a914c 28%, #547840 70%, #4a6a38 100%)}
+.vmap-valley{aspect-ratio:4/3}
+.vmap-hills{position:absolute; left:0; right:0; top:0; height:40%; object-fit:cover; object-position:center top;
+  pointer-events:none; z-index:0; opacity:.8; filter:saturate(.9) brightness(.9)}
+.vmap-ground{position:absolute; inset:22% 0 0 0; z-index:0; pointer-events:none;
+  background:
+    radial-gradient(ellipse 70% 50% at 30% 80%, rgba(90,140,60,.18), transparent 60%),
+    url('sprites/tile_grass_lush.webp') 8px 10px / 90px 68px repeat;
+  opacity:.2}
+.vmap-stream{position:absolute; inset:0; z-index:4; pointer-events:none}
+.vmap-water-main{
+  position:absolute; left:48%; top:2%; width:13%; height:72%;
+  background:
+    linear-gradient(180deg, rgba(90,160,200,.5), rgba(50,110,150,.78) 40%, rgba(60,120,155,.66)),
+    url('sprites/tile_river_ns.webp') center / 80% auto repeat-y;
+  border-radius:40px;
+  transform:rotate(-5deg);
+  box-shadow:inset 0 0 14px rgba(200,230,245,.32), 0 0 0 3px rgba(70,110,70,.2);
+  opacity:.88; filter:saturate(1.05)}
+.vmap-water-creek{
+  position:absolute; left:10%; top:12%; width:42%; height:9%;
+  background:
+    linear-gradient(90deg, rgba(80,150,185,.35), rgba(55,120,160,.78)),
+    url('sprites/tile_river_ew.webp') left center / auto 140% repeat-x;
+  border-radius:40px; transform:rotate(7deg);
+  box-shadow:inset 0 0 10px rgba(180,220,240,.28); opacity:.82}
+.vmap-water-wash{
+  position:absolute; left:54%; top:48%; width:34%; height:7%;
+  background:linear-gradient(90deg, rgba(150,125,75,.12), rgba(130,110,70,.38));
+  border-radius:40px; transform:rotate(-28deg); opacity:.55}
+.vmap-rtile{position:absolute; width:11%; height:auto; transform:translate(-50%,-50%);
+  filter:drop-shadow(0 2px 3px rgba(0,0,0,.28)); opacity:.88; pointer-events:none}
+.vmap-pond{position:absolute; width:13%; height:auto; transform:translate(-50%,-50%);
+  filter:drop-shadow(0 2px 4px rgba(0,0,0,.3)); opacity:.9; pointer-events:none}
+.vmap-path{position:absolute; z-index:2; pointer-events:none;
+  background:url('sprites/tile_path.webp') center / 28px 22px repeat-x;
+  height:7%; opacity:.7; border-radius:20px; filter:saturate(.85) brightness(.92)}
+.vmap-board{position:absolute; inset:8px; z-index:3; display:grid;
+  grid-template-columns:repeat(4,1fr); grid-template-rows:repeat(4,1fr); gap:3px}
+.vland{position:relative; z-index:3; border:none; padding:0; margin:0; font-family:inherit; cursor:pointer;
+  border-radius:12px; overflow:hidden; min-width:0; min-height:0;
+  background-color:rgba(86,120,62,.42);
+  background-size:58px 44px; background-repeat:repeat;
+  box-shadow:inset 0 0 0 1px rgba(255,236,200,.12);
+  transition:transform .12s ease, box-shadow .12s ease, filter .2s ease}
+.vland:active{transform:scale(.98)}
+.vland-nm{position:absolute; left:50%; bottom:6%; transform:translateX(-50%);
+  font-size:10px; font-weight:800; color:#fff6dc; letter-spacing:.01em; text-align:center; line-height:1.15;
+  text-shadow:0 1px 2px #1a1208, 0 0 8px rgba(0,0,0,.75); pointer-events:none; width:92%;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden}
+.vland-mark{position:absolute; left:50%; top:14%; width:38%; height:auto; transform:translateX(-50%);
+  pointer-events:none; filter:drop-shadow(0 3px 5px rgba(0,0,0,.4)); object-fit:contain}
+.vland.locked{cursor:default; filter:saturate(.4) brightness(.82)}
+.vland.locked .vland-fog{position:absolute; inset:0; pointer-events:none;
+  background:linear-gradient(180deg, rgba(210,220,214,.28), rgba(70,80,72,.22) 55%, rgba(30,38,32,.2));
+  box-shadow:inset 0 0 18px rgba(200,210,200,.12)}
+.vland.locked .vland-nm{opacity:.7; color:#ece6d6; font-weight:700}
+.vland.locked .vland-mark{opacity:.4; filter:grayscale(.45) brightness(.88) drop-shadow(0 2px 3px rgba(0,0,0,.3))}
+.vland.scenic{cursor:default; pointer-events:none; opacity:.72; filter:saturate(.85)}
+.vland.available{z-index:5; box-shadow:inset 0 0 0 2px rgba(234,181,67,.7)}
+.vland.in_progress{z-index:5; box-shadow:inset 0 0 0 2px rgba(100,180,255,.7)}
+.vland.restored,.vland.mastered{z-index:4; filter:saturate(1.06) brightness(1.03);
+  box-shadow:inset 0 0 0 1.5px rgba(70,130,48,.45)}
+.vland.restored .vland-nm::after{content:' ✓'}
+.vland.mastered .vland-nm::after{content:' ★'}
+.vland.hub,.vland.vland-home{z-index:6}
+.vland-home{
+  background-image:url('sprites/tile_soil_rich.webp'), url('sprites/tile_grass_lush.webp');
+  background-size:44px 34px, 56px 42px; background-position:18% 36%, 72% 62%;
+  box-shadow:inset 0 0 0 2px rgba(234,181,67,.45)}
+.vland-hub{z-index:7;
+  background-image:url('sprites/tile_grass_lush.webp'), url('sprites/tile_path.webp');
+  background-size:56px 42px, 40px 30px; background-position:center, 50% 88%;
+  box-shadow:inset 0 0 0 2px rgba(234,181,67,.5)}
+.vland-hub .vland-house{position:absolute; left:50%; top:-6%; width:46%; height:auto; transform:translateX(-50%);
+  pointer-events:none; filter:drop-shadow(0 5px 8px rgba(0,0,0,.45)); object-fit:contain}
+.vland-yard{background-image:url('sprites/tile_soil_rich.webp'), url('sprites/tile_grass_lush.webp');
+  background-size:40px 30px, 52px 40px}
+.vland-hub.locked{filter:saturate(.78) brightness(.92)}
+.vland-hub.locked .vland-house{opacity:.94}
+.vland-hub.locked .vland-fog{background:linear-gradient(180deg, transparent 30%, rgba(20,28,20,.16))}
+.vland.biome-garden{background-image:url('sprites/tile_soil_rich.webp')}
+.vland.biome-pasture{background-image:url('sprites/tile_pasture.webp')}
+.vland.biome-orchard{background-image:url('sprites/tile_grass_lush.webp')}
+.vland.biome-riparian{background-image:url('sprites/tile_grass_lush.webp')}
+.vland.biome-marsh{background-image:url('sprites/tile_water_pond.webp'), url('sprites/tile_grass_lush.webp');
+  background-size:60px 46px, 56px 42px}
+.vland.biome-heartland{background-image:url('sprites/tile_grass_lush.webp')}
+.vland.biome-ridge{background-image:url('sprites/tile_dirt_cracked.webp')}
+.vland.biome-market{background-image:url('sprites/tile_path.webp')}
+.vland.biome-dust{background-image:url('sprites/tile_saltflat.webp'), url('sprites/tile_dirt_cracked.webp');
+  background-size:56px 42px, 60px 46px}
+.vland.biome-wild{background-image:url('sprites/tile_dead.webp')}
+.vmap-fog{position:absolute; inset:0; pointer-events:none; z-index:8;
+  background:radial-gradient(ellipse 90% 80% at 40% 72%, transparent 58%, rgba(8,14,8,.16) 100%)}
+.vmap-compass{position:absolute; top:8px; right:10px; z-index:9; pointer-events:none;
+  color:rgba(255,238,206,.55); font-size:11px; font-weight:800; text-shadow:0 1px 3px #000}
 .jnode.done .jnm::after{ content:' ✓'; color:#4a8f4d; }
 .jnode.done .jst{ color:#3a7a30; }
-.vmap-cell-em{font-size:18px;line-height:1.1}
-.vmap-cell-nm{font-size:10px;font-weight:800;color:#3a2414;line-height:1.15;margin-top:2px}
-.vmap-cell-sub{font-size:8px;font-weight:700;color:#6b5535;opacity:.85;line-height:1.1;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.vmap-hub{width:100%;margin-top:6px;padding:8px;border-radius:10px;border:1.5px solid rgba(234,181,67,.5);
-  background:linear-gradient(180deg,#ffe9a8,#e8b84a);font:800 12px inherit;cursor:pointer;color:#3a2414}
-.vmap-hub.locked{filter:grayscale(.7);opacity:.6}
-.vmap{position:relative; width:100%; aspect-ratio:16/11; border-radius:18px; overflow:hidden; margin:0 0 16px;
-  border:2px solid rgba(245,230,190,.28); box-shadow:0 8px 28px rgba(0,0,0,.45);
-  background:
-    radial-gradient(ellipse 50% 40% at 55% 30%, rgba(70,120,90,.35) 0%, transparent 60%),
-    radial-gradient(ellipse 40% 35% at 72% 55%, rgba(160,130,80,.22) 0%, transparent 55%),
-    linear-gradient(165deg,#243c2c 0%,#162418 40%,#2e2a1c 70%,#221e14 100%)}
-.vmap-river{position:absolute; left:48%; top:8%; width:14%; height:72%;
-  background:linear-gradient(180deg,rgba(80,140,180,.75),rgba(50,90,120,.55));
-  border-radius:40% 60% 50% 50%; transform:rotate(-12deg); filter:blur(.3px); opacity:.85}
-.vmap-fog{position:absolute; inset:0; pointer-events:none;
-  background:radial-gradient(ellipse 80% 70% at 50% 50%, transparent 40%, rgba(8,14,8,.35) 100%)}
-.vmap-pin{position:absolute; transform:translate(-50%,-50%); border:none; cursor:pointer; font-family:inherit;
-  width:44px; height:44px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:20px;
-  background:linear-gradient(180deg,#fff6dc,#e8d4a0); border:2px solid #6b4423; box-shadow:0 3px 10px rgba(0,0,0,.4);
-  transition:transform .12s ease, box-shadow .12s}
-.vmap-pin:active{transform:translate(-50%,-50%) scale(.94)}
-.vmap-pin .vmap-lab{position:absolute; top:100%; left:50%; transform:translateX(-50%); margin-top:3px;
-  white-space:nowrap; font-size:10px; font-weight:800; color:#ffeece; text-shadow:0 1px 3px #000; pointer-events:none}
-.vmap-pin.locked{filter:grayscale(.9); opacity:.55; cursor:default}
-.vmap-pin.available{box-shadow:0 0 0 3px rgba(234,181,67,.55), 0 3px 10px rgba(0,0,0,.4)}
-.vmap-pin.in_progress{box-shadow:0 0 0 3px rgba(100,180,255,.6), 0 3px 10px rgba(0,0,0,.4)}
-.vmap-pin.restored,.vmap-pin.mastered{background:linear-gradient(180deg,#d8f0c0,#a8d078); border-color:#4a7a30}
-.vmap-pin.hub{background:linear-gradient(180deg,#ffe9a8,#e8b84a); width:50px; height:50px; font-size:24px}
+.vmap-hub{width:100%;margin:0 0 12px;padding:10px 12px;border-radius:12px;border:2px solid var(--line);
+  background:var(--glass);font:800 13px inherit;cursor:pointer;color:var(--wood2);
+  box-shadow:inset 0 1px 0 rgba(255,250,230,.7), 0 3px 8px rgba(10,8,2,.25)}
+.vmap-hub.locked{filter:grayscale(.35);opacity:.75}
+.jledger{margin:0 0 16px;border-radius:16px;border:2px solid var(--line);background:var(--glass);
+  box-shadow:inset 0 1px 0 rgba(255,250,230,.75), 0 4px 12px rgba(10,8,2,.28); overflow:hidden}
+.jledger > summary{cursor:pointer; font:800 13.5px inherit; color:var(--wood2); padding:12px 14px; list-style:none}
+.jledger > summary::-webkit-details-marker{display:none}
+.jledger > summary::after{content:' ▾'; opacity:.55}
+.jledger[open] > summary::after{content:' ▴'}
+.jledger .jnode{width:calc(100% - 24px); margin:0 12px 12px}
+.jledger .jnode:last-child{margin-bottom:14px}
+.jledger .jnode.locked{filter:saturate(.45) brightness(.92); opacity:.78}
+.jledger .jnode.locked .jem{filter:none}
 .jcontinue{display:block; width:100%; margin:0 0 14px; padding:14px 16px; border-radius:16px; border:2px solid var(--gold2);
   background:linear-gradient(180deg,#e8c86a,#c98f1e); color:var(--ink); font:800 16px inherit; cursor:pointer;
   box-shadow:0 4px 0 #8a6010, 0 8px 20px rgba(0,0,0,.35); text-align:left;
@@ -744,6 +803,9 @@ body.reduce-motion #badgeBanner{ transition:none; }
 .pmap-nm{flex:1}
 .pmap-stars{font-size:11px}
 @media(max-width:640px){
+  .vland-nm{font-size:8.5px}
+  .vland-hub .vland-house{width:80%}
+  .vmap{min-height:232px}
   /* Compact mobile chrome — map owns the center (IMPROVEMENTS P0) */
   #topbar{
     gap:4px; padding:max(6px, env(safe-area-inset-top, 0px)) 6px 4px;
@@ -834,6 +896,9 @@ body.reduce-motion #badgeBanner{ transition:none; }
   }
   .tool{width:48px; min-height:48px}
   #journey .jwrap{padding-left:max(14px, env(safe-area-inset-left,0px)); padding-right:max(14px, env(safe-area-inset-right,0px));}
+  .vland-nm{font-size:9px}
+  .vland-hub .vland-house{width:78%}
+  .vmap{min-height:240px}
 }
 .jscrap-btn{ box-shadow:0 0 0 1px rgba(234,181,67,.25); }
 .jfreeplay{ cursor:pointer; font-family:inherit; width:100%; }
@@ -907,7 +972,7 @@ body.reduce-motion #badgeBanner{ transition:none; }
   <div class="jbg"></div><div class="jshade"></div>
   <div class="jwrap">
     <h1>🌱 Rootweave</h1>
-    <div class="jsub">The journey home — heal the land, one plot at a time</div>
+    <div class="jsub">Your valley — house, garden, water, and the fields you heal</div>
     <div id="jpath"></div>
   </div>
 </div>
@@ -1826,6 +1891,40 @@ function parcelMapState(P, c){
   if(!parcelIsUnlocked(P, c)) return 'locked';
   if((st.restorePct|0) > 0 || (c.cur===P.lvIndex && !homesteadMode)) return 'in_progress';
   return 'available';
+}
+function parcelUnlockHint(P){
+  const ur = (P && P.unlockRules) || {};
+  if(ur.type==='parcel_cleared' && ur.parcelId){
+    const need = valleyParcel(ur.parcelId);
+    return need ? `Unlock by clearing ${need.name}` : 'Unlock by clearing an earlier parcel';
+  }
+  if(ur.type==='parcel_cleared_any' && ur.parcelIds){
+    const names = ur.parcelIds.map(id=>(valleyParcel(id)||{}).name||id).filter(Boolean);
+    return names.length ? `Unlock by clearing ${names.join(' or ')}` : 'Unlock via neighboring fields';
+  }
+  if(ur.type==='parcel_cleared_all' && ur.parcelIds){
+    const names = ur.parcelIds.map(id=>(valleyParcel(id)||{}).name||id).filter(Boolean);
+    return names.length ? `Unlock after ${names.join(' + ')}` : 'Unlock after key fields';
+  }
+  if(ur.type==='always') return 'Open from the start';
+  return '';
+}
+function parcelBiomeClass(P){
+  const cell = atlasGet((P.origin&&P.origin.c)|0, (P.origin&&P.origin.r)|0);
+  const b = (cell && cell.biome) || (P.id==='homestead'?'garden':'wild');
+  return 'biome-' + b;
+}
+function parcelLandMark(P){
+  const marks = {
+    orchard_slope:'sprites/build_orchard.webp',
+    wind_ridge:'sprites/build_windmill.webp',
+    market_cross:'sprites/build_market.webp',
+    dust_flats:'sprites/deco_deadtree.webp',
+    river_reach:'sprites/build_barn.webp',
+    back_paddock:'sprites/build_coop.webp',
+    school_garden:'sprites/build_greenhouse.webp',
+  };
+  return marks[P.id] || '';
 }
 function parcelIsUnlocked(P, c){
   c = c || camp;
@@ -12789,7 +12888,7 @@ function runJourneySoftTips(){
   }
   // 4) Map pins before design goals (cold-start map literacy)
   if(!camp.tipsShown.map_pin_hover && !camp.tipsShown.map_pin_story_toast){
-    if(offerJourneySoftTip('map_pin_story_toast', '📍 Hover a pin for its story · click to play that plot', 550)) return;
+    if(offerJourneySoftTip('map_pin_story_toast', '🌾 Tap a field to walk it. Fogged land opens as you heal neighbors.', 550)) return;
   }
   // 5) Prestige rise
   if(camp._prestigeRose && !camp.tipsShown.dual_prestige){
@@ -12860,133 +12959,207 @@ function openScrapbook(){
   showModal(`<h2>📔 Your scrapbook</h2><div class="sub">${n? n+' moment'+(n===1?'':'s')+' earned — keep going.':'Light retention loop — moments you earn.'}</div>${firstLine}${rows}
     <div class="modalbtns"><button class="mbtn" data-act="close">Close</button></div>`);
 }
+function atlasPct(c, r, w, h){
+  const padX = 2.2, padY = 3.2;
+  const innerW = 100 - padX * 2;
+  const innerH = 100 - padY * 2;
+  return {
+    left: padX + (c / ATLAS_W) * innerW,
+    top: padY + (r / ATLAS_H) * innerH,
+    width: (w / ATLAS_W) * innerW,
+    height: (h / ATLAS_H) * innerH,
+  };
+}
+function buildValleyWaterMarks(host){
+  const wq = campaignWaterQuality();
+  const murk = Math.max(0, Math.min(1, 1 - wq/100));
+  const stream = document.createElement('div');
+  stream.className = 'vmap-stream';
+  stream.setAttribute('aria-hidden', 'true');
+  const main = document.createElement('div');
+  main.className = 'vmap-water-main';
+  main.style.filter = `saturate(${1.05 - murk*0.45}) brightness(${1 - murk*0.18})`;
+  const creek = document.createElement('div');
+  creek.className = 'vmap-water-creek';
+  const wash = document.createElement('div');
+  wash.className = 'vmap-water-wash';
+  stream.appendChild(main);
+  stream.appendChild(creek);
+  stream.appendChild(wash);
+  const pond = document.createElement('img');
+  pond.className = 'vmap-pond';
+  pond.src = 'sprites/tile_water_pond.webp';
+  pond.alt = '';
+  const pp = atlasPct(3, 3, 6, 6);
+  pond.style.left = (pp.left + pp.width/2).toFixed(2) + '%';
+  pond.style.top = (pp.top + pp.height/2).toFixed(2) + '%';
+  stream.appendChild(pond);
+  const samples = [
+    {c:24, r:3, src:'sprites/tile_river_ns.webp'},
+    {c:25, r:8, src:'sprites/tile_river_ns.webp'},
+    {c:24, r:13, src:'sprites/tile_river_ew.webp'},
+    {c:25, r:18, src:'sprites/tile_river_ns.webp'},
+    {c:16, r:5, src:'sprites/tile_river_ew.webp'},
+    {c:20, r:6, src:'sprites/tile_river_ew.webp'},
+    {c:8, r:4, src:'sprites/tile_river_ew.webp'},
+  ];
+  samples.forEach(S=>{
+    const img = document.createElement('img');
+    img.className = 'vmap-rtile';
+    img.src = S.src;
+    img.alt = '';
+    const rc = atlasPct(S.c, S.r, 4, 3);
+    img.style.left = (rc.left + rc.width/2).toFixed(2) + '%';
+    img.style.top = (rc.top + rc.height/2).toFixed(2) + '%';
+    stream.appendChild(img);
+  });
+  host.appendChild(stream);
+}
+function wireValleyLand(cell, P, ms){
+  const oneLiner = (P.desc && String(P.desc).trim()) ? P.desc : (P.teaser || P.name);
+  const hint = parcelUnlockHint(P);
+  const stateWord = ms==='restored'?'restored':ms==='mastered'?'mastered':ms==='in_progress'?'in progress':ms==='locked'?'still fogged':ms==='hub'?'home':'open';
+  cell.title = oneLiner + ' · ' + stateWord;
+  cell.setAttribute('aria-label', [P.name, oneLiner, ms==='locked'?hint:stateWord].filter(Boolean).join('. '));
+  cell.addEventListener('mouseenter', ()=>{
+    if(!camp.tipsShown) camp.tipsShown = {};
+    if(camp.tipsShown.map_pin_hover) return;
+    camp.tipsShown.map_pin_hover = true;
+    if(typeof save==='function') try{ save(); }catch(e){}
+    toast(`${P.name} — ${oneLiner}`, {throttleMs:4000});
+  });
+  cell.addEventListener('click', ()=>{
+    if(P.kind==='hub'){
+      const hsOn = !!(camp.homestead && camp.homestead.unlocked);
+      if(!hsOn){ toast('🏡 Homestead opens after you clear Home Patch.'); SND.uhoh(); return; }
+      SND.pop(); enterHomestead();
+      return;
+    }
+    if(P.lvIndex==null) return;
+    if(ms==='locked'){
+      toast(`${P.name} — ${hint || 'heal a neighboring field first.'}`);
+      SND.uhoh(); return;
+    }
+    journeyPick(P.lvIndex);
+  });
+}
+function placeValleyLand(P, hsOn, houseTier){
+  const ms = parcelMapState(P, camp);
+  const landState = (P.kind==='hub' && !hsOn) ? 'locked' : ms;
+  const land = document.createElement('button');
+  land.type = 'button';
+  land.className = 'vland ' + parcelBiomeClass(P) + ' ' + landState;
+  if(P.id==='home_garden') land.classList.add('vland-home');
+  if(P.kind==='hub') land.classList.add('vland-hub');
+  if(P.kind==='hub'){
+    const house = document.createElement('img');
+    house.className = 'vland-house';
+    house.src = 'sprites/house_t' + houseTier + '.webp';
+    house.alt = '';
+    land.appendChild(house);
+  } else {
+    const markSrc = parcelLandMark(P);
+    if(markSrc && landState!=='locked'){
+      const mark = document.createElement('img');
+      mark.className = 'vland-mark';
+      mark.src = markSrc;
+      mark.alt = '';
+      land.appendChild(mark);
+    }
+  }
+  if(landState==='locked'){
+    const fog = document.createElement('span');
+    fog.className = 'vland-fog';
+    land.appendChild(fog);
+  }
+  const nm = document.createElement('span');
+  nm.className = 'vland-nm';
+  nm.textContent = P.id==='home_garden' ? 'Home Patch' : P.name;
+  land.appendChild(nm);
+  wireValleyLand(land, P, landState);
+  return land;
+}
 function buildValleyMapEl(){
   ensureParcelState(camp);
   const wrap = document.createElement('div');
-  wrap.className = 'vmap vmap-grid';
-  const wq = campaignWaterQuality();
-  const murk = Math.max(0, Math.min(1, 1 - wq/100));
-  // Soft blue water wash — not neon scribble lines
-  const stroke = `rgba(${Math.round(55+murk*40)},${Math.round(120-murk*40)},${Math.round(165-murk*50)},.55)`;
-  const fillSoft = `rgba(${Math.round(60+murk*30)},${Math.round(130-murk*35)},${Math.round(170-murk*40)},.22)`;
-  const plate = document.createElement('img');
-  plate.className = 'vmap-plate';
-  plate.alt = '';
-  plate.src = 'sprites/valley_map_plate.webp';
-  plate.onerror = function(){
-    this.onerror = function(){ this.remove(); };
-    this.src = 'sprites/title_farm.webp';
-  };
-  wrap.appendChild(plate);
-  // 4×3 geographic board + homestead strip
+  wrap.className = 'vmap vmap-valley';
+  wrap.setAttribute('role', 'group');
+  wrap.setAttribute('aria-label', 'Your valley — house, garden, water, and fields');
+  const hills = document.createElement('img');
+  hills.className = 'vmap-hills';
+  hills.src = 'sprites/bg_hills_summer.webp';
+  hills.alt = '';
+  wrap.appendChild(hills);
+  const ground = document.createElement('div');
+  ground.className = 'vmap-ground';
+  wrap.appendChild(ground);
+  buildValleyWaterMarks(wrap);
+  const board = document.createElement('div');
+  board.className = 'vmap-board';
+  const hs = camp.homestead || defaultHomestead();
+  const hsOn = !!hs.unlocked;
+  const houseTier = Math.max(0, Math.min(5, hsOn ? (hs.houseTier|0) : 0));
   const COLS = 4, ROWS = 3;
-  const grid = document.createElement('div');
-  grid.className = 'vmap-board';
-  grid.style.cssText = `display:grid;grid-template-columns:repeat(${COLS},1fr);grid-template-rows:repeat(${ROWS},1fr);gap:6px;position:relative;width:100%;aspect-ratio:4/3;padding:10px;box-sizing:border-box;z-index:2`;
-  // River SVG BEHIND cells (soft corridor, not double pins)
-  const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
-  svg.setAttribute('viewBox','0 0 100 100');
-  svg.setAttribute('preserveAspectRatio','none');
-  svg.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1';
-  const stem = atlasMainStemNorm();
-  const d = stem.map((p,i)=> (i?'L':'M')+(p.x*100).toFixed(1)+','+(p.y*100).toFixed(1)).join(' ');
-  const creekPath = 'M 12 18 C 28 16, 42 14, 58 22';
-  const washPath = 'M 90 82 C 78 74, 68 62, 62 48';
-  svg.innerHTML = `
-    <path d="${d}" fill="none" stroke="${fillSoft}" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="${d}" fill="none" stroke="${stroke}" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="${creekPath}" fill="none" stroke="${stroke}" stroke-width="2.2" stroke-linecap="round" opacity=".55"/>
-    <path d="${washPath}" fill="none" stroke="rgba(150,125,75,.28)" stroke-width="1.8" stroke-linecap="round" opacity=".5"/>
-    <text x="62" y="7" fill="rgba(255,238,206,.45)" font-size="3.2" font-weight="700">N</text>
-  `;
-  wrap.appendChild(svg);
-  // Cell occupancy — ONE parcel per cell (no River Reach duplicate)
   const cells = Array.from({length: ROWS}, ()=> Array(COLS).fill(null));
   VALLEY_PARCELS.forEach(P=>{
     if(!P.mapCell || P.kind==='hub') return;
     const [c,r] = P.mapCell;
     if(r>=0 && r<ROWS && c>=0 && c<COLS && !cells[r][c]) cells[r][c] = P;
   });
-  // River Reach: single tall parcel spanning two rows in col 2 (geographic corridor)
   const riverP = valleyParcel('river_reach');
-  if(riverP && riverP.mapCell){
-    const [rc, rr] = riverP.mapCell;
-    if(rr===0 && rc===2){
-      cells[0][2] = riverP;
-      cells[1][2] = {__spanOf: 'river_reach'}; // skip second render
-    }
+  if(riverP && riverP.mapCell && riverP.mapCell[0]===2 && riverP.mapCell[1]===0){
+    cells[0][2] = riverP;
+    cells[1][2] = {__spanOf:'river_reach'};
   }
   for(let r=0;r<ROWS;r++){
     for(let c=0;c<COLS;c++){
       const slot = cells[r][c];
-      if(slot && slot.__spanOf) continue; // covered by rowspan cell above
-      const P = slot;
-      const cell = document.createElement(P ? 'button' : 'div');
-      if(P) cell.type = 'button';
-      cell.className = 'vmap-cell' + (P ? '' : ' empty');
-      cell.style.gridColumn = String(c + 1);
-      cell.style.gridRow = String(r + 1);
-      if(P && P.id==='river_reach'){
-        cell.style.gridRow = '1 / span 2';
-        cell.classList.add('vmap-span');
-      }
-      if(P){
-        const ms = parcelMapState(P, camp);
-        cell.className += ' ' + ms;
-        const grants = (P.grantUnlocks||[]).slice(0,2).join(', ');
-        // AJ — restored/mastered read clearly (not just teaser tokens)
-        const sub = ms==='locked' ? (P.teaser||'')
-          : (ms==='restored' || ms==='mastered') ? (ms==='mastered'?'★ mastered':'✓ restored')
-          : (ms==='in_progress' ? 'in progress'
-          : (P.id==='river_reach' ? 'main river corridor' : (grants?('🔓 '+grants):P.teaser||'open')));
-        cell.innerHTML = `<span class="vmap-cell-em">${ms==='locked'?'🔒':P.em}</span>
-          <span class="vmap-cell-nm">${P.name}</span>
-          <span class="vmap-cell-sub">${sub}</span>`;
-        // Prefer parcel one-liner (desc) on hover title; teaser is short tag only
-        const oneLiner = (P.desc && String(P.desc).trim()) ? P.desc : (P.teaser || P.name);
-        cell.title = oneLiner + ' · ' + (ms==='restored'?'restored ✓':ms==='mastered'?'mastered ★':ms);
-        // AT3 — first map-pin hover teaches the one-liner once (if not already in title focus)
-        cell.addEventListener('mouseenter', ()=>{
-          if(!camp.tipsShown) camp.tipsShown = {};
-          if(camp.tipsShown.map_pin_hover) return;
-          camp.tipsShown.map_pin_hover = true;
-          if(typeof save==='function') try{ save(); }catch(e){}
-          toast(`${P.em||'📍'} ${P.name} — ${oneLiner}`, {throttleMs:4000});
-        });
-        cell.addEventListener('click', ()=>{
-          if(P.lvIndex==null) return;
-          if(ms==='locked'){ toast(`🔒 ${P.name} — ${P.teaser||'locked'}`); SND.uhoh(); return; }
-          journeyPick(P.lvIndex);
-        });
+      if(slot && slot.__spanOf) continue;
+      if(slot){
+        const land = placeValleyLand(slot, hsOn, houseTier);
+        land.style.gridColumn = String(c+1);
+        land.style.gridRow = slot.id==='river_reach' ? '1 / span 2' : String(r+1);
+        if(slot.id==='river_reach') land.classList.add('vmap-span');
+        board.appendChild(land);
       } else {
-        // Fill empty board holes with soft scenic flavor (bottom-right was a bare cell)
-        const flavor = (r===2 && c===3)
-          ? {em:'🛤️', nm:'River Road', sub:'lane to the crossroads'}
-          : (r===1 && c===2)
-            ? {em:'💧', nm:'Main stem', sub:'river corridor'}
-            : {em:'🌾', nm:'Open land', sub:'restored in time'};
-        cell.className += ' scenic';
-        cell.innerHTML = `<span class="vmap-cell-em">${flavor.em}</span>
-          <span class="vmap-cell-nm">${flavor.nm}</span>
-          <span class="vmap-cell-sub">${flavor.sub}</span>`;
-        cell.title = flavor.nm+' — scenic (not a plot)';
+        const scenic = document.createElement('div');
+        scenic.className = 'vland biome-garden scenic';
+        scenic.setAttribute('aria-hidden', 'true');
+        scenic.style.gridColumn = String(c+1);
+        scenic.style.gridRow = String(r+1);
+        const nm = document.createElement('span');
+        nm.className = 'vland-nm';
+        nm.textContent = (r===2 && c===3) ? 'Lane' : 'Meadow';
+        scenic.appendChild(nm);
+        board.appendChild(scenic);
       }
-      if(c===2) cell.classList.add('river-col');
-      grid.appendChild(cell);
     }
   }
-  wrap.appendChild(grid);
-  // Homestead bar under grid
-  const hub = document.createElement('button');
-  hub.type = 'button';
-  hub.className = 'vmap-hub ' + parcelMapState(valleyParcel('homestead'), camp);
-  const hsOn = !!(camp.homestead && camp.homestead.unlocked);
-  hub.innerHTML = `🏡 Homestead home base · ${hsOn?'open':'clear Home Garden'}`;
-  hub.addEventListener('click', ()=>{
-    if(!hsOn){ toast('🏡 Clear Home Garden first.'); SND.uhoh(); return; }
-    SND.pop(); enterHomestead();
-  });
-  wrap.appendChild(hub);
+  const hubP = valleyParcel('homestead');
+  if(hubP){
+    const hub = placeValleyLand(hubP, hsOn, houseTier);
+    hub.style.gridColumn = '1 / span 2';
+    hub.style.gridRow = '4';
+    board.appendChild(hub);
+  }
+  const yard = document.createElement('div');
+  yard.className = 'vland biome-pasture scenic vland-yard';
+  yard.setAttribute('aria-hidden', 'true');
+  yard.style.gridColumn = '3 / span 2';
+  yard.style.gridRow = '4';
+  const ynm = document.createElement('span');
+  ynm.className = 'vland-nm';
+  ynm.textContent = 'Pasture';
+  yard.appendChild(ynm);
+  board.appendChild(yard);
+  wrap.appendChild(board);
+  const fogRim = document.createElement('div');
+  fogRim.className = 'vmap-fog';
+  wrap.appendChild(fogRim);
+  const compass = document.createElement('div');
+  compass.className = 'vmap-compass';
+  compass.textContent = 'N';
+  wrap.appendChild(compass);
   return wrap;
 }
 function buildJourney(){
@@ -13001,7 +13174,7 @@ function buildJourney(){
   if(jh) jh.textContent = freeplayOn ? '🏆 Freeplay Valley' : '🌱 Rootweave';
   if(js) js.textContent = freeplayOn
     ? 'All plots cleared — sandbox Homestead or revisit any field'
-    : 'The journey home — heal the land, one plot at a time';
+    : 'Your valley — house, garden, water, and the fields you heal';
   // AZ — Share near freeplay title (before path list / CTA)
   if(freeplayOn){
     const shareTop = document.createElement('button');
@@ -13114,87 +13287,65 @@ function buildJourney(){
   prest.querySelector('#jAbout').addEventListener('click', ()=>{ SND.pop(); openAboutCredits(); });
   prest.querySelector('#jNew').addEventListener('click', ()=>{ SND.pop(); confirmNewGame(); });
 
-  // Schematic valley map (Pack 0)
+  // Geographic valley — house, garden, water, plots as land
   const mapHead = document.createElement('div');
   mapHead.className = 'jsub';
   mapHead.style.marginBottom = '8px';
-  mapHead.textContent = 'The valley — painted map · click a parcel to walk it';
+  mapHead.textContent = 'Your farm — tap a field. Fogged neighbors open as you heal.';
   path.appendChild(mapHead);
   path.appendChild(buildValleyMapEl());
-  // AV2 map-pin tip moved to runJourneySoftTips (one soft tip per Journey open)
-
-  // Homestead card
-  const hsEl = document.createElement('button');
-  const hsOn = !!hs.unlocked;
-  hsEl.className = 'jnode'+(hsOn?'':' locked')+(homesteadMode?' cur':'');
-  hsEl.innerHTML = `<span class="jem">${hsOn?'🏡':'🔒'}</span>
-    <span><span class="jnm">Homestead (home base)</span><div class="jts">${hsOn?`Bank 🪙${camp.bank|0} · House tier ${hs.houseTier|0}/${HS_HOUSE.length-1} · Home ★${homePrestigeScore()}`:'Clear Home Garden to unlock'}</div></span>
-    <span class="jst">${hsOn?(homesteadMode?'▶ here':'▶ visit'):'🔒'}</span>`;
-  hsEl.addEventListener('click', ()=>{
-    if(!hs.unlocked){ toast('🏡 Clear Home Garden first — then this place is yours.'); SND.uhoh(); return; }
-    SND.pop(); enterHomestead();
-  });
-  path.appendChild(hsEl);
 
   const mapEl = document.createElement('button');
-  mapEl.className = 'jnode';
-  mapEl.innerHTML = `<span class="jem">📋</span>
-    <span><span class="jnm">Property summary</span><div class="jts">Yard schematic + parcel list + prestige</div></span>
-    <span class="jst">▶ view</span>`;
+  mapEl.type = 'button';
+  mapEl.className = 'vmap-hub';
+  mapEl.innerHTML = '📋 Property summary';
   mapEl.addEventListener('click', ()=>{ SND.pop(); openPropertyMap(); });
   path.appendChild(mapEl);
 
   // Design goals (F2) — light bank rewards for homestead actions
   path.appendChild(renderDesignGoalsEl());
 
-  // Parcel list (secondary)
+  // Parcel ledger (secondary — map is the farm)
+  const ledger = document.createElement('details');
+  ledger.className = 'jledger';
+  const ledSum = document.createElement('summary');
+  ledSum.textContent = 'Field names & unlocks';
+  ledger.appendChild(ledSum);
   VALLEY_PARCELS.filter(P=>P.kind==='plot').forEach(P=>{
     const ms = parcelMapState(P, camp);
     const unlocked = ms !== 'locked';
     const done = ms==='restored' || ms==='mastered';
     const isCur = !homesteadMode && state && P.lvIndex===state.lv;
     const el = document.createElement('button');
+    el.type = 'button';
     el.className = 'jnode'+(unlocked?'':' locked')+(done?' done':'')+((isCur&&unlocked)?' cur':'');
     const stars = done ? '⭐'.repeat(Math.max(1, (camp.parcels[P.id]&&camp.parcels[P.id].bestStars)||1)) : '';
-    const st = !unlocked ? `🔒 ${P.teaser||''}`
+    const st = !unlocked ? 'fogged'
              : done ? `✓ done<br>${stars}`
              : (isCur && levelHasProgress()) ? '▶ continue' : '▶ play';
     const grants = (P.grantUnlocks||[]).slice(0,3).join(', ');
     const sys = (P.systemsTaught||[]).slice(0,2).join(', ');
-    // AB — human unlock path (not raw teaser tokens)
-    let unlockHint = '';
-    const ur = P.unlockRules || {};
-    if(ur.type==='parcel_cleared' && ur.parcelId){
-      const need = valleyParcel(ur.parcelId);
-      unlockHint = need ? `Unlock by clearing ${need.name}` : 'Unlock by clearing an earlier parcel';
-    }else if(ur.type==='parcel_cleared_any' && ur.parcelIds){
-      const names = ur.parcelIds.map(id=>(valleyParcel(id)||{}).name||id).filter(Boolean);
-      unlockHint = names.length ? `Unlock by clearing ${names.join(' or ')}` : 'Unlock via side parcels';
-    }else if(ur.type==='parcel_cleared_all' && ur.parcelIds){
-      const names = ur.parcelIds.map(id=>(valleyParcel(id)||{}).name||id).filter(Boolean);
-      unlockHint = names.length ? `Unlock after ${names.join(' + ')}` : 'Unlock after key parcels';
-    }else if(ur.type==='always'){
-      unlockHint = 'Open from the start';
-    }
+    const unlockHint = parcelUnlockHint(P);
     const tipBits = [P.name, P.desc, unlockHint, grants?('Unlocks: '+grants):''].filter(Boolean);
     el.title = tipBits.join(' — ');
     el.setAttribute('aria-label', tipBits.join('. '));
     const jtsLine = !unlocked
       ? (unlockHint || P.desc || P.teaser || '')
       : `${P.desc||''}${sys?` · ${sys}`:''}${grants?` · 🔓 ${grants}`:''}`;
-    el.innerHTML = `<span class="jem">${unlocked?P.em:'🔒'}</span>
+    el.innerHTML = `<span class="jem">${P.em}</span>
       <span><span class="jnm">${P.name}</span><div class="jts">${jtsLine}</div></span>
       <span class="jst">${st}</span>`;
     el.addEventListener('click', ()=>{
       if(P.lvIndex==null) return;
       if(!unlocked){
-        toast(`🔒 ${P.name} — ${unlockHint||('teaser: '+(P.teaser||'locked'))}.`);
+        toast(`${P.name} — ${unlockHint||('heal a neighboring field first.')}`);
         SND.uhoh(); return;
       }
       journeyPick(P.lvIndex);
     });
-    path.appendChild(el);
+    ledger.appendChild(el);
   });
+  path.appendChild(ledger);
 }
 /** Light design goals — bank rewards for room/yard progress */
 function ensureDesignGoals(){
