@@ -322,6 +322,21 @@ body.home-plot #questPanel{
 #infoPanel .hbar{height:100%; border-radius:99px; background:linear-gradient(90deg,#c98a3d,#a8c04a,#4a8f4d); transition:width .4s}
 #infoPanel .chiprow{font-size:12.5px; color:var(--soft); font-weight:700; margin:5px 0}
 #infoPanel .istory{color:var(--wood2); font-weight:800; font-size:13.2px; line-height:1.38; margin:5px 0 6px}
+#infoPanel .nstand-row{
+  display:flex; align-items:center; gap:8px;
+  padding:6px 8px; margin:4px 0; border-radius:10px;
+  background:#f6f0dd; font-size:12.5px; font-weight:700;
+}
+#infoPanel .nstand-row .ns-em{font-size:20px; width:26px; text-align:center; flex:none}
+#infoPanel .nstand-row .ns-go{
+  margin-left:auto; font-family:inherit; font-weight:800;
+  background:var(--green); color:#fff; border:none; border-radius:10px;
+  padding:6px 10px; cursor:pointer; box-shadow:0 3px 0 var(--green2); min-height:36px; flex:none;
+}
+#infoPanel .nstand-row .ns-go:disabled{opacity:.45; box-shadow:none; cursor:default}
+#infoPanel .nstand-row .ns-go:active{transform:translateY(2px); box-shadow:0 1px 0 var(--green2)}
+#infoPanel .nstand-note{font-size:12px; font-weight:700; color:var(--soft); margin:6px 0 4px; line-height:1.35}
+#infoPanel .nstand-keep{font-size:11.5px; font-weight:700; color:var(--soft); opacity:.85}
 #btnNotes{position:relative}
 #btnNotes .fn-dot{
   position:absolute; top:1px; right:1px; min-width:14px; height:14px; padding:0 3px;
@@ -981,6 +996,10 @@ const HERD_YIELD_TOAST = {
   duckT:'The ducks started laying.'
 };
 const HERD_LABEL = {cattle:'cattle', chicken:'chickens', sheep:'sheep', goat:'goats', pig:'pigs', duckT:'ducks'};
+// Surplus meat at the neighbor stand — more than grain, costs a head. Keep one breeder.
+const HERD_MEAT = {cattle:34, chicken:16, sheep:24, goat:22, pig:28, duckT:18};
+const HERD_MEAT_EM = {cattle:'🐄', chicken:'🐔', sheep:'🐑', goat:'🐐', pig:'🐖', duckT:'🦆'};
+const CRATE_MAX = 12;
 const OVERGRAZE_RATES = {om:-0.45, structure:-0.35, nutrients:-0.15, water:0, microbial:-0.1, erosion:-0.5};
 function emptyHerd(){ return {cattle:0, chicken:0, sheep:0, goat:0, pig:0, duckT:0}; }
 function ensureHerd(c){
@@ -1177,6 +1196,200 @@ function inferHerdFromGrid(){
       camp.herd[t.graze.kind] = Math.max(camp.herd[t.graze.kind]|0, grazeKindHeads(t.graze, t.graze.kind));
     }
   });
+}
+/** Home Patch first-run: stand stays locked, same gate as Support (after plot 0 is cleared). */
+function homePatchCleared(){ return !!(camp && camp.done && camp.done[0]); }
+function neighborStandUnlocked(){ return homePatchCleared(); }
+function isNeighborStandTile(t){ return !!(t && t.terrain==='nstand'); }
+function isHsAnchorTile(t){ return !!(t && (t.terrain==='house' || t.terrain==='barn' || t.terrain==='nstand')); }
+function herdBreederMin(/*kind*/){ return 1; } // first owned head is the keeper; herd code does not require a pair
+function herdSurplus(kind){
+  if(!kind || !camp) return 0;
+  ensureHerd(camp);
+  return Math.max(0, (camp.herd[kind]|0) - herdBreederMin(kind));
+}
+function ensureCrate(c){
+  const dest = c || camp;
+  if(!dest) return [];
+  if(!Array.isArray(dest.crate)) dest.crate = [];
+  return dest.crate;
+}
+function crateLotCount(){ return ensureCrate().length; }
+function creditStandCoins(n){
+  n = Math.max(0, n|0);
+  if(n<=0) return 0;
+  if(homesteadMode){
+    camp.bank = (camp.bank|0) + n;
+    if(state) state.coins = camp.bank;
+  }else if(state){
+    state.coins = (state.coins|0) + n;
+    if(state.stats) state.stats.coinsEarned = (state.stats.coinsEarned|0) + n;
+  }
+  return n;
+}
+function bankHarvestLot(lot){
+  if(!lot || !camp) return;
+  const crate = ensureCrate();
+  crate.push({
+    type: String(lot.type||'wheat'),
+    em: lot.em || '🌾',
+    name: lot.name || 'Harvest',
+    coins: Math.max(1, lot.coins|0),
+  });
+  let rotted = 0;
+  while(crate.length > CRATE_MAX){ crate.shift(); rotted++; }
+  if(rotted && camp){
+    if(!camp.tipsShown) camp.tipsShown = {};
+    toast('🧺 Oldest harvest left the crate — neighbors only buy what’s fresh.', {once:'crate_rot', throttleMs:4000});
+  }
+}
+function sellCrateLot(idx){
+  if(!neighborStandUnlocked()){ toast('🧺 The neighbor stand opens after Home Patch.'); SND.uhoh(); return false; }
+  const crate = ensureCrate();
+  const i = idx|0;
+  if(i<0 || i>=crate.length) return false;
+  const lot = crate.splice(i, 1)[0];
+  const n = creditStandCoins(lot && lot.coins);
+  floater(selected>=0?selected:0, '+🪙'+n, '#ffd45e', 16);
+  SND.coin();
+  toast((lot.em||'🧺')+' Neighbors paid 🪙'+n+' for '+(lot.name||'harvest')+'.');
+  if(typeof updateHUD==='function') updateHUD();
+  save();
+  openNeighborStand(true);
+  return true;
+}
+function sellAllCrateLots(){
+  if(!neighborStandUnlocked()){ toast('🧺 The neighbor stand opens after Home Patch.'); SND.uhoh(); return false; }
+  const crate = ensureCrate();
+  if(!crate.length){ toast('🧺 Crate is empty — harvest first.'); SND.uhoh(); return false; }
+  let n = 0, lots = crate.length;
+  while(crate.length) n += creditStandCoins(crate.shift().coins);
+  floater(selected>=0?selected:0, '+🪙'+n, '#ffd45e', 16);
+  SND.coin();
+  toast('🧺 Sold '+lots+' harvest'+(lots===1?'':'s')+' for 🪙'+n+'.');
+  if(typeof updateHUD==='function') updateHUD();
+  save();
+  openNeighborStand(true);
+  return true;
+}
+function eachFarmGrid(fn){
+  if(state && state.grid) state.grid.forEach(fn);
+  if(homesteadMode && plotStateBackup && plotStateBackup.grid && plotStateBackup.grid!==state.grid){
+    plotStateBackup.grid.forEach(fn);
+  }
+}
+function syncHerdAfterMeatSale(kind){
+  if(!kind) return;
+  ensureHerd(camp);
+  const heads = Math.max(herdBreederMin(kind), camp.herd[kind]|0);
+  eachFarmGrid(t=>{
+    if(!t || !t.graze || !grazeHasKind(t.graze, kind)) return;
+    hydrateGraze(t.graze);
+    if(t.graze.kind==='team'){
+      if(kind==='cattle') t.graze.nCattle = heads;
+      if(kind==='chicken') t.graze.nChicken = heads;
+      t.graze.n = (t.graze.nCattle|0) + (t.graze.nChicken|0);
+    }else{
+      t.graze.n = heads;
+      if(kind==='cattle') t.graze.nCattle = heads;
+      if(kind==='chicken') t.graze.nChicken = heads;
+    }
+    t.graze.total = grazeRestDays(t.graze);
+    t.graze.days = Math.max(0, t.graze.total - (t.graze.stay||0));
+  });
+  const ak = GRAZE_TOOLS[kind];
+  if(ak && typeof agents!=='undefined' && agents && agents.length){
+    const ofKind = agents.filter(a=>a.kind===ak);
+    while(ofKind.length > heads){
+      const a = ofKind.pop();
+      agents = agents.filter(x=>x!==a);
+    }
+  }
+}
+function sellSurplusMeat(kind){
+  if(!neighborStandUnlocked()){ toast('🧺 The neighbor stand opens after Home Patch.'); SND.uhoh(); return false; }
+  if(!kind || HERD_MEAT[kind]==null) return false;
+  ensureHerd(camp);
+  const have = camp.herd[kind]|0;
+  const keep = herdBreederMin(kind);
+  if(have <= keep){
+    toast('Keep a breeder — the last '+(HERD_LABEL[kind]||kind)+' stay'+(keep===1?'s':'')+' on the farm.');
+    SND.uhoh();
+    return false;
+  }
+  camp.herd[kind] = have - 1;
+  syncHerdAfterMeatSale(kind);
+  const n = creditStandCoins(HERD_MEAT[kind]);
+  const em = HERD_MEAT_EM[kind] || '🥩';
+  floater(selected>=0?selected:0, em+' +🪙'+n, '#ffd45e', 16);
+  SND.coin();
+  toast(em+' Surplus sold for 🪙'+n+' — herd is '+(camp.herd[kind]|0)+' '+(HERD_LABEL[kind]||kind)+'. Weaker graze now.');
+  if(typeof buildPalette==='function') buildPalette();
+  if(typeof updateHUD==='function') updateHUD();
+  save();
+  openNeighborStand(true);
+  return true;
+}
+function neighborStandHtml(opts){
+  const o = opts || {};
+  const crate = ensureCrate();
+  const harvestRows = crate.length
+    ? crate.map((lot,i)=>`<div class="nstand-row">
+        <span class="ns-em">${lot.em||'🌾'}</span>
+        <span>${lot.name||'Harvest'} · 🪙${lot.coins|0}</span>
+        <button type="button" class="ns-go" data-nstandsell="${i}">Sell</button>
+      </div>`).join('')
+    : `<div class="nstand-note">Crate is empty. Harvest wheat or sisters, then bring it here.</div>`;
+  const harvestBlock = `<div class="nstand-note">🧺 Last ${CRATE_MAX} harvests sit in this crate. Neighbors pay a fair price — better than letting wheat rot.</div>
+    ${harvestRows}
+    ${crate.length>1?`<button type="button" class="mbtn wood" style="width:100%;margin-top:6px" data-nstandall>Sell all harvest · 🪙${crate.reduce((a,l)=>a+(l.coins|0),0)}</button>`:''}`;
+  if(o.harvestOnly) return harvestBlock;
+  const kinds = Object.keys(HERD_MEAT);
+  const meatRows = kinds.map(kind=>{
+    const extra = herdSurplus(kind);
+    const have = (camp && camp.herd && (camp.herd[kind]|0)) || 0;
+    if(have<=0) return '';
+    const disabled = extra<=0;
+    const label = extra>0
+      ? `Surplus ${HERD_LABEL[kind]} · 🪙${HERD_MEAT[kind]} · ${extra} extra`
+      : `Last ${(HERD_LABEL[kind]||kind)} — breeder stays`;
+    return `<div class="nstand-row">
+      <span class="ns-em">${HERD_MEAT_EM[kind]||''}</span>
+      <span>${label}</span>
+      <button type="button" class="ns-go" data-nstandmeat="${kind}" ${disabled?'disabled':''}>${disabled?'Keep':'Sell'}</button>
+    </div>`;
+  }).filter(Boolean).join('');
+  const meatBlock = meatRows
+    ? `<div class="nstand-note">Surplus meat only. Selling a head shrinks the herd — fewer mouths, weaker graze and less soil help. Last of a kind stays.</div>${meatRows}`
+    : `<div class="nstand-keep">No herd to sell. Grow extra heads first — keep a breeder of each kind.</div>`;
+  return harvestBlock + meatBlock;
+}
+function openNeighborStand(refreshOnly, opts){
+  const panel = document.getElementById('infoPanel');
+  if(!panel) return;
+  if(!neighborStandUnlocked()){
+    toast('🧺 The neighbor stand opens after you clear Home Patch.', {throttleMs:2500});
+    SND.uhoh();
+    return;
+  }
+  const harvestOnly = (opts && opts.harvestOnly!=null) ? !!opts.harvestOnly : !homesteadMode;
+  panel.innerHTML = `<div class="ititle">🧺 Neighbor stand</div>
+    <div class="chiprow">${harvestOnly
+      ? 'Harvest in hand — neighbors pay a fair coin for what’s in the crate.'
+      : 'A table by the house. Neighbors buy harvest and surplus meat — not a shop, just the lane trade.'}</div>
+    ${neighborStandHtml({harvestOnly})}
+    <button type="button" class="closex" id="infoClose" style="position:absolute;right:8px;top:8px">✕</button>`;
+  panel.classList.add('show');
+  const x = document.getElementById('infoClose');
+  if(x) x.onclick = ()=>{ selected = -1; closeInfo(); };
+  if(!refreshOnly) SND.pop();
+}
+function harvestCrateChipHtml(){
+  if(!neighborStandUnlocked() || crateLotCount()<=0) return '';
+  const n = crateLotCount();
+  const worth = ensureCrate().reduce((a,l)=>a+(l.coins|0),0);
+  return `<div class="nstand-note">🧺 ${n} harvest${n===1?'':'s'} in the crate · 🪙${worth}</div>
+    <button type="button" class="mbtn wood" style="width:100%;margin-top:4px" data-act="nstand">Sell at the stand</button>`;
 }
 // tools with a shopId appear in the palette only after that shop unlock is bought
 const TOOLS = [
@@ -2382,6 +2595,7 @@ function defaultCamp(){
     fieldNotes:{}, // earned field-note ids
     herd: typeof emptyHerd==='function' ? emptyHerd() : {cattle:0, chicken:0, sheep:0, goat:0, pig:0, duckT:0},
     herdV: 2,
+    crate: [], // last N harvests banked for the neighbor stand
   };
   ensureParcelState(c);
   return c;
@@ -4227,18 +4441,30 @@ function harvestCrop(t, i){
   if(c.yield>0 && (f.b.silo||0)>0) mult *= 1.15;           // silo: stored & sold well
   const coins = Math.round(c.yield * mult);
   if(coins>0){
-    state.coins += coins;
-    state.stats.coinsEarned += coins;
-    floater(i, '+🪙'+coins, '#ffd45e', 17);
-    burst(i, '#ffd45e', 12);
-    SND.coin();
+    // Home Patch first-run still pays on the tile. After that, the crate by the house holds it.
+    if(typeof neighborStandUnlocked==='function' && neighborStandUnlocked()){
+      bankHarvestLot({type:t.crop.type, em:c.em, name:c.name, coins});
+      floater(i, '🧺 crate', '#ffd45e', 17);
+      burst(i, '#e8d4a0', 8);
+      SND.place();
+      if(camp){
+        if(!camp.tipsShown) camp.tipsShown = {};
+        toast('🧺 Harvest in the crate by the house. Tap the neighbor stand to sell — fair coin, not a jackpot.', {once:'crate_first_bank', throttleMs:4000});
+      }
+    }else{
+      state.coins += coins;
+      state.stats.coinsEarned += coins;
+      floater(i, '+🪙'+coins, '#ffd45e', 17);
+      burst(i, '#ffd45e', 12);
+      SND.coin();
+    }
   }else{
     floater(i, '🌼 soil fed!', '#fff2b0');
     burst(i, '#a8d5a8', 8);
   }
   state.stats.harvests++;
   // I3/AO/CJ — first coin harvest once (not tied to harvests===1; cover crops can harvest first)
-  if(coins>0 && camp){
+  if(coins>0 && camp && !(typeof neighborStandUnlocked==='function' && neighborStandUnlocked())){
     if(!camp.tipsShown) camp.tipsShown = {};
     if(!camp.tipsShown.first_harvest_coin){
       ringAt(i, '#ffd45e');
@@ -4256,7 +4482,11 @@ function harvestCrop(t, i){
     t.soil.nutrients = clamp(t.soil.nutrients+4);
   }
   if(c.cover) t.flowers = Math.min(1, t.flowers+0.35);
-  if(!c.diverse && Math.random()<0.35) toast('🌾 Quick Wheat paid fast… but that soil feels tired.');
+  if(!c.diverse && Math.random()<0.35){
+    toast(typeof neighborStandUnlocked==='function' && neighborStandUnlocked()
+      ? '🌾 Quick Wheat filled the crate… but that soil feels tired.'
+      : '🌾 Quick Wheat paid fast… but that soil feels tired.');
+  }
   if(t.crop && t.crop.type==='wheat' && typeof earnNote==='function') earnNote('lonely');
   t.crop = null;
   recalc(t);
@@ -4696,6 +4926,7 @@ function ensureHomesteadTiles(){
     hs.grassCanvasV3 = true; // all-grass yard (no farm dirt patches)
   }
   migrateHomesteadGrassCanvas(hs);
+  if(typeof ensureNeighborStandOnTiles==='function') ensureNeighborStandOnTiles(hs.tiles, hs.gridSize||8);
 }
 /** Force uniform lawn: no plow dirt / soil patches — yard is not a farm field. */
 function migrateHomesteadGrassCanvas(hs){
@@ -4704,7 +4935,7 @@ function migrateHomesteadGrassCanvas(hs){
   hs.tiles.forEach(t=>{
     if(!t) return;
     // Keep house, buildings, water, paths, player decos — only fix open ground look
-    if(t.terrain==='house' || t.terrain==='barn') return;
+    if(t.terrain==='house' || t.terrain==='barn' || t.terrain==='nstand') return;
     if(t.terrain==='dead') t.terrain = 'soil';
     if(t.terrain!=='soil' && t.terrain!=='trees') return;
     // Lush grass band always (draw path also forces grass in homesteadMode)
@@ -4782,6 +5013,42 @@ function placeHouseOnTiles(tiles, size, houseTier){
     const n = tiles[2*size+0];
     if(n && n.terrain==='soil' && !n.deco){ n.deco = 'deco_statue'; n.flowers = Math.max(n.flowers||0, 0.06); }
   }
+  if(typeof ensureNeighborStandOnTiles==='function') ensureNeighborStandOnTiles(tiles, size);
+}
+function neighborStandSpotOk(t){
+  if(!t) return false;
+  if(t.terrain==='nstand') return true;
+  if(t.terrain!=='soil') return false;
+  if(t.deco || t.crop || t.graze) return false;
+  if(typeof hasFence==='function' && hasFence(t)) return false;
+  if(t.feature==='path') return false;
+  return true;
+}
+function seatNeighborStand(t){
+  if(!t) return;
+  t.terrain = 'nstand';
+  t.deco = null; t.crop = null; t.graze = null; t.feature = null;
+  t.fence = false; t.flowers = Math.max(t.flowers||0, 0.04);
+}
+/** Table beside the house — only after Home Patch. Never stomps the house or player work if another grass cell is free. */
+function ensureNeighborStandOnTiles(tiles, size){
+  if(!tiles || !size) return;
+  if(typeof neighborStandUnlocked==='function' && !neighborStandUnlocked()) return;
+  if(tiles.some(t=>t && t.terrain==='nstand')) return;
+  const prefer = [[1,0],[0,0],[2,0],[0,1],[2,1],[0,2],[2,2]];
+  for(let i=0;i<prefer.length;i++){
+    const c = prefer[i][0], r = prefer[i][1];
+    if(!inHS(c,r,size)) continue;
+    const t = tiles[r*size+c];
+    if(neighborStandSpotOk(t)){ seatNeighborStand(t); return; }
+  }
+  for(let i=0;i<tiles.length;i++){
+    const t = tiles[i];
+    if(!t || t.terrain==='house' || t.terrain==='barn') continue;
+    const dc = Math.abs((t.c|0)-1), dr = Math.abs((t.r|0)-1);
+    if(dc+dr===0 || dc>2 || dr>2) continue;
+    if(neighborStandSpotOk(t)){ seatNeighborStand(t); return; }
+  }
 }
 function inHS(c,r,size){ return c>=0 && r>=0 && c<size && r<size; }
 function serializeHomesteadFromState(){
@@ -4820,6 +5087,7 @@ function hydrateHomesteadState(){
       const ht = grid[1*size+1];
       if(ht && ht.terrain==='barn') ht.terrain = 'house';
     }
+    if(typeof ensureNeighborStandOnTiles==='function') ensureNeighborStandOnTiles(grid, size);
   }
   GRID = prevGRID;
   return {
@@ -4938,6 +5206,7 @@ function openPropertyMap(){
     const cells = tiles.map(t=>{
       let bg = '#8fbc6a', ch = '';
       if(t.terrain==='house' || t.terrain==='barn'){ bg='#c4a06a'; ch=H.em; }
+      else if(t.terrain==='nstand'){ bg='#d4b56a'; ch='🧺'; }
       else if(t.terrain==='trees'){ bg='#4f9147'; ch='🌳'; }
       else if(t.terrain==='water' || t.terrain==='pond'){ bg='#6db3e0'; ch='💧'; }
       else if(BUILD_SET.has(t.terrain)){ bg='#a8c070'; ch='🏠'; }
@@ -5291,7 +5560,7 @@ function hsPlaceBlocked(i){
   if(!t) return 'bad';
   const D = HS_CATALOG.find(x=>x.id===tool);
   if(!D) return null;
-  if(t.terrain==='house' || t.terrain==='barn') return 'house';
+  if(t.terrain==='house' || t.terrain==='barn' || t.terrain==='nstand') return 'house';
   // free re-orient counts as valid
   if(D.fence && hasFence(t)) return null;
   if(D.deco && t.deco===D.id && yardToolOrientable(D.id)) return null;
@@ -5317,14 +5586,21 @@ function applyHomesteadTool(i){
   const t = state.grid[i];
   if(!t) return false;
   if(tool==='select'){
-    selected = i; openInfo();
+    selected = i;
     ringAt(i, '#ffe89a'); SND.pop();
+    if(t.terrain==='nstand'){
+      if(neighborStandUnlocked()) openNeighborStand();
+      else { openInfo(); toast('🧺 The neighbor stand opens after Home Patch.'); }
+      return true;
+    }
+    openInfo();
     if(t.terrain==='house' || t.terrain==='barn'){
       toast('🏡 Catalog → Expand kits & Yard Build. Rooms are optional (Peek Inside).');
     }
     return true;
   }
   if(tool==='bulldoze'){
+    if(t.terrain==='nstand'){ toast('Leave the neighbor stand — it\'s the table by the house.'); return false; }
     if(t.terrain==='house' || t.terrain==='barn'){ toast('That\'s your home! Upgrade it from 🛒 catalog.'); return false; }
     // free clear in homestead
     if(t.terrain!=='soil' || t.deco || hasFence(t)){
@@ -5340,7 +5616,7 @@ function applyHomesteadTool(i){
   const D = HS_CATALOG.find(x=>x.id===tool);
   if(!D){ toast('Open 🛒 Catalog → Yard Build to pick a piece.'); return false; }
   if(!hsItemUnlocked(D)){ toast('🔒 Unlock that kit under Catalog → Expand.'); SND.uhoh(); return false; }
-  if(t.terrain==='house' || t.terrain==='barn'){ toast('Leave the house footprint — build the yard around it.'); return false; }
+  if(t.terrain==='house' || t.terrain==='barn' || t.terrain==='nstand'){ toast('Leave the house footprint — build the yard around it.'); return false; }
   // Free re-orient before bank check
   if(D.fence && hasFence(t)){
     t.fence = fenceFacing(t) === 0 ? 2 : 1;
@@ -6693,7 +6969,12 @@ function spend(cost){
     state.coins = camp.bank;
     return true;
   }
-  if(state.coins < cost){ toast(`Not enough coins! Need 🪙${cost}. Harvest crops to earn more.`); SND.uhoh(); return false; }
+  if(state.coins < cost){
+    toast(typeof neighborStandUnlocked==='function' && neighborStandUnlocked()
+      ? `Not enough coins! Need 🪙${cost}. Harvest, then sell at the neighbor stand.`
+      : `Not enough coins! Need 🪙${cost}. Harvest crops to earn more.`);
+    SND.uhoh(); return false;
+  }
   state.coins -= cost;
   return true;
 }
@@ -6929,6 +7210,7 @@ function tileBlockerName(t){
   }
   if(t.terrain==='trees') return 'trees';
   if(t.terrain==='house' || t.terrain==='barn') return 'the house';
+  if(t.terrain==='nstand') return 'the neighbor stand';
   if(BUILD_SET.has(t.terrain)){
     const td = toolDef(t.terrain);
     if(td && td.name) return td.name;
@@ -7931,7 +8213,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-21.leftover-fields';
+const SHIP_BUILD = '2026-08-21.neighbor-stand';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -10368,8 +10650,50 @@ function drawHomesteadHouse(t, time){
     ctx.globalAlpha = 1;
   }
 }
+function drawNeighborStand(t){
+  const foot = (typeof tileFoot==='function') ? tileFoot(t) : {x:0,y:0};
+  const seat = (typeof tileSeat==='function') ? tileSeat(t, 0.5, 0.60) : foot;
+  if(typeof drawFootShadow==='function') drawFootShadow(seat.x, seat.y + 2, 18, 7);
+  ctx.save();
+  // Simple lane table — not a shop building. Canvas only; no atlas/skin change.
+  ctx.fillStyle = '#6b4424';
+  ctx.beginPath();
+  ctx.moveTo(seat.x-16, seat.y-2);
+  ctx.lineTo(seat.x+16, seat.y-6);
+  ctx.lineTo(seat.x+16, seat.y-11);
+  ctx.lineTo(seat.x-16, seat.y-7);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#c4a06a';
+  ctx.beginPath();
+  ctx.moveTo(seat.x-15, seat.y-11);
+  ctx.lineTo(seat.x+15, seat.y-15);
+  ctx.lineTo(seat.x+15, seat.y-10);
+  ctx.lineTo(seat.x-15, seat.y-6);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#d8c48a';
+  ctx.beginPath();
+  ctx.moveTo(seat.x-13, seat.y-12);
+  ctx.lineTo(seat.x+10, seat.y-15);
+  ctx.lineTo(seat.x+12, seat.y-12);
+  ctx.lineTo(seat.x-11, seat.y-9);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#5a3820';
+  ctx.fillRect(seat.x-13, seat.y-6, 2.4, 8);
+  ctx.fillRect(seat.x+10, seat.y-9, 2.4, 8);
+  ctx.fillRect(seat.x-4, seat.y-5, 2.2, 7);
+  if(typeof crateLotCount==='function' && crateLotCount()>0){
+    drawEmoji('🧺', seat.x+1, seat.y-20, 13);
+  }else{
+    drawEmoji('🧺', seat.x+1, seat.y-18, 11);
+  }
+  ctx.restore();
+}
 function drawTileObjects(t, i, time){
   const seed = i*17+3;
+  if(t.terrain==='nstand'){ drawNeighborStand(t, time); return; }
   if(t.terrain==='house'){ drawHomesteadHouse(t, time); return; }
   if(t.terrain==='barn' || t.terrain==='coop'){ drawBuilding(t, time); return; }
   if(t.terrain==='trees'){ drawTreesObj(t, time, seed); return; }
@@ -12229,14 +12553,22 @@ function openInfo(refreshOnly){
   if(!t){ panel.classList.remove('show'); return; }
   if(homesteadMode){
     const H = HS_HOUSE[Math.min(HS_HOUSE.length-1, camp.homestead.houseTier|0)];
+    if(t.terrain==='nstand'){
+      if(neighborStandUnlocked()){ openNeighborStand(refreshOnly); return; }
+      panel.innerHTML = `<div class="ititle">🧺 Neighbor stand</div><div class="chiprow">Locked until Home Patch is cleared.</div>`;
+      panel.classList.add('show');
+      if(!refreshOnly) SND.pop();
+      return;
+    }
     let title = (t.terrain==='house'||t.terrain==='barn') ? `${H.em} ${H.name}` : (t.deco ? 'Decoration' : (t.terrain==='soil'?'Yard':'Placed'));
     let body = (t.terrain==='house'||t.terrain==='barn')
       ? `<div class="chiprow">Home anchor — build the yard from 🛒 Catalog (Expand kits + Yard Build). Rooms are optional.</div>
+         ${neighborStandUnlocked()?`<button type="button" class="mbtn wood" style="width:100%;margin-top:8px" data-act="nstand">🧺 Neighbor stand</button>`:''}
          <button type="button" class="mbtn wood" style="width:100%;margin-top:8px" id="btnGoInside">🚪 Peek Inside</button>`
       : `<div class="chiprow">Bank 🪙${camp.bank|0}. Use 🚜 Clear to remove (free).</div>`;
     if(t.deco) body += `<div class="chiprow">🎀 ${t.deco.replace('deco_','')}</div>`;
     if(hasFence(t)) body += `<div class="chiprow">🚧 Fence ${yardOrientLabel(fenceFacing(t))}</div>`;
-    if(t.terrain!=='soil' && t.terrain!=='barn' && t.terrain!=='house' && t.terrain!=='dead') body += `<div class="chiprow">🏗️ ${t.terrain}</div>`;
+    if(t.terrain!=='soil' && t.terrain!=='barn' && t.terrain!=='house' && t.terrain!=='dead' && t.terrain!=='nstand') body += `<div class="chiprow">🏗️ ${t.terrain}</div>`;
     panel.innerHTML = `<div class="ititle">${title}</div>${body}`;
     panel.classList.add('show');
     const goIn = document.getElementById('btnGoInside');
@@ -12329,8 +12661,9 @@ function openInfo(refreshOnly){
     body = `<div class="chiprow">${t.terrain==='barn'?'Home sweet home. The heart of the farm.':'Cozy quarters for the cluck crew.'}</div>`;
   }
   const regName = (REGIONS.find(r=>r.id===t.region)||{}).name || '';
+  const crateChip = (typeof harvestCrateChipHtml==='function') ? harvestCrateChipHtml() : '';
   panel.innerHTML = `<h3>${healthFace(isLandT(t)?t.health:80)} ${names[t.terrain]||t.terrain} <span style="font-size:11px;color:var(--soft)">${regName}</span>
-    <button class="closex" id="infoClose">✕</button></h3>${body}`;
+    <button class="closex" id="infoClose">✕</button></h3>${body}${crateChip}`;
   panel.classList.add('show');
   document.getElementById('infoClose').onclick = ()=>{ selected = -1; closeInfo(); };
   const sci = document.getElementById('sciToggle');
@@ -12698,6 +13031,15 @@ function loadCamp(d){
   camp.herdV = (c.herdV|0);
   ensureHerd(camp);
   if(typeof migrateHerdHeads==='function') migrateHerdHeads();
+  camp.crate = [];
+  if(Array.isArray(c.crate)){
+    camp.crate = c.crate.filter(x=>x && typeof x==='object').map(x=>({
+      type: String(x.type||'wheat'),
+      em: x.em || '🌾',
+      name: x.name || 'Harvest',
+      coins: Math.max(1, (+x.coins||0)|0),
+    })).slice(-CRATE_MAX);
+  }
   if(c.designGoals && typeof c.designGoals==='object') camp.designGoals = c.designGoals;
   // valley parcels (Pack 0) — merge save then migrate from done/stars
   camp.parcels = {};
@@ -12791,7 +13133,7 @@ function loadLevelState(d){
       .forEach(k=>{ if(typeof state[k]!=='boolean') state[k] = false; });
     state.tutStep = Math.max(0, Math.min((LEVELS[lv].tut||[]).length, (state.tutStep|0)||0));
     if(typeof state.speed!=='number' || !(state.speed>=1 && state.speed<=3)) state.speed = 1;
-    const VALID_TERRAIN = new Set(['soil','dead','water','pond','trees','barn','coop','house','riverbed'].concat(BUILDINGS));
+    const VALID_TERRAIN = new Set(['soil','dead','water','pond','trees','barn','coop','house','nstand','riverbed'].concat(BUILDINGS));
     state.grid = st.grid.map((sg,i)=>{
       const t = Object.assign(newTile(i%GRID, (i/GRID)|0), sg);
       t.region = regionOf(t.c, t.r);
@@ -14411,6 +14753,19 @@ function init(){
     if(e.target.closest('#btnGoInside') || e.target.closest('[data-act="goinside"]')){
       e.preventDefault(); e.stopPropagation();
       closeInfo(); enterCottage();
+      return;
+    }
+    const openNs = e.target.closest('[data-act="nstand"]');
+    if(openNs){ e.preventDefault(); e.stopPropagation(); openNeighborStand(); return; }
+    const sellLot = e.target.closest('[data-nstandsell]');
+    if(sellLot){ e.preventDefault(); e.stopPropagation(); sellCrateLot(+sellLot.dataset.nstandsell); return; }
+    const sellAll = e.target.closest('[data-nstandall]');
+    if(sellAll){ e.preventDefault(); e.stopPropagation(); sellAllCrateLots(); return; }
+    const sellMeat = e.target.closest('[data-nstandmeat]');
+    if(sellMeat){
+      e.preventDefault(); e.stopPropagation();
+      if(sellMeat.disabled) return;
+      sellSurplusMeat(sellMeat.dataset.nstandmeat);
     }
   });
   // shop + quest panel
