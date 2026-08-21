@@ -95,7 +95,7 @@ canvas#game.tooling{cursor:crosshair}
 .hudbtn:active{transform:translateY(2px); box-shadow:0 1px 4px rgba(20,14,4,.2)}
 .hudbtn.on{background:linear-gradient(180deg,#ffedb8,#f5d98a); border-color:var(--gold2)}
 a.hudbtn{text-decoration:none; color:inherit}
-/* Quiet PWYW control — meta cluster, not a gold badge. Hidden on first-run coach / map / cottage. */
+/* Quiet Support control — opens the coin shop. Hidden on first-run coach / map / cottage. */
 #btnSupport{font-size:15px; padding:4px 8px}
 #btnSupport .slbl{font-size:11.5px; font-weight:800; letter-spacing:.01em}
 body.tut-open #btnSupport,
@@ -197,9 +197,11 @@ body.overlay-open #questPanel{ opacity:0; pointer-events:none; }
 .shopitem .sds{font-size:11px; font-weight:600; color:var(--soft); line-height:1.25}
 .shopbuy{margin-left:auto; flex:none; font-family:inherit; font-weight:800; font-size:12.5px; color:#5a3d10;
   background:linear-gradient(180deg,var(--gold),#e3a92e); border:none; border-radius:10px; padding:8px 10px;
-  cursor:pointer; box-shadow:0 3px 0 var(--gold2); min-width:64px}
+  cursor:pointer; box-shadow:0 3px 0 var(--gold2); min-width:64px; text-decoration:none; text-align:center;
+  display:inline-block; box-sizing:border-box}
 .shopbuy:active{transform:translateY(2px); box-shadow:0 1px 0 var(--gold2)}
 .shopbuy:disabled{background:#d8c9a4; box-shadow:0 3px 0 #b3a37e; color:#8a7a5c; cursor:default}
+a.shopbuy{color:#5a3d10}
 .shopitem.owned{opacity:.62}
 .shopitem.owned .shopbuy{background:#c5d9ad; box-shadow:0 3px 0 #9db384; color:#3b6b2e}
 #legend{
@@ -872,7 +874,7 @@ body.reduce-motion #badgeBanner{ transition:none; }
     <button class="hudbtn" id="btnGoals" title="Goals & badges" aria-label="Goals and badges">⭐</button>
     <button class="hudbtn" id="btnMore" title="Map overlays & views" aria-label="Overlays menu">⋯</button>
     <button class="hudbtn" id="btnSound" title="Sound on/off" aria-label="Toggle sound">🔊</button>
-    <a class="hudbtn" id="btnSupport" href="https://ralstonia5.gumroad.com/l/oehmly" target="_blank" rel="noopener" title="Support the farm — play stays free (pay what you want)" aria-label="Support the farm">💛 <span class="slbl">Support</span></a>
+    <button type="button" class="hudbtn" id="btnSupport" title="Support the farm — optional coins, play stays free" aria-label="Support the farm">💛 <span class="slbl">Support</span></button>
   </div>
 </div>
 
@@ -2197,6 +2199,8 @@ function defaultCamp(){
     parcels:{},   // VALLEY_PARCELS id → {cleared, restorePct, bestStars}
     scrapbook:[],
     kitsOwned:{},
+    grantedPacks:{}, // coin-pack ids already fulfilled on this save (once each)
+    pendingShopCoins:0, // pack coins waiting for a live plot (splash / between plots)
     featureUnlocks:{}, // shopId tools permanently unlocked by parcel clears
     fieldNotes:{}, // earned field-note ids
     herd: typeof emptyHerd==='function' ? emptyHerd() : {cattle:0, chicken:0, sheep:0, goat:0, pig:0, duckT:0},
@@ -2241,6 +2245,7 @@ let journeyOpen = false;
 let homesteadMode = false;   // true while viewing/building the Homestead
 let plotStateBackup = null;  // plot state parked while in Homestead
 let lastBanked = 0;          // coins banked on most recent clear (for UI)
+let plotSessionReady = false; // true after a real plot is entered / resumed (not splash throwaway)
 /** BD/BF/CT — soft banked toast only *after* clear modal is fully gone (no double-fire with complete modal). */
 function maybeToastBankedLeave(){
   const n = lastBanked|0;
@@ -7832,22 +7837,114 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-15.h6';
-/** Official PWYW — play stays free. Single support hook (no second store). */
+const SHIP_BUILD = '2026-08-21.coins';
+/** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
   email: 'b.ralston62989@gmail.com',
   label: 'Support the farm',
   thankYou: '💛 Thank you for supporting the farm. Play stays free — this early build starts on the Home Patch.'
 };
+/** Swap Gumroad slugs here when the listings go live. Query grant: ?pack=coins80 or ?pack=coins200. */
+const COIN_PACKS = [
+  {id:'coins80',  name:'Seed pouch', coins:80,  price:'$1.99', url:'https://ralstonia5.gumroad.com/l/rootweave-coins-80'},
+  {id:'coins200', name:'Crate',      coins:200, price:'$4.99', url:'https://ralstonia5.gumroad.com/l/rootweave-coins-200'},
+];
 function supportFarmHref(){
   return (SUPPORT_FARM && SUPPORT_FARM.url) || 'https://ralstonia5.gumroad.com/l/oehmly';
+}
+function coinPackById(id){
+  const key = String(id||'').trim();
+  return COIN_PACKS.find(p=>p.id===key) || null;
 }
 function wireSupportFarmLink(el){
   if(!el) return;
   el.href = supportFarmHref();
   el.target = '_blank';
   el.rel = 'noopener';
+}
+function stripPlayQueryParam(name){
+  try{
+    const q = new URLSearchParams(location.search || '');
+    if(!q.has(name)) return;
+    q.delete(name);
+    const qs = q.toString();
+    const next = (location.pathname || '/') + (qs ? ('?' + qs) : '') + (location.hash || '');
+    if(history && history.replaceState) history.replaceState({}, '', next);
+  }catch(e){}
+}
+function toastAfterSplash(fn){
+  const started = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+  const tick = ()=>{
+    const splashUp = !!(typeof modalOpen !== 'undefined' && modalOpen)
+      || !!(document.getElementById('modalWrap') && document.getElementById('modalWrap').classList.contains('show'));
+    const waited = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - started;
+    if(!splashUp || waited > 8000){ fn(); return; }
+    setTimeout(tick, 400);
+  };
+  setTimeout(tick, 700);
+}
+function applyPendingShopCoinsToState(){
+  if(!camp) return;
+  const n = camp.pendingShopCoins|0;
+  if(n<=0) return;
+  if(homesteadMode){
+    if(plotStateBackup && !plotStateBackup.levelDone && !plotStateBackup.homesteadView){
+      plotStateBackup.coins = (plotStateBackup.coins|0) + n;
+      camp.pendingShopCoins = 0;
+    }
+    return;
+  }
+  // Splash boot creates a throwaway Home Patch that enterLevel(fresh) replaces — hold coins until then
+  if(!plotSessionReady) return;
+  if(state && !state.homesteadView && !state.levelDone){
+    state.coins = (state.coins|0) + n;
+    camp.pendingShopCoins = 0;
+  }
+}
+function creditShopCoins(n){
+  n = Math.max(0, n|0);
+  if(n<=0 || !camp) return;
+  camp.pendingShopCoins = (camp.pendingShopCoins|0) + n;
+  applyPendingShopCoinsToState();
+}
+function grantCoinPack(pack, opts){
+  const o = opts || {};
+  if(!pack || !camp) return false;
+  if(!camp.grantedPacks || typeof camp.grantedPacks!=='object') camp.grantedPacks = {};
+  if(camp.grantedPacks[pack.id]) return false;
+  camp.grantedPacks[pack.id] = true;
+  creditShopCoins(pack.coins|0);
+  try{ save(); }catch(e){}
+  if(typeof updateHUD==='function') updateHUD();
+  const msg = '+'+(pack.coins|0)+' coins';
+  const fire = ()=>{
+    if(typeof toast==='function') toast(msg, {force:true, throttleMs:400});
+  };
+  if(o.delayToast) toastAfterSplash(fire);
+  else fire();
+  return true;
+}
+function openCoinShop(){
+  const bal = homesteadMode ? (camp.bank|0) : (state && (state.coins|0));
+  const items = COIN_PACKS.map(p=>`<div class="shopitem">
+      <div class="sem">${p.id==='coins200'?'📦':'🌱'}</div>
+      <div><div class="snm">${p.name}</div><div class="sds">${p.coins} coins for the upgrade shop</div></div>
+      <a class="shopbuy" href="${p.url}" target="_blank" rel="noopener">Buy ${p.price}</a>
+    </div>`).join('');
+  showModal(`
+    <h2>💛 Coin shop</h2>
+    <div class="sub">Optional coins for the upgrade shop. 🪙 <b>${bal|0}</b></div>
+    <div class="lesson" style="text-align:left">
+      Early build. <b>Home Patch</b> is the playable start. You do not need to buy this to play — wake, compost, and the first session still run on the 40 coins you start with.
+    </div>
+    ${items}
+    <div class="legal-row">
+      <a id="coinShopTip" href="${supportFarmHref()}" target="_blank" rel="noopener">or pay what you want</a>
+    </div>
+    <div class="modalbtns"><button class="mbtn" data-act="close">Back</button></div>
+  `);
+  wireSupportFarmLink(document.getElementById('coinShopTip'));
 }
 /** Optional thank-you when returning from Gumroad (?supporter=1). Never gates content. */
 function maybeThankSupporter(){
@@ -7856,12 +7953,7 @@ function maybeThankSupporter(){
     const q = new URLSearchParams(location.search || '');
     const raw = String(q.get('supporter') || '').trim().toLowerCase();
     flagged = raw === '1' || raw === 'true' || raw === 'yes';
-    if(flagged){
-      q.delete('supporter');
-      const qs = q.toString();
-      const next = (location.pathname || '/') + (qs ? ('?' + qs) : '') + (location.hash || '');
-      if(history && history.replaceState) history.replaceState({}, '', next);
-    }
+    if(flagged) stripPlayQueryParam('supporter');
   }catch(e){ flagged = false; }
   if(!flagged) return;
   try{
@@ -7869,19 +7961,23 @@ function maybeThankSupporter(){
     sessionStorage.setItem('rw_supporter_thanks', '1');
   }catch(e){}
   const msg = (SUPPORT_FARM && SUPPORT_FARM.thankYou) || '💛 Thank you for supporting the farm.';
-  const started = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-  const fire = ()=>{
+  toastAfterSplash(()=>{
     if(typeof toast !== 'function') return;
     toast(msg, {force:true, throttleMs:400, once:'supporter_thanks'});
-  };
-  const tick = ()=>{
-    const splashUp = !!(typeof modalOpen !== 'undefined' && modalOpen)
-      || !!(document.getElementById('modalWrap') && document.getElementById('modalWrap').classList.contains('show'));
-    const waited = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - started;
-    if(!splashUp || waited > 8000){ fire(); return; }
-    setTimeout(tick, 400);
-  };
-  setTimeout(tick, 700);
+  });
+}
+/** Fulfill ?pack=coins80 / ?pack=coins200 once per save. Easy to cheat; that is OK for now. */
+function maybeGrantCoinPack(){
+  let raw = '';
+  try{
+    const q = new URLSearchParams(location.search || '');
+    raw = String(q.get('pack') || '').trim();
+    if(raw) stripPlayQueryParam('pack');
+  }catch(e){ raw = ''; }
+  if(!raw) return;
+  const pack = coinPackById(raw);
+  if(!pack) return;
+  grantCoinPack(pack, {delayToast:true});
 }
 function openAboutCredits(){
   const ver = SHIP_BUILD;
@@ -7891,7 +7987,7 @@ function openAboutCredits(){
   if(showNew) camp.tipsShown['whats_new_'+ver] = true;
   const whatsNew = showNew
     ? `<div class="lesson" style="text-align:left;margin-top:6px;border-color:rgba(234,181,67,.45)">
-        <b>What's new (${ver}):</b> Back Field asks for 8 healthy tiles, not 16 — herd lesson first. Creek opens when that plot is actually done.
+        <b>What's new (${ver}):</b> Optional coin shop (💛 Support) — Seed pouch $1.99 / Crate $4.99. Play stays free; Home Patch still starts at 40 coins.
       </div>`
     : '';
   // CD — first About open literacy (in-modal; no toast spam)
@@ -7915,15 +8011,16 @@ function openAboutCredits(){
     </div>
     <div class="lesson" style="text-align:left">
       This is an early build — <b>Home Patch</b> is the playable start. Play stays free: no ads, no pay-to-revive.
-      If the farm has been good to you, you can <a id="aboutSupport" href="${supportFarmHref()}" target="_blank" rel="noopener">${SUPPORT_FARM.label}</a>
-      (pay what you want, even $0). ${SUPPORT_FARM.email ? 'Questions: '+SUPPORT_FARM.email+'.' : ''}
+      You do not need to buy coins to play.
+      Optional packs live in the <a href="#" data-act="coinshop">${SUPPORT_FARM.label}</a> shop
+      (💛 Support). ${SUPPORT_FARM.email ? 'Questions: '+SUPPORT_FARM.email+'.' : ''}
     </div>
     <div class="legal-row">
       <a href="legal/privacy.html">Privacy</a>
       <span style="opacity:.45"> · </span>
       <a href="legal/terms.html">Terms</a>
       <span style="opacity:.45"> · </span>
-      <a id="aboutSupportLegal" href="${supportFarmHref()}" target="_blank" rel="noopener">${SUPPORT_FARM.label}</a>
+      <a href="#" data-act="coinshop">${SUPPORT_FARM.label}</a>
     </div>
     <div class="modalbtns" style="flex-wrap:wrap">
       <button class="mbtn wood" data-act="exportsave">Export save</button>
@@ -7960,6 +8057,7 @@ function confirmNewGame(){
 function wipeAllProgress(){
   try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
   camp = defaultCamp();
+  plotSessionReady = false;
   // BP/CN — tip keys / design goals / coach pace + soft-tip baselines reset with New Game
   camp.tipsShown = {};
   camp.designGoals = null;
@@ -12447,6 +12545,8 @@ function loadCamp(d){
   camp.unlocked = campaignUnlockFloor();
   camp.cur = (typeof c.cur==='number' && !isNaN(c.cur)) ? Math.max(0, Math.min(LEVELS.length-1, c.cur|0)) : 0;
   camp.bank = Math.max(0, (+c.bank||0)|0);
+  camp.grantedPacks = (c.grantedPacks && typeof c.grantedPacks==='object') ? Object.assign({}, c.grantedPacks) : {};
+  camp.pendingShopCoins = Math.max(0, (+c.pendingShopCoins||0)|0);
   camp.tipsShown = (c.tipsShown && typeof c.tipsShown==='object') ? Object.assign({}, c.tipsShown) : {};
   camp.featureUnlocks = (c.featureUnlocks && typeof c.featureUnlocks==='object') ? Object.assign({}, c.featureUnlocks) : {};
   camp.fieldNotes = (c.fieldNotes && typeof c.fieldNotes==='object') ? Object.assign({}, c.fieldNotes) : {};
@@ -13216,6 +13316,7 @@ function journeyPick(lv){
   enterLevel(lv, true);
 }
 function enterLevel(lv, fresh){
+  plotSessionReady = true;
   // Leaving homestead for a plot: restore parked campaign state when possible
   if(homesteadMode){
     serializeHomesteadFromState();
@@ -13242,6 +13343,7 @@ function enterLevel(lv, fresh){
     agents = []; wildlife = []; birds = []; worldParts = []; screenParts = [];
     decoIdx = 0; sciOpen = false;
   }
+  if(typeof applyPendingShopCoinsToState==='function') applyPendingShopCoinsToState();
   // BH — re-seed goal sparkle map each entry (no fireworks for goals already met)
   if(state){
     state._goalSparkLv = null;
@@ -13531,7 +13633,10 @@ function init(){
   });
   document.getElementById('btnSound').textContent = soundOn ? '🔊' : '🔇';
   document.getElementById('btnSound').title = soundOn ? 'Sound on — tap to mute' : 'Sound off — tap to unmute farm life';
-  wireSupportFarmLink(document.getElementById('btnSupport'));
+  const btnSupport = document.getElementById('btnSupport');
+  if(btnSupport){
+    btnSupport.addEventListener('click', ()=>{ openCoinShop(); SND.pop(); });
+  }
   // BV/CH — quieter cold boot; skip while Journey/splash owns the screen (defer to first plot)
   if(!soundOn && typeof camp.sound !== 'boolean'){
     setTimeout(()=>{
@@ -13600,6 +13705,7 @@ function init(){
     else if(act==='newgame'){ confirmNewGame(); }
     else if(act==='newgamewipe'){ closeModal(); wipeAllProgress(); toast('🆕 New game — the valley waits. Export saves anytime from About.'); }
     else if(act==='about'){ openAboutCredits(); }
+    else if(act==='coinshop'){ e.preventDefault(); openCoinShop(); SND.pop(); }
     else if(act==='lvgo'){
       if(state){ state.introSeen = true; state._introDismissed = true; state._introModalShown = true; }
       closeModal();
@@ -13700,6 +13806,15 @@ function init(){
   refreshAnchors();
   if(!bundle) showSplash();     // brand new: title first, then the journey map
   else showJourney();           // returning: straight to the journey (▶ continue)
+  if(bundle && resumed && state && !state.homesteadView && !state.levelDone){
+    plotSessionReady = true;
+  }
+  maybeGrantCoinPack();
+  applyPendingShopCoinsToState();
+  if(plotSessionReady){
+    try{ save(); }catch(e){}
+    if(typeof updateHUD==='function') updateHUD();
+  }
   maybeThankSupporter();
   // N4 — reveal canvas after first layout paint (boot splash fades)
   requestAnimationFrame(()=>{
