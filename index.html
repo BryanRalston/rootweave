@@ -13059,6 +13059,7 @@ function paintValleyAtlas(cv){
   const ctx = cv.getContext('2d');
   if(!ctx) return false;
   ctx.clearRect(0, 0, V.w, V.h);
+  try {
   const hills = sprReady('bg_hills_1') || sprReady('bg_hills');
   const sky = ctx.createLinearGradient(0, 0, 0, V.sky+52);
   sky.addColorStop(0, '#8eb6d6');
@@ -13350,20 +13351,29 @@ function paintValleyAtlas(cv){
     ctx.fillStyle = 'rgba(86,108,58,0.22)';
     ctx.beginPath(); ctx.ellipse(yard.x+10, yard.y+2, 70, 20, 0, 0, Math.PI*2); ctx.fill();
 
-    function placeBuilding(name, c, r, w, h, fallback){
+    function placeBuilding(name, c, r, w, h, mass){
       const p = atlasToView(c, r);
-      if(!drawSprAt(ctx, name, c, r, w, h)) fallback(p, w/140);
+      mass(ctx, p, Math.max(0.7, w/140));
+      drawSprAt(ctx, name, c, r, w, h);
     }
     placeBuilding('barn', 8.15, 27.85, 148, 124, drawBarnMass);
     placeBuilding('coop', 13.15, 19.85, 92, 78, drawCoopMass);
     if(sprReady('market')) drawSprAt(ctx, 'market', 40.3, 15.6, 72, 62);
+    else {
+      const mp = atlasToView(40.3, 15.6);
+      ctx.fillStyle = '#8a6238';
+      ctx.fillRect(mp.x-18, mp.y-28, 36, 24);
+      ctx.fillStyle = '#c45a3a';
+      ctx.beginPath(); ctx.moveTo(mp.x-22, mp.y-26); ctx.lineTo(mp.x, mp.y-42); ctx.lineTo(mp.x+22, mp.y-26); ctx.fill();
+    }
     if(sprReady('windmill')) drawSprAt(ctx, 'windmill', 41.2, 3.9, 88, 108);
     const compost = atlasToView(5.5, 27.5);
     ctx.fillStyle = 'rgba(86,58,28,0.9)';
     ctx.beginPath(); ctx.ellipse(compost.x, compost.y, 14, 9, 0, 0, Math.PI*2); ctx.fill();
     if(sprReady('cow')) drawSprAt(ctx, 'cow', 4.8, 16.4, 48, 36);
     const hp = atlasToView(4.35, 28.7);
-    if(!drawSprAt(ctx, 'house_t'+houseTier, 4.35, 28.7, 210, 176)) drawFarmhouseMass(ctx, hp, 1.15);
+    drawFarmhouseMass(ctx, hp, 1.2);
+    drawSprAt(ctx, 'house_t'+houseTier, 4.35, 28.7, 210, 176);
   }
 
   const fog = document.createElement('canvas');
@@ -13406,6 +13416,10 @@ function paintValleyAtlas(cv){
   ctx.fillStyle = 'rgba(8,14,8,0.14)';
   ctx.fillRect(0, V.h-10, V.w, 10);
   return !!hills;
+  } catch (err) {
+    console.warn('[Rootweave] valley paint', err);
+    return false;
+  }
 }
 function wireValleyRegion(el, P, ms){
   const oneLiner = (P.desc && String(P.desc).trim()) ? P.desc : (P.teaser || P.name);
