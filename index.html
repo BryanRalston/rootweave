@@ -1364,7 +1364,7 @@ const LEVELS = [
    // Iso play (diorama experiments parked — cohesive board first)
    view:'iso',
    tools:['select','compost','covercrop','sisters'],
-   shop:false, river:false, events:false, startPaused:true, regen:1.8,
+   shop:false, river:false, events:false, startPaused:true, regen:2.6,
    ovs:['health'],
    goalText:'Wake the little Home Patch back to life.',
    goals:[
@@ -3872,7 +3872,7 @@ function maybeHomeReviveMercy(){
   if(state._homeFedAt==null) return false;
   if(state._homeReviveMercy) return false;
   const now = (state.day|0) + (state.dayFrac||0);
-  if(now - state._homeFedAt < 2) return false;
+  if(now - state._homeFedAt < 1) return false;
   let best = -1, bestS = -1;
   state.grid.forEach((t,i)=>{
     if(t.terrain!=='dead') return;
@@ -3930,9 +3930,10 @@ function simStep(dt){
     // water helps the medicine work) raise it until it crosses into workable soil.
     if(t.terrain==='dead'){
       let feed = 0;
-      if(t.compost>0){ feed += (t.feature==='saltflat'?0.55:1.05); t.compost = Math.max(0, t.compost-dd); }
+      const homeWake = !!(LV() && LV().id==='home');
+      if(t.compost>0){ feed += (t.feature==='saltflat'?0.55:1.05) * (homeWake?2.2:1); t.compost = Math.max(0, t.compost-dd); }
       if(t.crop){                                    // pioneer roots cracking the crust
-        feed += (t.feature==='saltflat'?0.5:0.75);
+        feed += (t.feature==='saltflat'?0.5:0.75) * (homeWake?2.0:1);
         t.crop.growth += CROPS[t.crop.type].growPerDay * Math.max(sn.growMult,0.5) * 0.8 * dd;
         if(t.crop.growth >= 1) harvestCrop(t, i);
       }
@@ -7900,13 +7901,17 @@ function hasAnyCampaignProgress(){
   return false;
 }
 function confirmNewGame(){
-  if(hasAnyCampaignProgress()){
-    if(!confirm('Start a NEW game? This erases journey progress, homestead, scrapbook, and the current plot.\n\nExport a save first if you want a backup.')) return;
-    if(!confirm('Really wipe everything? This cannot be undone.')) return;
-  }
-  wipeAllProgress();
-  // AN — confirm path still ends in a clear boot state
-  toast('🆕 New game — the valley waits. Export saves anytime from About.');
+  const had = hasAnyCampaignProgress();
+  showModal(`
+    <h2>🆕 New Game</h2>
+    <div class="eventkid">${had
+      ? 'This erases journey progress, homestead, scrapbook, and the current plot.'
+      : 'Start the valley over from the Home Patch.'}</div>
+    ${had ? '<div class="lesson">Export a save first if you want a backup (About).</div>' : ''}
+    <div class="modalbtns">
+      <button class="mbtn wood" data-act="newgamewipe">Wipe and start over</button>
+      <button class="mbtn" data-act="close">Cancel</button>
+    </div>`);
 }
 function wipeAllProgress(){
   try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
@@ -13549,6 +13554,7 @@ function init(){
     else if(act==='exportsave'){ exportSaveFile(); }
     else if(act==='importsave'){ importSaveFile(); }
     else if(act==='newgame'){ confirmNewGame(); }
+    else if(act==='newgamewipe'){ closeModal(); wipeAllProgress(); toast('🆕 New game — the valley waits. Export saves anytime from About.'); }
     else if(act==='about'){ openAboutCredits(); }
     else if(act==='lvgo'){
       if(state){ state.introSeen = true; state._introDismissed = true; state._introModalShown = true; }
