@@ -7029,6 +7029,25 @@ function redirectPaintTarget(i){
 }
 function applyTool(i){
   if(homesteadMode) return applyHomesteadTool(i);
+  // Compost: judge the tile the player actually clicked, before any neighbor redirect.
+  if(tool==='compost' && state && state.grid && state.grid[i]){
+    const src = state.grid[i];
+    recalc(src);
+    const winter = !!(SEASONS[state.season] && SEASONS[state.season].canPlant===false);
+    if(src.terrain==='soil' && LV() && LV().id==='home'){
+      toast('🌱 Already awake — compost gray cracked tiles. No coins taken.');
+      SND.uhoh(); return false;
+    }
+    if(src.terrain==='dead' && deadWakeShown(src).full){
+      if(maybeWakeDeadTile(src, i)){ afterBuild(); return true; }
+      toast('🌅 Wake bar is already full — press ▶️ so this tile can become Field. No coins taken.');
+      SND.uhoh(); return false;
+    }
+    if(winter && src.terrain==='dead' && (src.compost||0)>0){
+      toast('❄️ Needs spring — compost is already on this tile. Press ▶️ or wait for thaw. No coins taken.');
+      SND.uhoh(); return false;
+    }
+  }
   i = redirectPaintTarget(i);
   const t = state.grid[i];
   const td = toolDef(tool);
