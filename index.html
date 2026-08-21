@@ -7199,11 +7199,27 @@ function applyTool(i){
   }
   if(tool==='compost'){
     recalc(t);
+    const need = deadWakeNeed(t);
+    const shown = Math.round(t.health||0);
+    const barFull = dead && (shown >= need || (t.health||0) >= need);
+    const winter = !!(SEASONS[state.season] && SEASONS[state.season].canPlant===false);
+    if(dead && barFull){
+      if(maybeWakeDeadTile(t, i)){ afterBuild(); return true; }
+      toast('🌅 Wake bar is already full — press ▶️ so this tile can become Field. No coins taken.');
+      SND.uhoh(); return false;
+    }
     if(dead && maybeWakeDeadTile(t, i)){ afterBuild(); return true; }
-    if(t.compost > 5){
-      toast(dead ? '🪣 Compost is already working here — press ▶️ so days can wake it.' : '🪣 Already composted — the soil is still digesting.');
-      SND.uhoh();
-      return false;
+    if(!dead && t.terrain==='soil' && (t.compost||0) > 0){
+      toast('🌱 Already awake — compost is working here. No coins taken.');
+      SND.uhoh(); return false;
+    }
+    if(winter && dead && (t.compost||0) > 0){
+      toast('❄️ Needs spring — compost is already on this gray tile. Press ▶️ or wait for thaw. No coins taken.');
+      SND.uhoh(); return false;
+    }
+    if((t.compost||0) > 0){
+      toast(dead ? '🪣 Compost is already on this tile — press ▶️ so days can wake it. No coins taken.' : '🪣 Already composted — the soil is still digesting. No coins taken.');
+      SND.uhoh(); return false;
     }
     const cost = state.unlocks.upg_compost ? 2 : td.cost;
     if(!spend(cost)) return false;
