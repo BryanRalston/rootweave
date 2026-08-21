@@ -13215,6 +13215,15 @@ function paintValleyAtlas(cv){
     fillWidthStrip(wx, creekPts, (i,t)=> creekHalf(i,t)*0.45, deep);
     fillWidthStrip(wx, meadowPts, (i,t)=> 16 - t*7, 'rgba(58,78,42,0.34)');
     fillWidthStrip(wx, meadowPts, (i,t)=> 8 - t*3, 'rgba(46,72,48,0.2)');
+    const slack = atlasToView(last.c + 0.25, 22.15);
+    const slackShore = pondShore(slack.x, slack.y, 22, 13, 6.1, 0.34);
+    fillPoly(wx, pondShore(slack.x, slack.y+2, 26, 16, 6.1, 0.3), 'rgba(48,38,20,0.28)');
+    fillPoly(wx, slackShore, body);
+    fillPoly(wx, pondShore(slack.x+2, slack.y+2, 12, 7, 6.4, 0.22), deep);
+    [[26.6, 24.6, 7, 4], [28.1, 26.8, 6, 3.2], [29.6, 29.0, 5, 3]].forEach(([c,r,rx,ry],i)=>{
+      const q = atlasToView(c, r);
+      fillPoly(wx, pondShore(q.x, q.y, rx, ry, 7+i, 0.4), 'rgba(36,64,48,0.28)');
+    });
     ctx.save();
     ctx.filter = 'blur(3.6px)';
     ctx.drawImage(water, 0, 0);
@@ -13246,10 +13255,12 @@ function paintValleyAtlas(cv){
       fillPoly(ctx, pondShore(p.x, p.y, look.rx+3, look.ry+3, look.seed, look.org), look.rim);
       fillPoly(ctx, shore, look.water);
       fillPoly(ctx, inner, mixHex(look.water, '#0e2a2e', 0.35+murk*0.15));
-      ctx.fillStyle = 'rgba(200,228,220,'+(0.16-murk*0.06)+')';
-      ctx.beginPath();
-      ctx.ellipse(p.x-look.rx*0.28, p.y-look.ry*0.32, look.rx*0.22, look.ry*0.1, -0.4, 0, Math.PI*2);
-      ctx.fill();
+      if(k==='garden' || k==='high'){
+        ctx.fillStyle = 'rgba(200,228,220,'+(k==='high'?0.2:0.12)+')';
+        ctx.beginPath();
+        ctx.ellipse(p.x-look.rx*(k==='high'?0.18:0.3), p.y-look.ry*0.28, look.rx*0.18, look.ry*0.07, -0.5, 0, Math.PI*2);
+        ctx.fill();
+      }
       if(look.reed>0.1){
         ctx.strokeStyle = 'rgba(46,72,40,'+(0.35+look.reed*0.25)+')';
         ctx.lineWidth = 1.2;
