@@ -2926,6 +2926,9 @@ function registerSprite(name, src, gen){
     if(!SPRITES._gen) SPRITES._gen = {};
     SPRITES._gen[name] = g;
     SPRITES[name] = img;
+    if(name===VALLEY_ATLAS_SKIN || name==='bg_hills_1' || name==='bg_hills' || String(name).indexOf('house_')===0){
+      if(typeof nudgeJourneyAtlasPaint==='function') nudgeJourneyAtlasPaint();
+    }
   };
   // AB — soft-fail missing assets: log once per path (no console spam on every paint)
   img.onerror = ()=>{
@@ -13119,14 +13122,20 @@ function drawCoopMass(ctx, p, s){
   ctx.beginPath(); ctx.arc(-2, -12, 6, 0, Math.PI*2); ctx.fill();
   ctx.restore();
 }
+let _journeyAtlasCv = null;
+function nudgeJourneyAtlasPaint(){
+  const cv = _journeyAtlasCv;
+  if(!cv || !cv.isConnected) return false;
+  return paintValleyAtlas(cv);
+}
 function paintValleyAtlas(cv){
   const V = VALLEY_VIEW;
   const ctx = cv.getContext('2d');
   if(!ctx) return false;
-  ctx.clearRect(0, 0, V.w, V.h);
   try {
   const skinImg = VALLEY_ATLAS_SKIN ? sprReady(VALLEY_ATLAS_SKIN) : null;
   if(VALLEY_ATLAS_SKIN && !skinImg) return false;
+  ctx.clearRect(0, 0, V.w, V.h);
   const hills = sprReady('bg_hills_1') || sprReady('bg_hills');
   if(!skinImg){
   const sky = ctx.createLinearGradient(0, 0, 0, V.sky+52);
@@ -13226,6 +13235,7 @@ function paintValleyAtlas(cv){
     ctx.fillRect(0, 0, V.w, V.h);
   }
   const usedSkin = !!(skin && blitValleyAtlasSkin(ctx, skin));
+  if(VALLEY_ATLAS_SKIN && !usedSkin) return false;
 
   if(!usedSkin){
     const SCALE = 18;
@@ -13517,10 +13527,12 @@ function buildValleyMapEl(){
   cv.height = VALLEY_VIEW.h;
   cv.setAttribute('aria-hidden', 'true');
   wrap.appendChild(cv);
+  _journeyAtlasCv = cv;
   let tries = 0;
   const paint = ()=>{
+    if(!cv.isConnected) return;
     const ok = paintValleyAtlas(cv);
-    if(!ok && tries++ < 24) setTimeout(()=>{ if(cv.isConnected) paint(); }, 160);
+    if(!ok && tries++ < 80) setTimeout(paint, 120);
   };
   paint();
 
