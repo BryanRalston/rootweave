@@ -32,7 +32,7 @@
   box-shadow:0 0 0 3px rgba(234,181,67,.35);
 }
 button:focus-visible, .tool:focus-visible, .hudbtn:focus-visible, .mbtn:focus-visible,
-.jnode:focus-visible, .vmap-cell:focus-visible, .vland:focus-visible, .prestige-pill:focus-visible, .ovbtn:focus-visible{
+.vreg:focus-visible, .prestige-pill:focus-visible, .ovbtn:focus-visible{
   outline:2px solid rgba(234,181,67,.95);
   outline-offset:2px;
 }
@@ -462,130 +462,43 @@ body.home-plot #questPanel{
 /* ---------- journey (valley atlas) ---------- */
 #journey{position:fixed; inset:0; z-index:62; display:none; flex-direction:column; align-items:center; overflow-y:auto; background:#0e1a12}
 #journey.show{display:flex}
-#journey .jbg{position:fixed; inset:0; background:url('sprites/title_farm.webp') center/cover no-repeat; opacity:.55; pointer-events:none}
-#journey .jshade{position:fixed; inset:0; background:linear-gradient(180deg, rgba(8,14,8,.74) 0%, rgba(8,14,8,.38) 42%, rgba(8,14,8,.8) 100%); pointer-events:none}
-#journey .jwrap{position:relative; z-index:1; width:100%; max-width:680px; padding:20px 16px calc(30px + env(safe-area-inset-bottom,0px))}
+#journey .jbg{position:fixed; inset:0; background:
+  radial-gradient(ellipse 80% 50% at 50% 18%, #24382a 0%, transparent 70%),
+  linear-gradient(180deg, #152418 0%, #0e1a12 55%, #0a140e 100%);
+  pointer-events:none}
+#journey .jshade{position:fixed; inset:0; background:linear-gradient(180deg, rgba(8,14,8,.35) 0%, rgba(8,14,8,.08) 40%, rgba(8,14,8,.55) 100%); pointer-events:none}
+#journey .jwrap{position:relative; z-index:1; width:100%; max-width:920px; padding:16px 14px calc(24px + env(safe-area-inset-bottom,0px))}
 #journey h1{color:#ffeece; font-size:30px; margin:4px 0 2px; text-align:center; text-shadow:0 2px 8px rgba(0,0,0,.6)}
 #journey .jsub{color:#e8d9ae; font-size:13.5px; font-weight:700; text-align:center; margin-bottom:12px; text-shadow:0 1px 4px rgba(0,0,0,.7)}
-/* One-farm valley map — land, house, water; locked neighbors fog (not a padlock grid) */
-.vmap{position:relative; width:100%; aspect-ratio:4/3; min-height:260px; border-radius:18px; overflow:hidden; margin:0 0 14px;
+/* Journey = one drawing of the 96×64 (3∶2) quarter-section atlas. No cell board, no quilt. */
+.vscene{position:relative; width:100%; aspect-ratio:1000/720; min-height:260px; border-radius:18px; overflow:hidden; margin:0 0 14px;
   border:2px solid var(--line);
   box-shadow:0 0 0 3px #6b4423, 0 0 0 5px #c4a06a, 0 10px 28px rgba(0,0,0,.5);
-  background:
-    url('sprites/bg_hills_summer.webp') center top / 100% 44% no-repeat,
-    linear-gradient(180deg, #8eb56e 0%, #6a914c 28%, #547840 70%, #4a6a38 100%)}
-.vmap-valley{aspect-ratio:4/3}
-.vmap-hills{position:absolute; left:0; right:0; top:0; height:40%; object-fit:cover; object-position:center top;
-  pointer-events:none; z-index:0; opacity:.8; filter:saturate(.9) brightness(.9)}
-.vmap-ground{position:absolute; inset:22% 0 0 0; z-index:0; pointer-events:none;
-  background:
-    radial-gradient(ellipse 70% 50% at 30% 80%, rgba(90,140,60,.18), transparent 60%),
-    url('sprites/tile_grass_lush.webp') 8px 10px / 90px 68px repeat;
-  opacity:.2}
-.vmap-stream{position:absolute; inset:0; z-index:4; pointer-events:none}
-.vmap-water-main{
-  position:absolute; left:48%; top:2%; width:13%; height:72%;
-  background:
-    linear-gradient(180deg, rgba(90,160,200,.5), rgba(50,110,150,.78) 40%, rgba(60,120,155,.66)),
-    url('sprites/tile_river_ns.webp') center / 80% auto repeat-y;
-  border-radius:40px;
-  transform:rotate(-5deg);
-  box-shadow:inset 0 0 14px rgba(200,230,245,.32), 0 0 0 3px rgba(70,110,70,.2);
-  opacity:.88; filter:saturate(1.05)}
-.vmap-water-creek{
-  position:absolute; left:10%; top:12%; width:42%; height:9%;
-  background:
-    linear-gradient(90deg, rgba(80,150,185,.35), rgba(55,120,160,.78)),
-    url('sprites/tile_river_ew.webp') left center / auto 140% repeat-x;
-  border-radius:40px; transform:rotate(7deg);
-  box-shadow:inset 0 0 10px rgba(180,220,240,.28); opacity:.82}
-.vmap-water-wash{
-  position:absolute; left:54%; top:48%; width:34%; height:7%;
-  background:linear-gradient(90deg, rgba(150,125,75,.12), rgba(130,110,70,.38));
-  border-radius:40px; transform:rotate(-28deg); opacity:.55}
-.vmap-rtile{position:absolute; width:11%; height:auto; transform:translate(-50%,-50%);
-  filter:drop-shadow(0 2px 3px rgba(0,0,0,.28)); opacity:.88; pointer-events:none}
-.vmap-pond{position:absolute; width:13%; height:auto; transform:translate(-50%,-50%);
-  filter:drop-shadow(0 2px 4px rgba(0,0,0,.3)); opacity:.9; pointer-events:none}
-.vmap-path{position:absolute; z-index:2; pointer-events:none;
-  background:url('sprites/tile_path.webp') center / 28px 22px repeat-x;
-  height:7%; opacity:.7; border-radius:20px; filter:saturate(.85) brightness(.92)}
-.vmap-board{position:absolute; inset:8px; z-index:3; display:grid;
-  grid-template-columns:repeat(4,1fr); grid-template-rows:repeat(4,1fr); gap:3px}
-.vland{position:relative; z-index:3; border:none; padding:0; margin:0; font-family:inherit; cursor:pointer;
-  border-radius:12px; overflow:hidden; min-width:0; min-height:0;
-  background-color:rgba(86,120,62,.42);
-  background-size:58px 44px; background-repeat:repeat;
-  box-shadow:inset 0 0 0 1px rgba(255,236,200,.12);
-  transition:transform .12s ease, box-shadow .12s ease, filter .2s ease}
-.vland:active{transform:scale(.98)}
-.vland-nm{position:absolute; left:50%; bottom:6%; transform:translateX(-50%);
-  font-size:10px; font-weight:800; color:#fff6dc; letter-spacing:.01em; text-align:center; line-height:1.15;
-  text-shadow:0 1px 2px #1a1208, 0 0 8px rgba(0,0,0,.75); pointer-events:none; width:92%;
-  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden}
-.vland-mark{position:absolute; left:50%; top:14%; width:38%; height:auto; transform:translateX(-50%);
-  pointer-events:none; filter:drop-shadow(0 3px 5px rgba(0,0,0,.4)); object-fit:contain}
-.vland.locked{cursor:default; filter:saturate(.4) brightness(.82)}
-.vland.locked .vland-fog{position:absolute; inset:0; pointer-events:none;
-  background:linear-gradient(180deg, rgba(210,220,214,.28), rgba(70,80,72,.22) 55%, rgba(30,38,32,.2));
-  box-shadow:inset 0 0 18px rgba(200,210,200,.12)}
-.vland.locked .vland-nm{opacity:.7; color:#ece6d6; font-weight:700}
-.vland.locked .vland-mark{opacity:.4; filter:grayscale(.45) brightness(.88) drop-shadow(0 2px 3px rgba(0,0,0,.3))}
-.vland.scenic{cursor:default; pointer-events:none; opacity:.72; filter:saturate(.85)}
-.vland.available{z-index:5; box-shadow:inset 0 0 0 2px rgba(234,181,67,.7)}
-.vland.in_progress{z-index:5; box-shadow:inset 0 0 0 2px rgba(100,180,255,.7)}
-.vland.restored,.vland.mastered{z-index:4; filter:saturate(1.06) brightness(1.03);
-  box-shadow:inset 0 0 0 1.5px rgba(70,130,48,.45)}
-.vland.restored .vland-nm::after{content:' ✓'}
-.vland.mastered .vland-nm::after{content:' ★'}
-.vland.hub,.vland.vland-home{z-index:6}
-.vland-home{
-  background-image:url('sprites/tile_soil_rich.webp'), url('sprites/tile_grass_lush.webp');
-  background-size:44px 34px, 56px 42px; background-position:18% 36%, 72% 62%;
-  box-shadow:inset 0 0 0 2px rgba(234,181,67,.45)}
-.vland-hub{z-index:7;
-  background-image:url('sprites/tile_grass_lush.webp'), url('sprites/tile_path.webp');
-  background-size:56px 42px, 40px 30px; background-position:center, 50% 88%;
-  box-shadow:inset 0 0 0 2px rgba(234,181,67,.5)}
-.vland-hub .vland-house{position:absolute; left:50%; top:-6%; width:46%; height:auto; transform:translateX(-50%);
-  pointer-events:none; filter:drop-shadow(0 5px 8px rgba(0,0,0,.45)); object-fit:contain}
-.vland-yard{background-image:url('sprites/tile_soil_rich.webp'), url('sprites/tile_grass_lush.webp');
-  background-size:40px 30px, 52px 40px}
-.vland-hub.locked{filter:saturate(.78) brightness(.92)}
-.vland-hub.locked .vland-house{opacity:.94}
-.vland-hub.locked .vland-fog{background:linear-gradient(180deg, transparent 30%, rgba(20,28,20,.16))}
-.vland.biome-garden{background-image:url('sprites/tile_soil_rich.webp')}
-.vland.biome-pasture{background-image:url('sprites/tile_pasture.webp')}
-.vland.biome-orchard{background-image:url('sprites/tile_grass_lush.webp')}
-.vland.biome-riparian{background-image:url('sprites/tile_grass_lush.webp')}
-.vland.biome-marsh{background-image:url('sprites/tile_water_pond.webp'), url('sprites/tile_grass_lush.webp');
-  background-size:60px 46px, 56px 42px}
-.vland.biome-heartland{background-image:url('sprites/tile_grass_lush.webp')}
-.vland.biome-ridge{background-image:url('sprites/tile_dirt_cracked.webp')}
-.vland.biome-market{background-image:url('sprites/tile_path.webp')}
-.vland.biome-dust{background-image:url('sprites/tile_saltflat.webp'), url('sprites/tile_dirt_cracked.webp');
-  background-size:56px 42px, 60px 46px}
-.vland.biome-wild{background-image:url('sprites/tile_dead.webp')}
-.vmap-fog{position:absolute; inset:0; pointer-events:none; z-index:8;
-  background:radial-gradient(ellipse 90% 80% at 40% 72%, transparent 58%, rgba(8,14,8,.16) 100%)}
-.vmap-compass{position:absolute; top:8px; right:10px; z-index:9; pointer-events:none;
+  background:#1a2a18}
+.vscene-cv{display:block; width:100%; height:100%; vertical-align:top}
+.vscene-hit{position:absolute; inset:0; width:100%; height:100%; z-index:2}
+.vreg{fill:transparent; stroke:transparent; stroke-width:1.5; cursor:pointer; transition:fill .15s ease, stroke .15s ease}
+.vreg.available{stroke:rgba(234,181,67,.0); fill:rgba(234,181,67,.0)}
+.vreg.available:hover,.vreg.hub:hover,.vreg.in_progress:hover,.vreg.restored:hover,.vreg.mastered:hover{
+  fill:rgba(255,236,180,.08); stroke:rgba(234,181,67,.45)}
+.vreg.in_progress{stroke:rgba(120,190,255,.35); fill:rgba(90,160,230,.04)}
+.vreg.restored,.vreg.mastered{stroke:transparent; fill:transparent}
+.vreg.hub{stroke:transparent; fill:transparent}
+.vreg.locked{cursor:default; fill:transparent; stroke:transparent}
+.vreg.available.home{stroke:transparent; fill:transparent}
+.vlab{position:absolute; z-index:3; transform:translate(-50%,-50%); pointer-events:none;
+  font-size:10px; font-weight:800; color:#fff8e4; letter-spacing:.01em; white-space:nowrap;
+  text-shadow:0 1px 2px #1a1208, 0 0 8px rgba(0,0,0,.75); padding:2px 7px; border-radius:999px;
+  background:rgba(20,16,8,.38); border:1px solid rgba(255,236,200,.18)}
+.vlab.locked{opacity:.0}
+.vlab.restored::after{content:' ✓'}
+.vlab.mastered::after{content:' ★'}
+.vmap-compass{position:absolute; top:8px; right:10px; z-index:4; pointer-events:none;
   color:rgba(255,238,206,.55); font-size:11px; font-weight:800; text-shadow:0 1px 3px #000}
-.jnode.done .jnm::after{ content:' ✓'; color:#4a8f4d; }
-.jnode.done .jst{ color:#3a7a30; }
 .vmap-hub{width:100%;margin:0 0 12px;padding:10px 12px;border-radius:12px;border:2px solid var(--line);
   background:var(--glass);font:800 13px inherit;cursor:pointer;color:var(--wood2);
   box-shadow:inset 0 1px 0 rgba(255,250,230,.7), 0 3px 8px rgba(10,8,2,.25)}
 .vmap-hub.locked{filter:grayscale(.35);opacity:.75}
-.jledger{margin:0 0 16px;border-radius:16px;border:2px solid var(--line);background:var(--glass);
-  box-shadow:inset 0 1px 0 rgba(255,250,230,.75), 0 4px 12px rgba(10,8,2,.28); overflow:hidden}
-.jledger > summary{cursor:pointer; font:800 13.5px inherit; color:var(--wood2); padding:12px 14px; list-style:none}
-.jledger > summary::-webkit-details-marker{display:none}
-.jledger > summary::after{content:' ▾'; opacity:.55}
-.jledger[open] > summary::after{content:' ▴'}
-.jledger .jnode{width:calc(100% - 24px); margin:0 12px 12px}
-.jledger .jnode:last-child{margin-bottom:14px}
-.jledger .jnode.locked{filter:saturate(.45) brightness(.92); opacity:.78}
-.jledger .jnode.locked .jem{filter:none}
 .jcontinue{display:block; width:100%; margin:0 0 14px; padding:14px 16px; border-radius:16px; border:2px solid var(--gold2);
   background:linear-gradient(180deg,#e8c86a,#c98f1e); color:var(--ink); font:800 16px inherit; cursor:pointer;
   box-shadow:0 4px 0 #8a6010, 0 8px 20px rgba(0,0,0,.35); text-align:left;
@@ -625,21 +538,6 @@ body.reduce-motion #badgeBanner.show{ opacity:1; }
   background-image:linear-gradient(rgba(255,255,255,.06) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.06) 1px, transparent 1px);
   background-size:8.33% 10%}
 .cot-edit.cot-placing .cot-snap-grid, #cotRoom.cot-placing .cot-snap-grid{opacity:1}
-.jnode{position:relative; display:flex; align-items:center; gap:12px; width:100%; text-align:left;
-  background:var(--glass); border:2px solid var(--line); border-bottom:4px solid var(--wood2); border-radius:18px;
-  padding:12px 14px; margin:0 0 26px; cursor:pointer; font-family:inherit; min-height:74px;
-  box-shadow:0 6px 18px rgba(10,8,2,.45), inset 0 1px 0 rgba(255,250,230,.8)}
-.jnode:active{transform:translateY(2px)}
-.jnode .jem{width:52px; height:52px; flex:none; border-radius:50%; background:var(--woodgrain); border:2px solid var(--wood2);
-  display:flex; align-items:center; justify-content:center; font-size:26px; box-shadow:inset 0 2px 4px rgba(0,0,0,.25)}
-.jnode .jnm{font-weight:800; font-size:16.5px; color:var(--wood2)}
-.jnode .jts{font-size:12px; font-weight:700; color:var(--soft); line-height:1.25; margin-top:1px}
-.jnode .jst{margin-left:auto; flex:none; font-weight:800; font-size:12.5px; text-align:right; color:var(--green2); white-space:nowrap; line-height:1.35}
-.jnode.locked{filter:grayscale(.85); opacity:.62; cursor:default}
-.jnode.locked .jst{color:var(--soft)}
-.jnode.done{border-color:#8fb768}
-.jnode.cur .jem{box-shadow:0 0 0 3px rgba(234,181,67,.65), inset 0 2px 4px rgba(0,0,0,.25)}
-.jnode:not(:last-child)::after{content:''; position:absolute; left:38px; top:100%; height:26px; border-left:4px dotted rgba(245,230,190,.75)}
 #btnJourney .jlbl{font-size:12.5px; margin-left:3px}
 /* ─── Farmhouse multi-room interior (adult material chrome) ─── */
 #cottage{position:fixed; inset:0; z-index:80; display:none; flex-direction:column;
@@ -803,9 +701,8 @@ body.reduce-motion #badgeBanner{ transition:none; }
 .pmap-nm{flex:1}
 .pmap-stars{font-size:11px}
 @media(max-width:640px){
-  .vland-nm{font-size:8.5px}
-  .vland-hub .vland-house{width:80%}
-  .vmap{min-height:232px}
+  .vscene{min-height:232px}
+  .vlab{font-size:9px; padding:2px 6px}
   /* Compact mobile chrome — map owns the center (IMPROVEMENTS P0) */
   #topbar{
     gap:4px; padding:max(6px, env(safe-area-inset-top, 0px)) 6px 4px;
@@ -896,9 +793,8 @@ body.reduce-motion #badgeBanner{ transition:none; }
   }
   .tool{width:48px; min-height:48px}
   #journey .jwrap{padding-left:max(14px, env(safe-area-inset-left,0px)); padding-right:max(14px, env(safe-area-inset-right,0px));}
-  .vland-nm{font-size:9px}
-  .vland-hub .vland-house{width:78%}
-  .vmap{min-height:240px}
+  .vscene{min-height:240px}
+  .vlab{font-size:9px}
 }
 .jscrap-btn{ box-shadow:0 0 0 1px rgba(234,181,67,.25); }
 .jfreeplay{ cursor:pointer; font-family:inherit; width:100%; }
@@ -972,7 +868,7 @@ body.reduce-motion #badgeBanner{ transition:none; }
   <div class="jbg"></div><div class="jshade"></div>
   <div class="jwrap">
     <h1>🌱 Rootweave</h1>
-    <div class="jsub">Your valley — house, garden, water, and the fields you heal</div>
+    <div class="jsub">Your farm — house by the garden, river through the valley</div>
     <div id="jpath"></div>
   </div>
 </div>
@@ -1446,9 +1342,9 @@ const LEVELS = [
      {html:'🌅 Brown soil! Tap a revived tile with 🌽 <b>3 Sisters</b> — one successful plant is the next beat.', on:'plant_crop'},
      {html:'🎯 Three goals — that strip reads <b>0/3</b> until you finish them. Compost, plant, keep tending.', btn:'I\'ve got this 🌿'},
    ]},
-  {id:'field', name:'The Back Field', em:'🐄', grid:8, coins:55, parYears:4,
+  {id:'field', name:'Back Paddock', em:'🐄', grid:8, coins:55, parYears:4,
    teaser:'Bring in the animals — hooves, beaks & manure.',
-   story:'The old grazing field behind the barn. Buy cattle one head at a time — more mouths work the soil harder and tire a pad faster. Move them so the land can rest, then send chickens through for team graze.',
+   story:'The grazing folds behind the garden, around the stock pond. Buy cattle one head at a time — more mouths work the soil harder and tire a pad faster. Move them so the land can rest, then send chickens through for team graze.',
    doneText:'The Back Field hums with life — you\'ve mastered the grazing dance!',
    tools:['select','compost','covercrop','sisters','clover','cattle','chicken','bulldoze'],
    shop:false, river:false, events:false, startPaused:false, regen:1.5,
@@ -1462,14 +1358,14 @@ const LEVELS = [
    ],
    gen:genBackField,
    tut:[
-     {html:'🐄 <b>The Back Field</b> — first cow is cheap. Tap the <b>same pad</b> to grow the herd. More heads help, and they get hungrier. <b>Move</b> them so the land can rest.', btn:'Meet the herd 🐄'},
+     {html:'🐄 <b>Back Paddock</b> — first cow is cheap. Tap the <b>same pad</b> to grow the herd. More heads help, and they get hungrier. <b>Move</b> them so the land can rest.', btn:'Meet the herd 🐄'},
      {html:'🐄 Tap <b>Cattle</b> on brown soil — first tap <b>buys one cow</b> (🪙12).<br><br>Tap that same pad again to add a head. Tap a <b>new</b> pad to <b>move</b> the whole herd so the last one can rest.', on:'graze_cattle'},
      {html:'🐔 Now the magic: send <b>Chickens</b> to the <b>SAME tile</b>.<br><br>They scratch through after the herd — ✨ <b>team synergy</b> supercharges the soil!', on:'synergy'},
      {html:'✨ <b>Soil magic!</b> Grow the herd, then rotate so pads rest.<br><br>One more friend: 🍀 <b>Clover</b> — no coins, but it feeds the soil a feast and its flowers call the bees. Finish the 🎯 goals to move on!', btn:'On it! 🐔'},
    ]},
-  {id:'creek', name:'The Creek Bottom', em:'🏞️', grid:9, coins:65, parYears:5,
+  {id:'creek', name:'Creek Bend', em:'🏞️', grid:9, coins:65, parYears:5,
    teaser:'A murky creek needs buffer roots.',
-   story:'A real creek runs through this low ground — and it\'s murky with mud. Bare dirt sheds runoff straight into the water. Plant roots along the banks and the creek will run clear again.',
+   story:'The creek bends east through this reach and joins the main river on the far bank. It\'s murky with mud. Bare dirt sheds runoff straight into the water. Plant roots along the banks and the same creek will run clear again.',
    doneText:'Listen — the creek chuckles over clean stones! Buffer roots did that.',
    tools:['select','compost','covercrop','sisters','clover','wheat','cattle','chicken','trees','pond','bulldoze'],
    shop:false, river:true, events:true, startPaused:false, regen:1.25,
@@ -1483,13 +1379,13 @@ const LEVELS = [
    ],
    gen:genCreek,
    tut:[
-     {html:'🏞️ <b>The Creek Bottom.</b> A creek runs through this plot… and it\'s <b>MURKY</b> 🟤.<br><br>Bare, dying dirt sheds mud straight into the water every time it rains.', btn:'How do I clean it?'},
+     {html:'🏞️ <b>Creek Bend.</b> The same creek you see on the valley map runs through this reach… and it\'s <b>MURKY</b> 🟤.<br><br>Bare, dying dirt sheds mud straight into the water every time it rains.', btn:'How do I clean it?'},
      {html:'🌳 Tap <b>Trees</b> and plant them on living soil <b>RIGHT BESIDE the water</b>.<br><br>Buffer roots filter the runoff before it reaches the creek — watch the 💧 water quality pill rise!', on:'buffer'},
      {html:'💧 That\'s a <b>riparian buffer</b> — the #1 clean-water move on any real farm!<br><br>New too: 💧 <b>Ponds</b> store rain for dry spells, and 🌾 <b>Wheat</b> pays fast but tires the soil. Check the 🌊 Runoff overlay (right side) to see what\'s washing in. 🎯 Go!', btn:'Clean water! 🌊'},
    ]},
   {id:'flats', name:'The Dust Flats', em:'🏜️', grid:11, coins:50, parYears:6,
    teaser:'Salt, gullies & dust. The hard lesson.',
-   story:'The dust flats. Salt crusts, erosion gullies, a dry creekbed — and barely a coin to spare. This land will fight you. Feed it anyway.',
+   story:'The dust flats on the south-east of the farm. Salt crusts, a dry wash that only meets the river when the land heals — and barely a coin to spare. This land will fight you. Feed it anyway.',
    doneText:'Even the salt pan blooms. If you can heal the Dust Flats, you can heal anything.',
    tools:['select','compost','covercrop','sisters','clover','wheat','cattle','chicken','goat','trees','pond','wetland','bulldoze'],
    // RW-069: permanently free goats (+ wetland primer) on Valley palette / shop after clear
@@ -1608,9 +1504,9 @@ const LEVELS = [
      {html:'📚 <b>School Garden.</b> No fancy tools — just pioneers, compost, and sisters. Leave it better than you found it.', btn:'Teach by doing'},
    ],
    grantUnlocks:['greenhouse','wormfarm','mushroom']},
-  {id:'valley', name:'The Whole Valley', em:'🌄', grid:14, coins:75, parYears:8,
-   teaser:'The whole dying valley. Everything you\'ve learned.',
-   story:'The whole valley — dust where wheat once stood, a dry creek, a muddy river, and one small green corner by the barn. Every lesson, all at once. Weave the roots back together.',
+  {id:'valley', name:'River Reach', em:'🌄', grid:14, coins:75, parYears:8,
+   teaser:'The main river corridor. Everything you\'ve learned.',
+   story:'The main stem of the valley river — the same water that leaves Creek Bend on the west bank and takes the dust wash from the south. Riparian banks, a muddy current, and the lessons of every field at once.',
    doneText:'Every region breathes again. The valley is ALIVE — and so is everything you\'ve learned.',
    tools:'all',
    shop:true, river:true, events:true, startPaused:false, regen:1,
@@ -1621,7 +1517,7 @@ const LEVELS = [
    ],
    gen:genValley,
    tut:[
-     {html:'🌄 <b>The Whole Valley.</b> Everything you\'ve learned, all at once — only one corner still breathes.<br><br>🎯 Heal it <b>region by region</b> (top-left panel shows the current one, plus side tasks that pay coins).', btn:'Show me'},
+     {html:'🌄 <b>River Reach.</b> The same main stem you saw on the map — everything you\'ve learned, all at once.<br><br>🎯 Heal it <b>region by region</b> (top-left panel shows the current one, plus side tasks that pay coins).', btn:'Show me'},
      {html:'🛒 The <b>SHOP</b> is open (top bar)! Features you unlocked on side parcels stay free. Spend surplus on the rest.<br><br>🏆 Restore every region, clean the river, and welcome the wildlife home!', btn:'Restore the valley! 🚜'},
    ]},
 ];
@@ -1630,9 +1526,17 @@ const CLEAR_BONUS = [40, 60, 80, 100, 70, 75, 80, 90, 55, 150];
 
 /* ===================== CONNECTED VALLEY ATLAS (full map)
    One geography. Plots are crops of this atlas. Water network is continuous.
-   See scripts/playtest/VALLEY_ATLAS.md
+   World is a ~160-acre quarter section (3∶2). House is a small SW corner.
    ========================================================================== */
-const ATLAS_W = 48, ATLAS_H = 32;
+const ATLAS_W = 96, ATLAS_H = 64;
+/**
+ * Optional 1:1 painted skin of THIS atlas (not a new landscape).
+ * Image space = atlas space: (0,0) NW, house SW (small), marsh NW,
+ * river cols 48–49, orchard east, dust SE, ridge/woodlot NE.
+ * Any resolution is fine if the aspect is 96:64 (3∶2). blitAtlasImageToView
+ * draws it 1:1. Hotspots stay on VALLEY_PARCELS. Do not reverse-fit.
+ */
+const VALLEY_ATLAS_SKIN = 'valley_atlas_skin';
 /** Sparse atlas: key = "c,r" → {water, biome, feature?, landmark?} */
 const VALLEY_ATLAS_CELLS = Object.create(null);
 function atlasKey(c,r){ return c+','+r; }
@@ -1646,184 +1550,307 @@ function atlasSet(c,r, patch){
   const cur = VALLEY_ATLAS_CELLS[k] || {water:'none', biome:'wild'};
   VALLEY_ATLAS_CELLS[k] = Object.assign(cur, patch);
 }
-function atlasPaintWater(path, kind){
-  path.forEach(p=> atlasSet(p.c, p.r, {water: kind || 'main', biome: kind==='wash' ? 'dust' : 'riparian'}));
-}
-function atlasLine(c0,r0,c1,r1, kind){
+function atlasWalk(c0,r0,c1,r1){
   const pts = [];
   let c=c0|0, r=r0|0;
   const tc=c1|0, tr=r1|0;
   pts.push({c,r});
   let guard=0;
-  while((c!==tc || r!==tr) && guard++<240){
+  while((c!==tc || r!==tr) && guard++<480){
     if(c < tc) c++; else if(c > tc) c--;
     else if(r < tr) r++; else if(r > tr) r--;
     pts.push({c,r});
   }
+  return pts;
+}
+function atlasPolylinePts(points){
+  const all = [];
+  for(let i=0;i<points.length-1;i++){
+    all.push(...atlasWalk(points[i].c,points[i].r,points[i+1].c,points[i+1].r));
+  }
+  return all;
+}
+function atlasPaintWater(path, kind){
+  path.forEach(p=> atlasSet(p.c, p.r, {water: kind || 'main', biome: kind==='wash' ? 'dust' : 'riparian'}));
+}
+function atlasLine(c0,r0,c1,r1, kind){
+  const pts = atlasWalk(c0,r0,c1,r1);
   atlasPaintWater(pts, kind);
   return pts;
 }
 function atlasPolyline(points, kind){
-  const all = [];
-  for(let i=0;i<points.length-1;i++){
-    all.push(...atlasLine(points[i].c,points[i].r,points[i+1].c,points[i+1].r, kind));
+  const pts = atlasPolylinePts(points);
+  atlasPaintWater(pts, kind);
+  return pts;
+}
+function atlasIsWetCell(A){
+  return !!(A && (A.water==='main' || A.water==='creek' || A.water==='pond_site'));
+}
+function atlasPaintDryFeature(path, feature, extra){
+  path.forEach(p=>{
+    const A = atlasGet(p.c, p.r);
+    if(atlasIsWetCell(A)) return;
+    atlasSet(p.c, p.r, Object.assign({feature}, extra||{}));
+  });
+}
+function atlasBasin(c, r, w, h, biome){
+  for(let rr=r; rr<r+h; rr++) for(let cc=c; cc<c+w; cc++){
+    atlasSet(cc, rr, {water:'pond_site', biome: biome || ((atlasGet(cc,rr)||{}).biome || 'riparian')});
   }
-  return all;
+}
+/** Shared farm geography — journey painter and water stamps read the same paths. */
+const ATLAS_GEO = {
+  creek: [{c:22,r:8},{c:28,r:8},{c:34,r:9},{c:40,r:10},{c:46,r:10},{c:48,r:10}],
+  marshRun: [{c:6,r:6},{c:12,r:7},{c:18,r:8},{c:22,r:8}],
+  wash: [{c:60,r:48},{c:58,r:44},{c:56,r:42},{c:53,r:40},{c:53,r:39},{c:50,r:36},{c:49,r:34}],
+  lane: [
+    {c:10,r:56},{c:20,r:54},{c:32,r:52},{c:42,r:48},{c:48,r:46},
+    {c:56,r:42},{c:68,r:36},{c:80,r:32}
+  ],
+  schoolSpur: [{c:20,r:54},{c:22,r:56},{c:24,r:58}],
+  gardenPath: [{c:10,r:57},{c:9,r:58},{c:8,r:59},{c:9,r:59}],
+  paddockSpur: [{c:12,r:52},{c:12,r:44},{c:12,r:38},{c:12,r:34}],
+  orchardSpur: [{c:56,r:42},{c:56,r:36},{c:56,r:30},{c:56,r:26}],
+  gardenRill: [{c:11,r:58},{c:10,r:57},{c:9,r:57}],
+  orchardDrain: [{c:60,r:22},{c:62,r:24},{c:64,r:26},{c:66,r:28}],
+  overflow: [
+    {c:86,r:8},{c:80,r:12},{c:74,r:18},{c:68,r:24},
+    {c:60,r:32},{c:54,r:38},{c:48,r:46}
+  ],
+  overflowSpur: [{c:54,r:38},{c:40,r:38},{c:24,r:36},{c:14,r:34}],
+  ponds: {
+    garden:{c:11,r:59,w:2,h:2,biome:'garden'},
+    stock:{c:14,r:34,w:2,h:2,biome:'pasture'},
+    padA:{c:18,r:22,w:2,h:2,biome:'pasture'},
+    padB:{c:26,r:28,w:2,h:2,biome:'pasture'},
+    high:{c:86,r:6,w:2,h:2,biome:'ridge'},
+    wood:{c:76,r:8,w:2,h:2,biome:'ridge'},
+    marshA:{c:22,r:6,w:2,h:2,biome:'marsh'},
+    marshB:{c:25,r:8,w:2,h:2,biome:'marsh'}
+  }
+};
+function atlasBiomeAt(c, r){
+  const rooms = [
+    {c:12,r:8,biome:'marsh'}, {c:32,r:10,biome:'riparian'}, {c:48,r:16,biome:'heartland'},
+    {c:86,r:8,biome:'ridge'}, {c:16,r:32,biome:'pasture'}, {c:22,r:20,biome:'pasture'},
+    {c:60,r:24,biome:'orchard'}, {c:78,r:26,biome:'pasture'}, {c:82,r:32,biome:'market'},
+    {c:12,r:56,biome:'garden'}, {c:26,r:58,biome:'garden'}, {c:70,r:48,biome:'dust'}
+  ];
+  let best = 'wild', bestD = 1e9;
+  for(let i=0;i<rooms.length;i++){
+    const rm = rooms[i];
+    const d = Math.hypot(c-rm.c, r-rm.r);
+    if(d < bestD){ bestD = d; best = rm.biome; }
+  }
+  return best;
 }
 /**
- * Geographic grid (map cells 12×10 tiles). Levels fit the map — not random pins.
- *
- *     c0          c1          c2              c3
- * r0  Marsh       Creek       RIVER (N→S)     Wind Ridge
- * r1  Paddock     Orchard     RIVER cont.     Market
- * r2  Home        School      Dust Flats      (dust E)
- *
- * Main river: north→south down column ~24–25 (through River Reach).
- * Creek tributary: west→east into the main stem.
- * Dust wash: south-east→northwest into the main stem.
+ * One farm. Journey draws THIS atlas. Crops = origin/size of the same picture.
+ * Water, lane, and buildings are painted once. Levels do not invent their own rivers.
  */
 (function buildValleyAtlas(){
   for(let r=0;r<ATLAS_H;r++) for(let c=0;c<ATLAS_W;c++){
-    let biome = 'wild';
-    if(c<12 && r<10) biome = 'marsh';
-    else if(c>=12 && c<24 && r<10) biome = 'riparian';
-    else if(c>=24 && c<36 && r<16) biome = 'heartland';
-    else if(c>=36 && r<10) biome = 'ridge';
-    else if(c<12 && r>=10 && r<20) biome = 'pasture';
-    else if(c>=12 && c<24 && r>=10 && r<20) biome = 'orchard';
-    else if(c>=36 && r>=10 && r<20) biome = 'market';
-    else if(c<12 && r>=20) biome = 'garden';
-    else if(c>=12 && c<24 && r>=20) biome = 'garden';
-    else if(c>=24 && r>=16) biome = 'dust';
-    atlasSet(c,r,{water:'none', biome});
+    atlasSet(c,r,{water:'none', biome: atlasBiomeAt(c,r)});
   }
-  // MAIN STEM: north edge → south through River Reach (cols 24–25)
+  // MAIN STEM: north edge → south (cols 48–49). Stops above the garden / house yard.
   const main = [];
-  for(let r=0;r<=22;r++){
-    main.push({c:24, r}, {c:25, r});
-    if(r%5===2) main.push({c:26, r}); // slight east meander (downstream feel)
+  for(let r=0;r<=48;r++){
+    main.push({c:48, r}, {c:49, r});
+    if(r%6===3 && r<=30) main.push({c:50, r});
   }
   atlasPaintWater(main, 'main');
-  // CREEK tributary: flows EAST into main stem (realistic confluence)
-  atlasPolyline([
-    {c:12,r:4},{c:15,r:4},{c:18,r:5},{c:21,r:5},{c:23,r:6},{c:24,r:6}
-  ], 'main');
-  // slight creek body through Creek parcel
-  for(let c=13;c<=20;c++){ atlasSet(c, 5, {water:'main', biome:'riparian'}); atlasSet(c, 6, {water:'main', biome:'riparian'}); }
-  // MARSH finger: west tributary into creek
-  atlasPolyline([{c:2,r:3},{c:5,r:3},{c:8,r:4},{c:11,r:4},{c:12,r:4}], 'main');
-  for(let r=2;r<=6;r++) for(let c=1;c<=4;c++){
-    if((c+r)%2===0) atlasSet(c,r,{water:'pond_site', biome:'marsh'});
+  atlasPolyline(ATLAS_GEO.creek, 'main');
+  atlasPolyline(ATLAS_GEO.marshRun, 'main');
+  atlasSet(30,8,{water:'main', biome:'riparian'});
+  atlasSet(30,9,{water:'main', biome:'riparian'});
+  atlasSet(47,11,{water:'main', biome:'riparian'});
+  // Shared stem at the Creek Bend / River Reach edge (cols 36–37)
+  for(let r=8;r<=12;r++){
+    atlasSet(36,r,{water:'main', biome:'riparian'});
+    atlasSet(37,r,{water:'main', biome:'riparian'});
   }
-  // DUST WASH: from SE dust flats NW into main stem (ephemeral tributary)
-  atlasPolyline([
-    {c:34,r:22},{c:31,r:21},{c:28,r:20},{c:26,r:18},{c:25,r:16},{c:25,r:14}
-  ], 'wash');
-  // Landmarks
-  atlasSet(2,3,{landmark:'heron', biome:'marsh'});
-  atlasSet(14,3,{landmark:'bridge', biome:'riparian'});
-  atlasSet(26,2,{landmark:'barn', biome:'heartland'});
-  atlasSet(27,2,{landmark:'coop', biome:'heartland'});
-  atlasSet(38,3,{landmark:'wind', biome:'ridge'});
-  atlasSet(5,14,{landmark:'trough', biome:'pasture'});
-  atlasSet(15,14,{landmark:'stump', biome:'orchard'});
-  atlasSet(38,14,{landmark:'cart', biome:'market'});
-  atlasSet(5,24,{landmark:'shed', biome:'garden'});
-  atlasSet(14,24,{landmark:'bell', biome:'garden'});
-  atlasSet(30,20,{landmark:'ruin', biome:'dust'});
-  for(let r=20;r<=28;r++) for(let c=28;c<=34;c++){
-    if(((c+r)%3)===0) atlasSet(c,r,{feature:'saltflat', biome:'dust'});
+  atlasPolyline(ATLAS_GEO.wash, 'wash');
+  Object.keys(ATLAS_GEO.ponds).forEach(k=>{
+    const p = ATLAS_GEO.ponds[k];
+    atlasBasin(p.c, p.r, p.w, p.h, p.biome);
+  });
+  atlasPaintDryFeature([{c:8,r:58},{c:9,r:58},{c:10,r:58},{c:11,r:58},{c:12,r:58}], 'swale', {biome:'garden'});
+  atlasPaintDryFeature(atlasPolylinePts(ATLAS_GEO.gardenRill), 'swale', {biome:'garden'});
+  atlasPaintDryFeature(atlasPolylinePts(ATLAS_GEO.orchardDrain), 'swale', {biome:'orchard'});
+  atlasPaintDryFeature(atlasPolylinePts(ATLAS_GEO.overflow), 'swale');
+  atlasPaintDryFeature(atlasPolylinePts(ATLAS_GEO.overflowSpur), 'swale');
+  atlasPaintDryFeature(atlasPolylinePts(ATLAS_GEO.lane), 'path');
+  atlasPaintDryFeature(atlasPolylinePts(ATLAS_GEO.schoolSpur), 'path');
+  atlasPaintDryFeature(atlasPolylinePts(ATLAS_GEO.gardenPath), 'path', {biome:'garden'});
+  atlasPaintDryFeature(atlasPolylinePts(ATLAS_GEO.paddockSpur), 'path');
+  atlasPaintDryFeature(atlasPolylinePts(ATLAS_GEO.orchardSpur), 'path');
+  atlasPaintDryFeature([{c:13,r:56},{c:14,r:56},{c:14,r:57},{c:15,r:56}], 'path', {biome:'garden'});
+  atlasPaintDryFeature([{c:20,r:32},{c:21,r:32},{c:22,r:32},{c:8,r:28},{c:9,r:28}], 'hedgerow', {biome:'pasture'});
+  atlasPaintDryFeature([{c:16,r:20},{c:16,r:21},{c:16,r:22},{c:24,r:20},{c:24,r:21}], 'hedgerow', {biome:'pasture'});
+  atlasPaintDryFeature([{c:14,r:33},{c:15,r:33}], 'woodlot', {biome:'pasture'});
+  for(let r=52;r<=62;r++) for(let c=0;c<=1;c++) atlasSet(c,r,{feature:'woodlot', biome:'garden'});
+  for(let r=10;r<=28;r++) for(let c=52;c<=53;c++){
+    if(!atlasIsWetCell(atlasGet(c,r))) atlasSet(c,r,{feature:'woodlot', biome:'orchard'});
+  }
+  for(let r=2;r<=12;r++) for(let c=88;c<=94;c++){
+    if(!atlasIsWetCell(atlasGet(c,r))) atlasSet(c,r,{feature:'woodlot', biome:'ridge'});
+  }
+  for(let c=55;c<=60;c+=2){
+    atlasSet(c,24,{landmark:'stump', biome:'orchard'});
+    atlasSet(c,26,{landmark:'stump', biome:'orchard'});
+  }
+  for(let r=42;r<=49;r++) for(let c=56;c<=62;c++){
+    if(((c+r)%3)===0 && !atlasIsWetCell(atlasGet(c,r))) atlasSet(c,r,{feature:'saltflat', biome:'dust'});
+  }
+  atlasSet(10,56,{landmark:'house', biome:'garden'});
+  atlasSet(14,55,{landmark:'barn', biome:'garden'});
+  atlasSet(8,55,{landmark:'compost', biome:'garden'});
+  atlasSet(22,40,{landmark:'coop', biome:'pasture'});
+  atlasSet(12,54,{landmark:'shed', biome:'garden'});
+  atlasSet(12,36,{landmark:'trough', biome:'pasture'});
+  atlasSet(46,46,{landmark:'bridge', biome:'riparian'});
+  atlasSet(22,5,{landmark:'heron', biome:'marsh'});
+  atlasSet(88,6,{landmark:'wind', biome:'ridge'});
+  atlasSet(80,32,{landmark:'cart', biome:'market'});
+  atlasSet(24,58,{landmark:'bell', biome:'garden'});
+  atlasSet(60,46,{landmark:'ruin', biome:'dust'});
+  // Riparian banks along the live stem (not the dry wash, not the garden pond)
+  for(let r=0;r<ATLAS_H;r++) for(let c=0;c<ATLAS_W;c++){
+    const A = atlasGet(c,r);
+    if(!A || A.water!=='none') continue;
+    if(A.biome==='dust' || A.biome==='garden' || A.biome==='ridge') continue;
+    const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+    for(let i=0;i<dirs.length;i++){
+      const N = atlasGet(c+dirs[i][0], r+dirs[i][1]);
+      if(N && (N.water==='main' || N.water==='creek')){ atlasSet(c,r,{biome:'riparian'}); break; }
+    }
   }
 })();
 
-// mapCell: [col,row] on 4×3 geographic board for journey UI
+/* Crops of the atlas. Journey hit regions = origin/size. No mapCell board. */
 const VALLEY_PARCELS = [
   {id:'homestead', name:'Homestead', em:'🏡', kind:'hub', levelId:null, lvIndex:null,
-   origin:{c:8, r:28}, size:{w:0, h:0}, mapCell:[0,3], teaser:'home', systemsTaught:[],
+   origin:{c:4, r:52}, size:{w:12, h:6}, teaser:'home', systemsTaught:[],
    neighborParcels:['home_garden','school_garden'], unlockRules:{type:'always'}, landmark:'full_farmstead',
-   desc:'Fixed home base — yard, house tiers, rooms.'},
+   desc:'House and barn — one small corner of the quarter section.'},
   {id:'home_garden', name:'Home Patch', em:'🌱', kind:'plot', levelId:'home', lvIndex:0,
-   origin:{c:2, r:22}, size:{w:6, h:6}, mapCell:[0,2], teaser:'basics',
+   origin:{c:8, r:58}, size:{w:6, h:6}, teaser:'basics',
    systemsTaught:['feed_dead','compost','diversity'], neighborParcels:['homestead','back_paddock','school_garden'],
-   unlockRules:{type:'always'}, landmark:'shed_fence', desc:'Kitchen garden — wake dead ground.'},
+   unlockRules:{type:'always'}, landmark:'shed_fence', desc:'A small kitchen garden by the house, above the floodplain.'},
   {id:'back_paddock', name:'Back Paddock', em:'🐄', kind:'plot', levelId:'field', lvIndex:1,
-   origin:{c:2, r:12}, size:{w:8, h:8}, mapCell:[0,1], teaser:'herd',
-   systemsTaught:['cattle','chicken','team_graze','clover'], neighborParcels:['home_garden','creek_bend','orchard_slope'],
-   unlockRules:{type:'parcel_cleared', parcelId:'home_garden'}, landmark:'fence_trough', desc:'Grazing synergy.'},
+   origin:{c:10, r:32}, size:{w:8, h:8}, teaser:'herd',
+   systemsTaught:['cattle','chicken','team_graze','clover'], neighborParcels:['home_garden','north_folds','west_folds'],
+   unlockRules:{type:'parcel_cleared', parcelId:'home_garden'}, landmark:'fence_trough', desc:'One grazing fold around the stock pond.'},
   {id:'creek_bend', name:'Creek Bend', em:'🏞️', kind:'plot', levelId:'creek', lvIndex:2,
-   origin:{c:12, r:1}, size:{w:9, h:9}, mapCell:[1,0], teaser:'water',
+   origin:{c:28, r:6}, size:{w:9, h:9}, teaser:'water',
    systemsTaught:['buffers','pond','runoff','water_hud'], neighborParcels:['back_paddock','river_reach','marsh_finger'],
-   unlockRules:{type:'parcel_cleared', parcelId:'back_paddock'}, landmark:'bridge_post', desc:'Creek flows east into the main river.'},
+   unlockRules:{type:'parcel_cleared', parcelId:'back_paddock'}, landmark:'bridge_post', desc:'Creek flows east into the same main river.'},
   {id:'dust_flats', name:'Dust Flats', em:'🏜️', kind:'plot', levelId:'flats', lvIndex:3,
-   origin:{c:26, r:18}, size:{w:11, h:11}, mapCell:[2,2], teaser:'salt',
-   systemsTaught:['goats','salt','hard_land'], neighborParcels:['river_reach','wind_ridge','market_cross'],
+   origin:{c:53, r:40}, size:{w:11, h:11}, teaser:'salt',
+   systemsTaught:['goats','salt','hard_land'], neighborParcels:['south_reach','wind_ridge','market_cross'],
    unlockRules:{type:'parcel_cleared', parcelId:'back_paddock'}, landmark:'ruin_windmill',
-   desc:'Wash joins the river from the south-east.', grantUnlocks:['goat','wetland']},
+   desc:'Dry wash meets the river on the south bank.', grantUnlocks:['goat','wetland']},
   {id:'orchard_slope', name:'Orchard Slope', em:'🍎', kind:'plot', levelId:'orchard', lvIndex:4,
-   origin:{c:13, r:12}, size:{w:8, h:8}, mapCell:[1,1], teaser:'perennials',
-   systemsTaught:['orchard','berrybush','beehive'], neighborParcels:['back_paddock','market_cross'],
+   origin:{c:54, r:22}, size:{w:8, h:8}, teaser:'perennials',
+   systemsTaught:['orchard','berrybush','beehive'], neighborParcels:['hay_field','orchard_block','market_cross'],
    unlockRules:{type:'parcel_cleared', parcelId:'back_paddock'}, landmark:'stump_rows',
-   desc:'Perennial food forest.', grantUnlocks:['orchard','berrybush','beehive']},
+   desc:'Perennial food forest east of the river.', grantUnlocks:['orchard','berrybush','beehive']},
   {id:'marsh_finger', name:'Marsh Finger', em:'🦩', kind:'plot', levelId:'marsh', lvIndex:5,
-   origin:{c:1, r:1}, size:{w:8, h:8}, mapCell:[0,0], teaser:'wetland',
-   systemsTaught:['wetland','ducks','filters'], neighborParcels:['creek_bend'],
+   origin:{c:20, r:4}, size:{w:8, h:8}, teaser:'wetland',
+   systemsTaught:['wetland','ducks','filters'], neighborParcels:['creek_bend','wet_meadow'],
    unlockRules:{type:'parcel_cleared', parcelId:'creek_bend'}, landmark:'heron',
    desc:'Wetland tributary into the creek.', grantUnlocks:['wetland','duckT']},
   {id:'wind_ridge', name:'Wind Ridge', em:'🌬️', kind:'plot', levelId:'wind', lvIndex:6,
-   origin:{c:38, r:1}, size:{w:8, h:8}, mapCell:[3,0], teaser:'weather',
-   systemsTaught:['windmill','solar','raintank'], neighborParcels:['dust_flats','market_cross'],
+   origin:{c:84, r:4}, size:{w:8, h:8}, teaser:'weather',
+   systemsTaught:['windmill','solar','raintank'], neighborParcels:['woodlot','dust_flats'],
    unlockRules:{type:'parcel_cleared', parcelId:'dust_flats'}, landmark:'wind',
-   desc:'High ground east of the river.', grantUnlocks:['windmill','solar','raintank','well']},
+   desc:'High pond and woodlot on the north-east ridge.', grantUnlocks:['windmill','solar','raintank','well']},
   {id:'market_cross', name:'Market Cross', em:'🏪', kind:'plot', levelId:'market', lvIndex:7,
-   origin:{c:38, r:12}, size:{w:8, h:8}, mapCell:[3,1], teaser:'trade',
-   systemsTaught:['market','silo','sheep','pig'], neighborParcels:['orchard_slope','creek_bend','dust_flats'],
+   origin:{c:78, r:28}, size:{w:8, h:8}, teaser:'trade',
+   systemsTaught:['market','silo','sheep','pig'], neighborParcels:['orchard_slope','hay_field','dust_flats'],
    unlockRules:{type:'parcel_cleared_any', parcelIds:['orchard_slope','creek_bend']}, landmark:'cart',
-   desc:'Crossroads east of the valley.', grantUnlocks:['market','silo','sheep','pig','fence']},
+   desc:'Lane-end trade yard east of the hay field.', grantUnlocks:['market','silo','sheep','pig','fence']},
   {id:'school_garden', name:'School Garden', em:'📚', kind:'plot', levelId:'school', lvIndex:8,
-   origin:{c:14, r:22}, size:{w:6, h:6}, mapCell:[1,2], teaser:'teach-back',
+   origin:{c:22, r:56}, size:{w:6, h:6}, teaser:'teach-back',
    systemsTaught:['basics_mastery'], neighborParcels:['home_garden','homestead'],
    unlockRules:{type:'parcel_cleared', parcelId:'home_garden'}, landmark:'bell',
-   desc:'Humble teach-back plot.', grantUnlocks:['greenhouse','wormfarm','mushroom']},
+   desc:'Humble teach-back plot by the lane.', grantUnlocks:['greenhouse','wormfarm','mushroom']},
   {id:'river_reach', name:'River Reach', em:'🌄', kind:'plot', levelId:'valley', lvIndex:9,
-   origin:{c:22, r:1}, size:{w:14, h:14}, mapCell:[2,0], mapSpan:[1,2], teaser:'all',
-   systemsTaught:['shop','regions','wildlife_full'], neighborParcels:['creek_bend','dust_flats','marsh_finger'],
+   origin:{c:37, r:6}, size:{w:14, h:14}, teaser:'all',
+   systemsTaught:['shop','regions','wildlife_full'], neighborParcels:['creek_bend','south_reach','marsh_finger'],
    unlockRules:{type:'parcel_cleared_all', parcelIds:['creek_bend','dust_flats']}, landmark:'unique_valley',
-   desc:'Main river corridor — the finale.'},
+   desc:'Main river corridor — the same stem as Creek Bend.'},
+  {id:'north_folds', name:'North Folds', em:'🌿', kind:'plot', leftover:true, levelId:null, lvIndex:null,
+   origin:{c:8, r:16}, size:{w:18, h:16}, teaser:'herd',
+   systemsTaught:[], neighborParcels:['back_paddock','wet_meadow'],
+   unlockRules:{type:'leftover'}, landmark:'fence',
+   desc:'More paddock folds north of the working herd.'},
+  {id:'west_folds', name:'West Folds', em:'🌿', kind:'plot', leftover:true, levelId:null, lvIndex:null,
+   origin:{c:4, r:40}, size:{w:16, h:12}, teaser:'herd',
+   systemsTaught:[], neighborParcels:['back_paddock','homestead'],
+   unlockRules:{type:'leftover'}, landmark:'fence',
+   desc:'Lower paddock folds between the house and the herd.'},
+  {id:'wet_meadow', name:'Wet Meadow', em:'🦢', kind:'plot', leftover:true, levelId:null, lvIndex:null,
+   origin:{c:2, r:2}, size:{w:18, h:14}, teaser:'wetland',
+   systemsTaught:[], neighborParcels:['marsh_finger'],
+   unlockRules:{type:'leftover'}, landmark:'heron',
+   desc:'Wilder marsh headwaters on the north-west.'},
+  {id:'orchard_block', name:'Orchard Block', em:'🍏', kind:'plot', leftover:true, levelId:null, lvIndex:null,
+   origin:{c:54, r:10}, size:{w:16, h:12}, teaser:'perennials',
+   systemsTaught:[], neighborParcels:['orchard_slope','river_reach'],
+   unlockRules:{type:'leftover'}, landmark:'stump_rows',
+   desc:'The larger orchard stand north of the playable slope.'},
+  {id:'hay_field', name:'Hay Field', em:'🌾', kind:'plot', leftover:true, levelId:null, lvIndex:null,
+   origin:{c:70, r:18}, size:{w:16, h:10}, teaser:'cover',
+   systemsTaught:[], neighborParcels:['orchard_slope','market_cross'],
+   unlockRules:{type:'leftover'}, landmark:'cart',
+   desc:'Hay and cover ground east of the orchard.'},
+  {id:'south_reach', name:'South Reach', em:'💧', kind:'plot', leftover:true, levelId:null, lvIndex:null,
+   origin:{c:42, r:20}, size:{w:12, h:20}, teaser:'water',
+   systemsTaught:[], neighborParcels:['river_reach','dust_flats'],
+   unlockRules:{type:'leftover'}, landmark:'bridge_post',
+   desc:'The long stem south of River Reach, where the wash arrives.'},
+  {id:'woodlot', name:'Woodlot', em:'🌲', kind:'plot', leftover:true, levelId:null, lvIndex:null,
+   origin:{c:70, r:2}, size:{w:14, h:10}, teaser:'weather',
+   systemsTaught:[], neighborParcels:['wind_ridge'],
+   unlockRules:{type:'leftover'}, landmark:'wind',
+   desc:'Evergreen woodlot on the ridge shoulder.'},
+  {id:'dust_scrub', name:'Dust Scrub', em:'🌵', kind:'plot', leftover:true, levelId:null, lvIndex:null,
+   origin:{c:66, r:44}, size:{w:24, h:16}, teaser:'salt',
+   systemsTaught:[], neighborParcels:['dust_flats'],
+   unlockRules:{type:'leftover'}, landmark:'ruin',
+   desc:'The wider south-east scrub beyond the playable flats.'},
 ];
 VALLEY_PARCELS.forEach(P=>{
-  if(P.mapCell){
-    const [mc, mr] = P.mapCell;
-    P.mapXY = {x: (mc+0.5)/4, y: (mr+0.5)/4};
-  } else if(P.kind==='hub'){
-    P.mapXY = {x: 0.12, y: 0.88};
-  } else {
-    P.mapXY = {x: (P.origin.c + P.size.w/2)/ATLAS_W, y: (P.origin.r + P.size.h/2)/ATLAS_H};
-  }
+  const w = (P.size && P.size.w) || 0, h = (P.size && P.size.h) || 0;
+  P.mapXY = {x: (P.origin.c + w/2)/ATLAS_W, y: (P.origin.r + h/2)/ATLAS_H};
 });
+/** Centerline of the live stem (cols 48–49 + the slight meander). Not the creek. */
+function atlasStemCenterline(){
+  const pts = [];
+  for(let r=0;r<=48;r++){
+    let s=0, n=0;
+    for(let c=47;c<=51;c++){
+      const A = atlasGet(c,r);
+      if(A && A.water==='main'){ s += c; n++; }
+    }
+    pts.push({c: n ? (s/n)+0.5 : 48.5, r: r+0.5});
+  }
+  return pts;
+}
 const VALLEY_CONNECTIONS = [
   ['homestead','home_garden'],['home_garden','back_paddock'],['home_garden','school_garden'],
-  ['back_paddock','creek_bend'],['back_paddock','orchard_slope'],['back_paddock','dust_flats'],
+  ['back_paddock','north_folds'],['back_paddock','west_folds'],
   ['creek_bend','river_reach'],['creek_bend','marsh_finger'],['creek_bend','market_cross'],
-  ['dust_flats','river_reach'],['dust_flats','wind_ridge'],
-  ['orchard_slope','market_cross'],
+  ['marsh_finger','wet_meadow'],['river_reach','south_reach'],['south_reach','dust_flats'],
+  ['dust_flats','wind_ridge'],['orchard_slope','orchard_block'],['orchard_slope','hay_field'],
+  ['orchard_slope','market_cross'],['hay_field','market_cross'],['wind_ridge','woodlot'],
 ];
 function valleyParcel(id){
   return VALLEY_PARCELS.find(P=>P.id===id) || null;
 }
 function valleyParcelByLvIndex(lv){
   return VALLEY_PARCELS.find(P=>P.lvIndex===lv) || null;
-}
-function atlasMainStemNorm(){
-  // N→S main stem through map column 2 (centers of 4-col board)
-  // x = (col+0.5)/4 = 2.5/4
-  return [
-    {x: 2.5/4, y: 0.0},
-    {x: 2.5/4, y: 0.18},
-    {x: 2.48/4, y: 0.36},
-    {x: 2.5/4, y: 0.55},
-    {x: 2.52/4, y: 0.74},
-    {x: 2.5/4, y: 1.0},
-  ];
 }
 function campaignWaterQuality(){
   if(typeof camp==='undefined' || !camp) return 40;
@@ -1909,22 +1936,11 @@ function parcelUnlockHint(P){
   if(ur.type==='always') return 'Open from the start';
   return '';
 }
-function parcelBiomeClass(P){
-  const cell = atlasGet((P.origin&&P.origin.c)|0, (P.origin&&P.origin.r)|0);
-  const b = (cell && cell.biome) || (P.id==='homestead'?'garden':'wild');
-  return 'biome-' + b;
-}
-function parcelLandMark(P){
-  const marks = {
-    orchard_slope:'sprites/build_orchard.webp',
-    wind_ridge:'sprites/build_windmill.webp',
-    market_cross:'sprites/build_market.webp',
-    dust_flats:'sprites/deco_deadtree.webp',
-    river_reach:'sprites/build_barn.webp',
-    back_paddock:'sprites/build_coop.webp',
-    school_garden:'sprites/build_greenhouse.webp',
-  };
-  return marks[P.id] || '';
+function parcelAtlasBox(P){
+  if(!P || !P.origin) return null;
+  const w = (P.size && P.size.w)|0, h = (P.size && P.size.h)|0;
+  if(w<=0 || h<=0) return null;
+  return {c:P.origin.c|0, r:P.origin.r|0, w, h};
 }
 function parcelIsUnlocked(P, c){
   c = c || camp;
@@ -2451,10 +2467,16 @@ function recalc(t){
 }
 const DEFAULT_STATS = {planted:0, harvests:0, coinsEarned:0, synergy:0, cattle:0, chickens:0, ponds:0, trees:0,
   composts:0, coverPlanted:0, revived:0, buffers:0, grazes:0, sistersPlanted:0, buildings:0, decos:0, saltRevived:0};
+function playGridForLevel(lv){
+  const L = LEVELS[lv];
+  const P = typeof valleyParcelByLvIndex==='function' ? valleyParcelByLvIndex(lv) : null;
+  if(P && P.size && (P.size.w|0) && (P.size.h|0)) return Math.max(P.size.w|0, P.size.h|0);
+  return L.grid;
+}
 function newGame(lv){
   if(typeof lv!=='number') lv = camp ? camp.cur : 0;
   const L = LEVELS[lv];
-  GRID = L.grid;
+  GRID = playGridForLevel(lv);
   const s = {
     v:6, lv, gridSize:GRID, levelDone:false, introSeen:false,
     _introModalShown:false, _introDismissed:false, _lastMissionSig:'',
@@ -2581,8 +2603,15 @@ function carveDryWashToRiver(s, startR, seedBase){
     }else break;
   }
 }
-/** Stamp atlas water/features/landmarks onto a level grid (local coords). */
-function stampAtlasParcel(s, parcelId){
+function atlasNearLiveWater(ac, ar){
+  const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+  for(let i=0;i<dirs.length;i++){
+    const N = atlasGet(ac+dirs[i][0], ar+dirs[i][1]);
+    if(N && (N.water==='main' || N.water==='creek' || N.water==='pond_site')) return true;
+  }
+  return false;
+}
+function applyAtlasBiomeLand(s, parcelId){
   const P = valleyParcel(parcelId);
   if(!P || !P.origin || !P.size || !P.size.w) return;
   const oc = P.origin.c, or = P.origin.r;
@@ -2590,94 +2619,109 @@ function stampAtlasParcel(s, parcelId){
     if(!inGrid(c,r)) continue;
     const t = s.grid[idx(c,r)];
     const A = atlasGet(oc+c, or+r) || {water:'none', biome:'wild'};
-    // water
+    t.atlasBiome = A.biome || 'wild';
+    const n = atlasN2(oc+c, or+r);
+    const wetBank = atlasNearLiveWater(oc+c, or+r);
+    switch(A.biome){
+      case 'marsh':
+        if(n<0.32) makeDead(t);
+        else {
+          seedSoil(t, 24 + n*12, 10);
+          t.soil.water = Math.min(100, (t.soil.water||30)+24);
+          recalc(t);
+        }
+        if(wetBank && t.terrain==='soil'){ seedSoil(t, 18, 8); t.soil.water = Math.min(100,(t.soil.water||30)+18); recalc(t); }
+        break;
+      case 'pasture':
+        if(n<0.22) makeDead(t);
+        else seedSoil(t, 40 + n*10, 10);
+        break;
+      case 'orchard':
+        if(n<0.38){ makeDead(t); if(n<0.16) t.deco = 'deco_deadtree'; }
+        else seedSoil(t, 30, 12);
+        break;
+      case 'dust':
+        makeDead(t);
+        break;
+      case 'ridge':
+        if(n<0.52) makeDead(t);
+        else seedSoil(t, 20, 8);
+        break;
+      case 'riparian':
+        if(wetBank) seedSoil(t, 20, 8);
+        else if(n<0.34) makeDead(t);
+        else seedSoil(t, 32, 10);
+        break;
+      case 'garden':
+        if(n<0.28) makeDead(t);
+        else seedSoil(t, 26, 10);
+        break;
+      case 'market':
+        if(n<0.28) makeDead(t);
+        else seedSoil(t, 36, 10);
+        break;
+      case 'heartland':
+        if(n<0.30) makeDead(t);
+        else seedSoil(t, 34, 12);
+        break;
+      default:
+        if(n<0.4) makeDead(t);
+        else seedSoil(t, 26, 10);
+    }
+  }
+}
+/** Stamp atlas water / lane / belts / landmarks onto a level grid (local coords). */
+function stampAtlasParcel(s, parcelId){
+  const P = valleyParcel(parcelId);
+  if(!P || !P.origin || !P.size || !P.size.w) return;
+  const oc = P.origin.c, or = P.origin.r;
+  const keep = (t)=> t.terrain==='water' || t.terrain==='pond' || t.terrain==='riverbed';
+  for(let r=0;r<P.size.h;r++) for(let c=0;c<P.size.w;c++){
+    if(!inGrid(c,r)) continue;
+    const t = s.grid[idx(c,r)];
+    t.atlasC = oc+c; t.atlasR = or+r;
+    const A = atlasGet(oc+c, or+r) || {water:'none', biome:'wild'};
+    t.atlasBiome = A.biome || t.atlasBiome || 'wild';
     if(A.water==='main' || A.water==='creek'){
-      t.terrain = 'water'; carveClear(t); t.feature = null;
+      t.terrain = 'water'; carveClear(t);
     } else if(A.water==='wash'){
       t.terrain = 'riverbed'; carveClear(t);
     } else if(A.water==='pond_site'){
-      // soft wet soil — player places ponds/wetlands; slight water bias
-      if(t.terrain!=='water'){ seedSoil(t, 28, 10); t.soil.water = Math.min(100, (t.soil.water||30)+20); recalc(t); }
+      t.terrain = 'pond'; carveClear(t);
     }
-    if(A.feature && t.terrain!=='water') t.feature = A.feature;
-    if(A.landmark==='barn' && t.terrain!=='water'){ t.terrain='barn'; carveClear(t); }
-    if(A.landmark==='coop' && t.terrain!=='water'){ t.terrain='coop'; carveClear(t); }
-    if(A.landmark==='shed' && t.terrain!=='water'){ if(t.terrain==='dead') seedSoil(t,36,8); t.deco='deco_stump'; }
-    if(A.landmark==='trough' && t.terrain!=='water'){ if(t.terrain==='dead') seedSoil(t,40,8); t.deco='deco_rock'; }
-    if(A.landmark==='bridge' && t.terrain!=='water'){ if(t.terrain==='dead') seedSoil(t,38,8); t.deco='deco_boulder'; }
+    if(keep(t)) continue;
+    if(A.feature==='path'){
+      if(t.terrain==='dead') seedSoil(t, 32, 6);
+      t.feature = 'path';
+    } else if(A.feature==='swale'){
+      t.feature = 'swale';
+    } else if(A.feature==='saltflat'){
+      if(t.terrain!=='dead') makeDead(t);
+      t.feature = 'saltflat';
+    } else if(A.feature==='hedgerow' || A.feature==='woodlot'){
+      t.terrain = 'trees'; carveClear(t);
+    } else if(A.feature){
+      t.feature = A.feature;
+    }
+    if(A.landmark==='barn'){ t.terrain='barn'; carveClear(t); }
+    if(A.landmark==='coop'){ t.terrain='coop'; carveClear(t); }
+    if(A.landmark==='house'){ t.terrain='house'; carveClear(t); }
+    if(A.landmark==='compost'){ if(t.terrain==='dead') seedSoil(t, 42, 8); t.deco='deco_stump'; }
+    if(A.landmark==='shed'){ if(t.terrain==='dead') seedSoil(t,36,8); t.deco='deco_stump'; }
+    if(A.landmark==='trough'){ if(t.terrain==='dead') seedSoil(t,40,8); t.deco='deco_rock'; }
+    if(A.landmark==='bridge'){ if(t.terrain==='dead') seedSoil(t,38,8); t.deco='deco_boulder'; }
     if(A.landmark==='ruin'){ t.deco='deco_bones'; if(!t.feature) t.feature='gully'; }
-    if(A.landmark==='stump' && t.terrain!=='water'){ t.deco='deco_deadtree'; }
-    if(A.landmark==='wind' && t.terrain!=='water'){ if(t.terrain==='dead') seedSoil(t,22,8); t.deco='deco_rock'; }
-    if(A.landmark==='cart' && t.terrain!=='water'){ if(t.terrain==='dead') seedSoil(t,30,8); t.deco='deco_cart'; }
-    if(A.landmark==='bell' && t.terrain!=='water'){ if(t.terrain==='dead') seedSoil(t,34,8); t.deco='deco_signpost'; }
-    if(A.landmark==='heron' && t.terrain!=='water'){ if(t.terrain==='dead') seedSoil(t,26,8); }
+    if(A.landmark==='stump'){ t.deco='deco_deadtree'; }
+    if(A.landmark==='wind'){ if(t.terrain==='dead') seedSoil(t,22,8); t.deco='deco_rock'; }
+    if(A.landmark==='cart'){ if(t.terrain==='dead') seedSoil(t,30,8); t.deco='deco_cart'; }
+    if(A.landmark==='bell'){ if(t.terrain==='dead') seedSoil(t,34,8); t.deco='deco_signpost'; }
+    if(A.landmark==='heron'){ if(t.terrain==='dead') seedSoil(t,26,8); }
   }
 }
-/** BFS meander through flowing water on grid `s`. pad=1 keeps path + 4-neighbors. */
-function computeWaterSpine(s, pad){
-  const set = new Set();
-  if(!s || !s.grid) return set;
-  const waters = s.grid.filter(t=>t.terrain==='water');
-  if(!waters.length) return set;
-  let start = waters[0], end = waters[0];
-  waters.forEach(t=>{
-    if((t.c+t.r) < (start.c+start.r)) start = t;
-    if((t.c+t.r) > (end.c+end.r)) end = t;
-  });
-  const k = (c,r)=>c+','+r;
-  const isW = (c,r)=> inGrid(c,r) && s.grid[idx(c,r)].terrain==='water';
-  const prev = new Map();
-  const q = [[start.c, start.r]];
-  prev.set(k(start.c, start.r), null);
-  while(q.length){
-    const [c,r] = q.shift();
-    if(c===end.c && r===end.r) break;
-    [[0,-1],[0,1],[1,0],[-1,0]].forEach(([dc,dr])=>{
-      const cc=c+dc, rr=r+dr;
-      if(!isW(cc,rr) || prev.has(k(cc,rr))) return;
-      prev.set(k(cc,rr), [c,r]);
-      q.push([cc,rr]);
-    });
-  }
-  if(prev.has(k(end.c, end.r))){
-    let cur = [end.c, end.r];
-    while(cur){
-      set.add(idx(cur[0], cur[1]));
-      cur = prev.get(k(cur[0], cur[1]));
-    }
-  }else{
-    waters.forEach(t=> set.add(idx(t.c, t.r)));
-  }
-  if((pad|0) > 0){
-    const extra = [];
-    set.forEach(i=>{
-      const t = s.grid[i];
-      [[0,-1],[0,1],[1,0],[-1,0]].forEach(([dc,dr])=>{
-        const cc=t.c+dc, rr=t.r+dr;
-        if(isW(cc,rr)) extra.push(idx(cc,rr));
-      });
-    });
-    extra.forEach(i=> set.add(i));
-  }
-  return set;
-}
-/** Off-spine atlas water → moist bank soil (once at gen). Spine stays water. */
-function collapseWaterToSpine(s, pad){
-  if(!s || !s.grid) return 0;
-  const keep = computeWaterSpine(s, pad==null ? 1 : pad);
-  let n = 0;
-  s.grid.forEach((t,i)=>{
-    if(t.terrain!=='water') return;
-    if(keep.has(i)) return;
-    seedSoil(t, 26, 8);
-    t.soil.water = Math.min(100, Math.max(t.soil.water||0, 58));
-    t.soil.erosion = Math.min(100, Math.max(t.soil.erosion||0, 42));
-    recalc(t);
-    n++;
-  });
-  s._creekSpine = null;
-  s._creekSpineTag = '';
-  return n;
+/** Crop this parcel from the atlas: biome land first, then the shared water/lane/buildings. */
+function sowAtlasCrop(s, parcelId){
+  applyAtlasBiomeLand(s, parcelId);
+  stampAtlasParcel(s, parcelId);
 }
 function atlasWaterAdjLocal(s, c, r){
   const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
@@ -2687,211 +2731,70 @@ function atlasWaterAdjLocal(s, c, r){
   }
   return false;
 }
-// LEVEL 1 — Home Garden: atlas crop + lesson heart
+function keepAtlasMark(t){
+  return {
+    feat: t.feature,
+    deco: t.deco,
+    biome: t.atlasBiome,
+    terrain: t.terrain
+  };
+}
+function restoreAtlasMark(t, mark){
+  if(mark.feat==='path' || mark.feat==='swale' || mark.feat==='saltflat') t.feature = mark.feat;
+  if(mark.deco) t.deco = mark.deco;
+  if(mark.biome) t.atlasBiome = mark.biome;
+}
+// LEVEL 1 — Home Patch: this garden crop, still dead until the player feeds it
 function genHomePatch(s){
-  s.grid.forEach(t=> makeDead(t));
-  stampAtlasParcel(s, 'home_garden');
-  // First session: the garden is dead until the player feeds it.
+  sowAtlasCrop(s, 'home_garden');
   s.grid.forEach(t=>{
-    if(t.terrain==='water' || t.terrain==='riverbed') return;
-    if(t.c===0 && t.r===0) return;
+    if(t.terrain==='water' || t.terrain==='pond' || t.terrain==='riverbed') return;
+    if(t.terrain==='barn' || t.terrain==='coop' || t.terrain==='house' || t.terrain==='trees') return;
+    if(t.feature==='path') return;
+    const mark = keepAtlasMark(t);
     makeDead(t);
+    restoreAtlasMark(t, mark);
   });
-  const shed = s.grid[idx(0,0)];
-  if(shed && shed.terrain!=='water'){ seedSoil(shed, 28, 8); shed.deco = 'deco_stump'; }
 }
-// LEVEL 2 — Back Paddock: pasture lesson, no main stem
+// LEVEL 2 — Back Paddock: pasture folds + stock pond from the atlas
 function genBackField(s){
-  s.grid.forEach(t=>{
-    const i = idx(t.c,t.r);
-    const d = Math.max(Math.abs(t.c-2), Math.abs(t.r-2));
-    if(d<=1) seedSoil(t, 52, 10);
-    else if(d<=3) seedSoil(t, 34, 10);
-    else if(sr(i*7+2)<0.7) makeDead(t);
-    else seedSoil(t, 18, 10);
-  });
-  stampAtlasParcel(s, 'back_paddock');
-  // re-apply pasture soil if stamp didn't place water
-  s.grid.forEach(t=>{
-    if(t.terrain==='water'||t.terrain==='riverbed'||t.terrain==='barn'||t.terrain==='coop') return;
-    if(t.deco==='deco_rock' || t.deco==='deco_stump') return;
-  });
-  const trough = s.grid[idx(1,1)];
-  if(trough.terrain!=='water'){ seedSoil(trough, 40, 8); trough.deco = 'deco_rock'; }
-  [[6,1,'deco_stump'],[1,6,'deco_rock'],[6,6,'deco_deadtree']].forEach(([c,r,dc])=>{
-    const t = s.grid[idx(c,r)]; if(t.terrain==='dead'||t.terrain==='soil'){ if(!t.deco) t.deco=dc; }
-  });
+  sowAtlasCrop(s, 'back_paddock');
 }
-// LEVEL 3 — Creek Bend: atlas main stem on east edge (connects to Valley west)
+// LEVEL 3 — Creek Bend: same creek that leaves the east edge into River Reach
 function genCreek(s){
-  s.grid.forEach(t=>{
-    const i = idx(t.c,t.r);
-    const d = Math.max(Math.abs(t.c-2), Math.abs(t.r-2));
-    if(d<=1) seedSoil(t, 46, 14);
-    else if(d<=3) seedSoil(t, 26, 12);
-    else if(sr(i*7+2)<0.6) makeDead(t);
-    else seedSoil(t, 16, 10);
-  });
-  stampAtlasParcel(s, 'creek_bend');
-  collapseWaterToSpine(s, 0);
-  // muddy banks for runoff lesson
+  sowAtlasCrop(s, 'creek_bend');
   s.grid.forEach(t=>{
     if(t.terrain!=='soil') return;
-    if(atlasWaterAdjLocal(s, t.c, t.r) && t.health>40) seedSoil(t, 22, 10);
+    if(!atlasWaterAdjLocal(s, t.c, t.r) || t.health<=40) return;
+    const feat = t.feature, deco = t.deco, biome = t.atlasBiome;
+    seedSoil(t, 22, 10);
+    if(feat) t.feature = feat;
+    if(deco) t.deco = deco;
+    if(biome) t.atlasBiome = biome;
   });
-  const post = s.grid[idx(1,1)];
-  if(post.terrain!=='water'){ seedSoil(post, 38, 8); post.deco = 'deco_boulder'; }
 }
-// LEVEL 4 — Dust Flats: wash from atlas joins main stem (no local invent-river)
+// LEVEL 4 — Dust Flats: dry wash from the atlas, no invented river
 function genDustFlats(s){
-  s.grid.forEach(t=>makeDead(t));
-  stampAtlasParcel(s, 'dust_flats');
-  collapseWaterToSpine(s, 1);
-  // salt / gully already partly from atlas; reinforce lesson density
-  for(let r=7;r<GRID;r++) for(let c=0;c<4;c++){
-    const t = s.grid[idx(c,r)];
-    if(t.terrain==='dead' && !t.feature && sr(idx(c,r)*3+7)<0.55) t.feature = 'saltflat';
-  }
-  [[5,8],[8,3],[3,4],[9,9]].forEach(([c,r])=>{
-    const t = s.grid[idx(c,r)];
-    if(t.terrain==='dead' && !t.feature) t.feature = 'gully';
-  });
-  const DECOS = ['deco_deadtree','deco_stump','deco_bones','deco_boulder','deco_rock'];
-  let placed = 0;
-  for(let tries=0; tries<160 && placed<10; tries++){
-    const i = (Math.random()*GRID*GRID)|0, t = s.grid[i];
-    if(t.terrain!=='dead' || t.feature || t.deco) continue;
-    if(t.c<=3 && t.r<=3) continue;
-    t.deco = DECOS[(Math.random()*DECOS.length)|0]; placed++;
-  }
-  const ruin = s.grid[idx(1,1)];
-  if(ruin.terrain!=='water' && ruin.terrain!=='riverbed'){
-    ruin.terrain='dead'; ruin.deco='deco_bones'; if(!ruin.feature) ruin.feature='gully';
-  }
-  // small living pocket for start contrast (not a barn)
-  for(let r=0;r<=2;r++) for(let c=0;c<=2;c++){
-    const t = s.grid[idx(c,r)];
-    if(t.terrain==='water'||t.terrain==='riverbed') continue;
-    if(Math.max(c,r)<=1) seedSoil(t, 40, 10);
-  }
+  sowAtlasCrop(s, 'dust_flats');
 }
-// LEVEL 5 — River Reach / Valley: atlas stem + wash confluence + farmstead pocket
+// LEVEL 5 — River Reach: main stem + wash confluence. House stays on the SW garden.
 function genValley(s){
-  s.grid.forEach(t=>makeDead(t));
-  stampAtlasParcel(s, 'river_reach');
-  collapseWaterToSpine(s, 1);
-  // salt SE if not water
-  for(let r=10;r<GRID;r++) for(let c=10;c<GRID;c++){
-    const t = s.grid[idx(c,r)];
-    if(t.terrain==='dead' && !t.feature && sr(idx(c,r)*3+7)<0.55) t.feature = 'saltflat';
-  }
-  const scars = [[2,8,'gully'],[5,11,'gully'],[12,3,'gully'],[3,6,'swale'],[7,10,'swale']];
-  scars.forEach(([c,r,f])=>{ const t = s.grid[idx(c,r)]; if(t.terrain==='dead' && !t.feature) t.feature = f; });
-  const DECOS = ['deco_deadtree','deco_deadtree','deco_stump','deco_bones','deco_boulder','deco_rock','deco_rock'];
-  let placed = 0;
-  for(let tries=0; tries<200 && placed<16; tries++){
-    const i = (Math.random()*GRID*GRID)|0;
-    const t = s.grid[i];
-    if(t.terrain!=='dead' || t.feature || t.deco) continue;
-    if(t.c<=4 && t.r<=4) continue;
-    t.deco = DECOS[(Math.random()*DECOS.length)|0];
-    placed++;
-  }
-  // Living farmstead pocket (unique to this parcel — only full barn)
-  if(s.grid[idx(1,1)].terrain!=='water'){ s.grid[idx(1,1)].terrain='barn'; carveClear(s.grid[idx(1,1)]); }
-  if(s.grid[idx(2,1)].terrain!=='water'){ s.grid[idx(2,1)].terrain='coop'; carveClear(s.grid[idx(2,1)]); }
-  for(let r=0;r<=4;r++) for(let c=0;c<=4;c++){
-    const t = s.grid[idx(c,r)];
-    if(t.terrain==='water'||t.terrain==='riverbed'||t.terrain==='barn'||t.terrain==='coop') continue;
-    if(t.terrain!=='dead') continue;
-    const d = Math.max(Math.abs(c-2), Math.abs(r-2));
-    if(d<=1){
-      t.terrain='soil'; t.deco=null; t.feature=null;
-      SOIL_ATTRS.forEach((k,ki)=>{ t.soil[k] = 62 + sr(idx(c,r)*5+ki)*18; });
-      t.flowers = 0.55 + sr(idx(c,r)*9)*0.35; recalc(t);
-    }else if(d<=2){
-      t.terrain='soil'; t.deco=null; t.feature=null;
-      SOIL_ATTRS.forEach((k,ki)=>{ t.soil[k] = 32 + sr(idx(c,r)*5+ki)*12; }); recalc(t);
-    }else if(Math.random()<0.5){
-      t.terrain='soil'; t.deco=null;
-      SOIL_ATTRS.forEach((k,ki)=>{ t.soil[k] = 16 + sr(idx(c,r)*9+ki)*10; }); recalc(t);
-    }
-  }
+  sowAtlasCrop(s, 'river_reach');
 }
-// —— New atlas parcel gens (stamp + lesson)
 function genOrchardSlope(s){
-  s.grid.forEach(t=>{
-    const d = Math.max(Math.abs(t.c-3.5), Math.abs(t.r-3.5));
-    if(d<=2) seedSoil(t, 36, 12);
-    else if(sr(idx(t.c,t.r)*5)<0.55) makeDead(t);
-    else seedSoil(t, 22, 10);
-  });
-  stampAtlasParcel(s, 'orchard_slope');
-  // stump rows for “old orchard” feel
-  for(let c=1;c<7;c+=2){
-    const t = s.grid[idx(c,2)];
-    if(t.terrain!=='water' && !t.deco) t.deco = 'deco_deadtree';
-  }
+  sowAtlasCrop(s, 'orchard_slope');
 }
 function genMarshFinger(s){
-  s.grid.forEach(t=>{
-    const i = idx(t.c,t.r);
-    if(sr(i*3)<0.45) makeDead(t); else seedSoil(t, 30, 12);
-  });
-  stampAtlasParcel(s, 'marsh_finger');
-  collapseWaterToSpine(s, 1);
-  // muddy banks near water
-  s.grid.forEach(t=>{
-    if(t.terrain==='soil' && atlasWaterAdjLocal(s,t.c,t.r)) seedSoil(t, 20, 8);
-  });
+  sowAtlasCrop(s, 'marsh_finger');
 }
 function genWindRidge(s){
-  s.grid.forEach(t=>{
-    const d = Math.max(Math.abs(t.c-3.5), Math.abs(t.r-3.5));
-    if(d<=1.5) seedSoil(t, 28, 10);
-    else makeDead(t);
-  });
-  stampAtlasParcel(s, 'wind_ridge');
-  // wind-scoured: more dead on west edge
-  for(let r=0;r<GRID;r++){
-    const t = s.grid[idx(0,r)];
-    if(t.terrain!=='water') makeDead(t);
-  }
+  sowAtlasCrop(s, 'wind_ridge');
 }
 function genMarketCross(s){
-  s.grid.forEach(t=>{
-    const d = Math.max(Math.abs(t.c-3.5), Math.abs(t.r-3.5));
-    if(d<=2) seedSoil(t, 40, 12);
-    else if(sr(idx(t.c,t.r)*7)<0.5) makeDead(t);
-    else seedSoil(t, 24, 10);
-  });
-  stampAtlasParcel(s, 'market_cross');
-  // lane through center
-  for(let c=0;c<GRID;c++){
-    const t = s.grid[idx(c,3)];
-    if(t.terrain!=='water'){ seedSoil(t, 35, 8); t.feature = 'path'; }
-  }
+  sowAtlasCrop(s, 'market_cross');
 }
 function genSchoolGarden(s){
-  s.grid.forEach(t=>{
-    const d = Math.max(Math.abs(t.c-2.5), Math.abs(t.r-2.5));
-    if(d<=1) seedSoil(t, 42, 10);
-    else makeDead(t);
-  });
-  stampAtlasParcel(s, 'school_garden');
-  // Teach-back landmarks: bell corner, path spine, a couple beds so it doesn't feel empty
-  const bell = s.grid[idx(0,0)];
-  if(bell && bell.terrain!=='water'){ seedSoil(bell, 40, 10); bell.deco = 'deco_signpost'; }
-  const gate = s.grid[idx(GRID-1, 0)];
-  if(gate && gate.terrain!=='water'){ seedSoil(gate, 38, 8); gate.deco = 'deco_gate'; }
-  for(let c=1;c<GRID-1;c++){
-    const t = s.grid[idx(c, Math.floor(GRID/2))];
-    if(t && t.terrain!=='water'){ seedSoil(t, 44, 10); t.feature = 'path'; }
-  }
-  const bedA = s.grid[idx(1,1)];
-  const bedB = s.grid[idx(GRID-2, GRID-2)];
-  if(bedA && bedA.terrain!=='water'){ seedSoil(bedA, 48, 12); bedA.deco = 'deco_flowerbed'; }
-  if(bedB && bedB.terrain!=='water'){ seedSoil(bedB, 48, 12); bedB.deco = 'deco_herb'; }
+  sowAtlasCrop(s, 'school_garden');
 }
 function soilTiles(){ return state.grid.filter(t=>t.terrain==='soil'); }
 function isWaterT(t){ return t.terrain==='pond' || t.terrain==='water'; }
@@ -3064,6 +2967,9 @@ function registerSprite(name, src, gen){
     if(!SPRITES._gen) SPRITES._gen = {};
     SPRITES._gen[name] = g;
     SPRITES[name] = img;
+    if(name===VALLEY_ATLAS_SKIN || name==='bg_hills_1' || name==='bg_hills' || String(name).indexOf('house_')===0){
+      if(typeof nudgeJourneyAtlasPaint==='function') nudgeJourneyAtlasPaint();
+    }
   };
   // AB — soft-fail missing assets: log once per path (no console spam on every paint)
   img.onerror = ()=>{
@@ -3341,7 +3247,7 @@ function loadSprites(){
     for(let i=0;i<12;i++) MAP[k+'_w'+i] = 'anim_'+k+'_w'+String(i).padStart(2,'0');
   });
   // Cache-bust (bump when swapping photoreal playables / Pages webp primary)
-  const SV = '?v=isoAnim7';
+  const SV = '?v=illustrated160';
   const BV = '?v=playPhoto17'; // Wave U1 — photoreal outdoor plants + compost bin
   const YV = '?v=yardPhoto3';
   const CV = '?v=critterPhoto3';
@@ -3421,6 +3327,10 @@ function loadSprites(){
   registerSprite('bg_hills_1', 'sprites/bg_hills_summer.webp'+SV, 0);
   registerSprite('bg_hills_2', 'sprites/bg_hills_fall.webp'+SV, 0);
   registerSprite('bg_hills_3', 'sprites/bg_hills_winter.webp'+SV, 0);
+  // Optional painted skin of THIS atlas only. Do not register a missing file.
+  if(typeof VALLEY_ATLAS_SKIN==='string' && VALLEY_ATLAS_SKIN){
+    registerSprite(VALLEY_ATLAS_SKIN, 'sprites/'+VALLEY_ATLAS_SKIN+'.webp'+SV, 0);
+  }
   // Homestead house tiers — tracked house_t*.webp (favicon already webp)
   for(let t=0;t<=5;t++){
     registerSprite('house_t'+t, 'sprites/house_t'+t+'.webp'+BV, 2);
@@ -4967,7 +4877,7 @@ function openPropertyMap(){
   }
   ensureParcelState(camp);
   const STATE_ICON = {locked:'🔒', available:'○', in_progress:'▶', restored:'✅', mastered:'⭐', hub:'🏡'};
-  const plots = VALLEY_PARCELS.filter(P=>P.kind==='plot').map(P=>{
+  const plots = VALLEY_PARCELS.filter(P=>P.kind==='plot' && !P.leftover).map(P=>{
     const ms = parcelMapState(P, camp);
     const unlocked = ms !== 'locked';
     const done = ms==='restored' || ms==='mastered';
@@ -9324,6 +9234,7 @@ function drawGround(t, time){
         : t.feature==='path' ? 'tile_path'
         // Homestead yard = lawn only (not farm dirt/soil bands)
         : homesteadMode ? 'tile_grass'
+        : (t.terrain==='soil' && t.atlasBiome==='pasture' && t.health>=36) ? 'tile_pasture'
         : (t.terrain==='soil' && t.health<45) ? 'tile_dirt'
         : (t.terrain==='soil' && t.health<=70) ? 'tile_soil' : 'tile_grass');
     const uimg = under ? SPRITES[under] : null;
@@ -9441,6 +9352,12 @@ function drawGround(t, time){
       gname = 'tile_path';
     }else if(t.graze && t.health>=45){
       gname = 'tile_pasture';
+    }else if(t.atlasBiome==='pasture' && t.health>=36){
+      gname = 'tile_pasture';
+    }else if(t.atlasBiome==='dust' && t.health<55){
+      gname = t.feature==='saltflat' ? 'tile_saltflat' : 'tile_dirt';
+    }else if(t.atlasBiome==='marsh' && t.health>=40 && t.health<78){
+      gname = 'tile_soil';
     }else if(t.health < 48){
       gname = 'tile_dirt';
     }else if(t.health < 78){
@@ -12959,203 +12876,734 @@ function openScrapbook(){
   showModal(`<h2>📔 Your scrapbook</h2><div class="sub">${n? n+' moment'+(n===1?'':'s')+' earned — keep going.':'Light retention loop — moments you earn.'}</div>${firstLine}${rows}
     <div class="modalbtns"><button class="mbtn" data-act="close">Close</button></div>`);
 }
-function atlasPct(c, r, w, h){
-  const padX = 2.2, padY = 3.2;
-  const innerW = 100 - padX * 2;
-  const innerH = 100 - padY * 2;
-  return {
-    left: padX + (c / ATLAS_W) * innerW,
-    top: padY + (r / ATLAS_H) * innerH,
-    width: (w / ATLAS_W) * innerW,
-    height: (h / ATLAS_H) * innerH,
-  };
+/** Journey view of the 96×64 (3∶2) quarter-section atlas — one farm picture, not a cell board. */
+const VALLEY_VIEW = {w:1000, h:720, sky:86, pad:18};
+function atlasN2(c, r){
+  return ((Math.sin(c*12.9898 + r*78.233)*43758.5453)%1 + 1)%1;
 }
-function buildValleyWaterMarks(host){
+function valleySkinRect(){
+  const V = VALLEY_VIEW;
+  const aspect = ATLAS_W / ATLAS_H;
+  let w = V.w, h = w / aspect;
+  if(h > V.h){ h = V.h; w = h * aspect; }
+  return {x: (V.w-w)/2, y: (V.h-h)/2, w, h};
+}
+function atlasToView(c, r){
+  const V = VALLEY_VIEW;
+  if(VALLEY_ATLAS_SKIN){
+    const R = valleySkinRect();
+    return {x: R.x + (c/ATLAS_W)*R.w, y: R.y + (r/ATLAS_H)*R.h};
+  }
+  const nx = c / ATLAS_W, ny = r / ATLAS_H;
+  const landW = V.w - V.pad*2, landH = V.h - V.sky - V.pad;
+  const persp = 0.86 + ny*0.14;
+  return {x: V.w/2 + (nx - 0.5)*landW*persp, y: V.sky + ny*landH};
+}
+function parcelViewQuad(P){
+  const b = parcelAtlasBox(P);
+  if(!b) return null;
+  const a = atlasToView(b.c, b.r);
+  const d = atlasToView(b.c+b.w, b.r);
+  const g = atlasToView(b.c+b.w, b.r+b.h);
+  const f = atlasToView(b.c, b.r+b.h);
+  return [a, d, g, f];
+}
+function parcelViewCenter(P){
+  const b = parcelAtlasBox(P);
+  if(!b) return atlasToView(ATLAS_W/2, ATLAS_H/2);
+  return atlasToView(b.c + b.w/2, b.r + b.h/2);
+}
+function parcelHealBoost(P){
+  const ms = parcelMapState(P, camp);
+  if(ms==='mastered') return 1;
+  if(ms==='restored') return 0.78;
+  if(ms==='in_progress' || ms==='available' || ms==='hub') return 0.22;
+  return 0;
+}
+function hexRgb(hex){
+  const h = String(hex||'#000000');
+  if(h[0]!=='#') return [90,120,70];
+  const n = parseInt(h.slice(1), 16);
+  if(!isFinite(n)) return [90,120,70];
+  return [(n>>16)&255, (n>>8)&255, n&255];
+}
+function mixRgb(a, b, t){
+  return [
+    Math.max(0, Math.min(255, (a[0]+(b[0]-a[0])*t)|0)),
+    Math.max(0, Math.min(255, (a[1]+(b[1]-a[1])*t)|0)),
+    Math.max(0, Math.min(255, (a[2]+(b[2]-a[2])*t)|0))
+  ];
+}
+function rgbCss(c){ return 'rgb('+c[0]+','+c[1]+','+c[2]+')'; }
+function parcelAtView(x, y){
+  const hits = [];
+  VALLEY_PARCELS.forEach(P=>{
+    const q = parcelViewQuad(P);
+    if(!q) return;
+    let inside = true;
+    for(let i=0;i<4;i++){
+      const a = q[i], b = q[(i+1)%4];
+      if((b.x-a.x)*(y-a.y) - (b.y-a.y)*(x-a.x) < 0){ inside = false; break; }
+    }
+    if(inside) hits.push(P);
+  });
+  hits.sort((a,b)=>{
+    if(a.kind==='hub') return -1;
+    if(b.kind==='hub') return 1;
+    const aa = parcelAtlasBox(a), bb = parcelAtlasBox(b);
+    return (aa.w*aa.h) - (bb.w*bb.h);
+  });
+  return hits[0] || null;
+}
+function sprReady(name){
+  const img = SPRITES[name];
+  return img && img.complete && img.naturalWidth ? img : null;
+}
+function drawSprAt(ctx, name, c, r, w, h){
+  const img = sprReady(name);
+  if(!img) return false;
+  const p = atlasToView(c, r);
+  ctx.drawImage(img, p.x - w/2, p.y - h, w, h);
+  return true;
+}
+/**
+ * Project an atlas-space image onto the journey view (1:1 with the 96×64 grid).
+ * Source (0,0) = NW. House SW (small), marsh NW, river cols 48–49, dust SE.
+ * A later painted skin uses this same warp — hotspots do not move.
+ */
+function blitAtlasImageToView(ctx, img){
+  if(!img || !(img.naturalWidth || img.width)) return false;
+  const srcW = img.naturalWidth || img.width;
+  const srcH = img.naturalHeight || img.height;
+  if(!srcW || !srcH) return false;
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  if(ctx.imageSmoothingQuality) ctx.imageSmoothingQuality = 'high';
+  if(VALLEY_ATLAS_SKIN){
+    const R = valleySkinRect();
+    ctx.drawImage(img, R.x, R.y, R.w, R.h);
+    ctx.restore();
+    return true;
+  }
+  const V = VALLEY_VIEW;
+  const landH = V.h - V.sky - V.pad;
+  const baseW = V.w - V.pad*2;
+  for(let y=0; y<landH; y++){
+    const ny = (y + 0.5) / landH;
+    const destW = baseW * (0.86 + ny*0.14);
+    const destX = V.w/2 - destW/2;
+    ctx.drawImage(img, 0, ny*srcH, srcW, 2, destX, V.sky + y, destW, 2);
+  }
+  ctx.restore();
+  return true;
+}
+function blitValleyAtlasSkin(ctx, img){
+  return blitAtlasImageToView(ctx, img);
+}
+function catmullPts(pts, segs){
+  if(!pts || pts.length<2) return (pts||[]).slice();
+  const out = [];
+  for(let i=0;i<pts.length-1;i++){
+    const p0 = pts[Math.max(0,i-1)], p1 = pts[i];
+    const p2 = pts[i+1], p3 = pts[Math.min(pts.length-1,i+2)];
+    for(let s=0;s<segs;s++){
+      const t = s/segs, t2 = t*t, t3 = t2*t;
+      out.push({
+        x: 0.5*((2*p1.x)+(-p0.x+p2.x)*t+(2*p0.x-5*p1.x+4*p2.x-p3.x)*t2+(-p0.x+3*p1.x-3*p2.x+p3.x)*t3),
+        y: 0.5*((2*p1.y)+(-p0.y+p2.y)*t+(2*p0.y-5*p1.y+4*p2.y-p3.y)*t2+(-p0.y+3*p1.y-3*p2.y+p3.y)*t3)
+      });
+    }
+  }
+  out.push(pts[pts.length-1]);
+  return out;
+}
+function fillWidthStrip(ctx, pts, halfW, fill){
+  if(!pts || pts.length<2) return;
+  const L = [], R = [];
+  for(let i=0;i<pts.length;i++){
+    const a = pts[Math.max(0,i-1)], b = pts[Math.min(pts.length-1,i+1)];
+    const dx = b.x-a.x, dy = b.y-a.y, len = Math.hypot(dx,dy)||1;
+    const nx = -dy/len, ny = dx/len;
+    const w = (typeof halfW==='function') ? halfW(i, i/(pts.length-1)) : halfW;
+    L.push({x: pts[i].x+nx*w, y: pts[i].y+ny*w});
+    R.push({x: pts[i].x-nx*w, y: pts[i].y-ny*w});
+  }
+  ctx.fillStyle = fill;
+  ctx.beginPath();
+  ctx.moveTo(L[0].x, L[0].y);
+  for(let i=1;i<L.length;i++) ctx.lineTo(L[i].x, L[i].y);
+  for(let i=R.length-1;i>=0;i--) ctx.lineTo(R[i].x, R[i].y);
+  ctx.closePath();
+  ctx.fill();
+}
+function pondShore(cx, cy, rx, ry, seed, organic){
+  const pts = [];
+  const n = 22;
+  for(let i=0;i<n;i++){
+    const a = i/n*Math.PI*2;
+    const wob = 1 + organic*Math.sin(a*3 + seed*8.1)*0.55 + organic*Math.sin(a*5 + seed*3.4)*0.32;
+    pts.push({x: cx+Math.cos(a)*rx*wob, y: cy+Math.sin(a)*ry*wob});
+  }
+  return pts;
+}
+/** Unique basin outlines — not one ellipse stamp. */
+function basinShore(kind, cx, cy, s){
+  const n = 24;
+  const pts = [];
+  for(let i=0;i<n;i++){
+    const t = i/n, a = t*Math.PI*2;
+    let rx = 16, ry = 11, m = 1;
+    if(kind==='garden'){
+      rx = 13*s; ry = 8*s;
+      m = 0.82 + 0.22*Math.sin(a+0.4) + 0.18*Math.sin(a*2-0.6);
+      if(Math.cos(a-0.9)>0.35) m *= 0.72;
+    } else if(kind==='stock'){
+      rx = 26*s; ry = 15*s;
+      m = 0.88 + 0.2*Math.sin(a*2+1.1) + 0.12*Math.cos(a*3);
+      if(Math.sin(a+0.3)>0.55) m *= 0.62;
+    } else if(kind==='high'){
+      rx = 15*s; ry = 10*s;
+      m = 0.7 + 0.38*Math.sin(a-0.5) + 0.16*Math.sin(a*3+1.4);
+      if(Math.cos(a-0.2)>0.15) m *= 0.48;
+    } else if(kind==='marshA'){
+      rx = 24*s; ry = 13*s;
+      m = 0.75 + 0.4*Math.sin(a*2+0.2) + 0.2*Math.sin(a*5);
+    } else {
+      rx = 18*s; ry = 17*s;
+      m = 0.7 + 0.34*Math.cos(a*2-0.8) + 0.22*Math.sin(a*4+0.3);
+    }
+    pts.push({x: cx+Math.cos(a)*rx*m, y: cy+Math.sin(a)*ry*m});
+  }
+  return pts;
+}
+function fadePlateEdges(pctx, w, h){
+  pctx.save();
+  pctx.globalCompositeOperation = 'destination-in';
+  pctx.filter = 'blur(42px)';
+  pctx.fillStyle = '#fff';
+  pctx.fillRect(70, 54, w-140, h-96);
+  pctx.restore();
+}
+function offsetPath(pts, px){
+  if(!pts || pts.length<2) return [];
+  const out = [];
+  for(let i=0;i<pts.length;i++){
+    const a = pts[Math.max(0,i-1)], b = pts[Math.min(pts.length-1,i+1)];
+    const dx = b.x-a.x, dy = b.y-a.y, len = Math.hypot(dx,dy)||1;
+    out.push({x: pts[i].x + (-dy/len)*px, y: pts[i].y + (dx/len)*px});
+  }
+  return out;
+}
+function fillPoly(ctx, pts, fill){
+  if(!pts || pts.length<3) return;
+  ctx.fillStyle = fill;
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.closePath();
+  ctx.fill();
+}
+function drawFarmhouseMass(ctx, p, s){
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.scale(s, s);
+  ctx.fillStyle = 'rgba(32,22,10,0.32)';
+  ctx.beginPath(); ctx.ellipse(6, 10, 78, 22, 0, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#e8e2d4';
+  ctx.beginPath();
+  ctx.moveTo(-56, -8); ctx.lineTo(-56, -72); ctx.lineTo(8, -118); ctx.lineTo(70, -72); ctx.lineTo(70, -8);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#6d5340';
+  ctx.beginPath();
+  ctx.moveTo(-64, -68); ctx.lineTo(8, -124); ctx.lineTo(80, -68); ctx.lineTo(8, -52);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#8a3a32';
+  ctx.fillRect(28, -116, 12, 28);
+  ctx.fillStyle = '#d8d0c0';
+  ctx.fillRect(-48, -22, 46, 18);
+  ctx.strokeStyle = '#cfc6b4';
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(-44, -22); ctx.lineTo(-44, -4); ctx.moveTo(-26, -22); ctx.lineTo(-26, -4); ctx.stroke();
+  ctx.fillStyle = '#5a3a22';
+  ctx.fillRect(-32, -18, 12, 22);
+  ctx.fillStyle = '#7aa0b8';
+  ctx.fillRect(-50, -58, 14, 14);
+  ctx.fillRect(-8, -58, 14, 14);
+  ctx.fillRect(28, -54, 14, 14);
+  ctx.restore();
+}
+function drawBarnMass(ctx, p, s){
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.scale(s, s);
+  ctx.fillStyle = 'rgba(32,22,10,0.28)';
+  ctx.beginPath(); ctx.ellipse(4, 8, 58, 16, 0, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#a33a2e';
+  ctx.fillRect(-48, -70, 96, 66);
+  ctx.fillStyle = '#5a4636';
+  ctx.beginPath(); ctx.moveTo(-54, -68); ctx.lineTo(0, -108); ctx.lineTo(54, -68); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#f2ece0';
+  ctx.fillRect(-16, -36, 32, 32);
+  ctx.strokeStyle = '#f2ece0';
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(-16, -20); ctx.lineTo(16, -20); ctx.moveTo(0, -36); ctx.lineTo(0, -4); ctx.stroke();
+  ctx.restore();
+}
+function drawCoopMass(ctx, p, s){
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.scale(s, s);
+  ctx.fillStyle = 'rgba(32,22,10,0.24)';
+  ctx.beginPath(); ctx.ellipse(2, 6, 28, 10, 0, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#d8b48a';
+  ctx.fillRect(-22, -28, 44, 26);
+  ctx.fillStyle = '#b85a3a';
+  ctx.beginPath(); ctx.moveTo(-26, -26); ctx.lineTo(0, -48); ctx.lineTo(26, -26); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#5a3a22';
+  ctx.beginPath(); ctx.arc(-2, -12, 6, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
+}
+let _journeyAtlasCv = null;
+function nudgeJourneyAtlasPaint(){
+  const cv = _journeyAtlasCv;
+  if(!cv || !cv.isConnected) return false;
+  return paintValleyAtlas(cv);
+}
+function paintValleyAtlas(cv){
+  const V = VALLEY_VIEW;
+  const ctx = cv.getContext('2d');
+  if(!ctx) return false;
+  try {
+  const skinImg = VALLEY_ATLAS_SKIN ? sprReady(VALLEY_ATLAS_SKIN) : null;
+  if(VALLEY_ATLAS_SKIN && !skinImg) return false;
+  ctx.clearRect(0, 0, V.w, V.h);
+  const hills = sprReady('bg_hills_1') || sprReady('bg_hills');
+  if(!skinImg){
+  const sky = ctx.createLinearGradient(0, 0, 0, V.sky+52);
+  sky.addColorStop(0, '#8eb6d6');
+  sky.addColorStop(0.42, '#f0d8b0');
+  sky.addColorStop(1, '#6a8c4c');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, V.w, V.h);
+  if(hills){
+    ctx.save();
+    ctx.globalAlpha = 0.92;
+    ctx.drawImage(hills, 0, 0, V.w, V.sky+48);
+    ctx.restore();
+  }
+  }
+  const BIOME = {
+    marsh:['#3a5a3c','#4a6e48'], riparian:['#4a7844','#5c8c52'],
+    heartland:['#588a3c','#6a9c48'], ridge:['#7a7648','#8c8856'],
+    pasture:['#689640','#7caa4c'], orchard:['#4c7836','#5c8c40'],
+    market:['#8a7248','#9a8454'], garden:['#5a8640','#6c984c'],
+    dust:['#c2a468','#d2b878'], wild:['#586248','#6a7256']
+  };
+  const LIVE = '#3a7a28';
+  function biomePair(c,r){
+    const A = atlasGet(c,r);
+    return BIOME[(A && A.biome) || 'wild'] || BIOME.wild;
+  }
+  function nearLiveWater(c,r){
+    const dirs = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1]];
+    for(let i=0;i<dirs.length;i++){
+      const N = atlasGet(c+dirs[i][0], r+dirs[i][1]);
+      if(N && (N.water==='main' || N.water==='creek' || N.water==='pond_site')) return N.water;
+    }
+    return null;
+  }
+  function landColor(c, r){
+    let R=0,G=0,B=0,wsum=0;
+    for(let dr=-5; dr<=5; dr++) for(let dc=-5; dc<=5; dc++){
+      const w = 1 / (1 + Math.hypot(dc,dr)*0.68);
+      const pair = biomePair(c+dc, r+dr);
+      const n = atlasN2(c+dc, r+dr);
+      const rgb = mixRgb(hexRgb(pair[0]), hexRgb(pair[1]), n);
+      R += rgb[0]*w; G += rgb[1]*w; B += rgb[2]*w; wsum += w;
+    }
+    let col = [ (R/wsum)|0, (G/wsum)|0, (B/wsum)|0 ];
+    const A = atlasGet(c,r) || {water:'none'};
+    const boost = healAt[r*ATLAS_W+c]||0;
+    if(boost>0 && A.water==='none') col = mixRgb(col, hexRgb(LIVE), 0.16 + boost*0.4);
+    const bank = nearLiveWater(c,r);
+    if(bank==='main' || bank==='creek') col = mixRgb(col, hexRgb('#5a4a28'), 0.34);
+    if(bank==='pond_site') col = mixRgb(col, hexRgb('#3a4a30'), 0.26);
+    if(A.water==='main' || A.water==='creek') col = mixRgb(col, hexRgb('#3d3420'), 0.55);
+    if(A.water==='pond_site') col = mixRgb(col, hexRgb('#2a3830'), 0.5);
+    if(A.water==='wash') col = mixRgb(col, hexRgb('#c4a06a'), 0.55);
+    if(A.feature==='saltflat') col = mixRgb(col, hexRgb('#d8c48a'), 0.4);
+    if(A.feature==='path') col = mixRgb(col, hexRgb('#b08948'), 0.55);
+    if(A.feature==='swale') col = mixRgb(col, hexRgb('#4a6a40'), 0.38);
+    if(A.feature==='hedgerow' || A.feature==='woodlot') col = mixRgb(col, hexRgb('#244820'), 0.48);
+    const morning = 0.08 * Math.max(0, (c/ATLAS_W) - 0.18);
+    col = mixRgb(col, hexRgb('#f0d8a8'), morning);
+    const bowl = Math.max(0, 1 - Math.abs(c-24.8)/9) * 0.1;
+    if(A.water==='none') col = mixRgb(col, hexRgb('#3a4a28'), bowl);
+    return rgbCss(col);
+  }
+  function paintRibbon(pts, color, width){
+    if(pts.length<2) return;
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    pts.forEach((p,i)=>{ if(i===0) ctx.moveTo(p.x,p.y); else ctx.lineTo(p.x,p.y); });
+    ctx.stroke();
+    ctx.restore();
+  }
+  function atlasPath(points){
+    return points.map(pt=> atlasToView(pt.c+0.5, pt.r+0.5));
+  }
+  function atlasPathExact(points){
+    return points.map(pt=> atlasToView(pt.c, pt.r));
+  }
+
+  const healAt = new Array(ATLAS_W*ATLAS_H);
+  VALLEY_PARCELS.forEach(P=>{
+    const b = parcelAtlasBox(P);
+    if(!b) return;
+    const boost = parcelHealBoost(P);
+    for(let r=b.r;r<b.r+b.h;r++) for(let c=b.c;c<b.c+b.w;c++){
+      if(c>=0&&c<ATLAS_W&&r>=0&&r<ATLAS_H) healAt[r*ATLAS_W+c] = Math.max(healAt[r*ATLAS_W+c]||0, boost);
+    }
+  });
+
+  const skin = skinImg;
+  if(skin){
+    ctx.fillStyle = '#0e1a12';
+    ctx.fillRect(0, 0, V.w, V.h);
+  }
+  const usedSkin = !!(skin && blitValleyAtlasSkin(ctx, skin));
+  if(VALLEY_ATLAS_SKIN && !usedSkin) return false;
+
+  if(!usedSkin){
+    const SCALE = 18;
+    const plate = document.createElement('canvas');
+    plate.width = ATLAS_W * SCALE;
+    plate.height = ATLAS_H * SCALE;
+    const pctx = plate.getContext('2d');
+    for(let r=0;r<ATLAS_H;r++) for(let c=0;c<ATLAS_W;c++){
+      pctx.fillStyle = landColor(c,r);
+      pctx.fillRect(c*SCALE, r*SCALE, SCALE, SCALE);
+    }
+    const land = document.createElement('canvas');
+    land.width = plate.width; land.height = plate.height;
+    const lctx = land.getContext('2d');
+    lctx.filter = 'blur(12px)';
+    lctx.drawImage(plate, 0, 0);
+    fadePlateEdges(lctx, land.width, land.height);
+    blitAtlasImageToView(ctx, land);
+    const north = ctx.createLinearGradient(0, V.sky-8, 0, V.sky+78);
+    north.addColorStop(0, 'rgba(214,190,150,0.55)');
+    north.addColorStop(0.45, 'rgba(160,150,110,0.18)');
+    north.addColorStop(1, 'rgba(160,150,110,0)');
+    ctx.fillStyle = north;
+    ctx.fillRect(0, V.sky-12, V.w, 92);
+    const side = ctx.createLinearGradient(0, 0, 70, 0);
+    side.addColorStop(0, 'rgba(14,26,18,0.28)');
+    side.addColorStop(1, 'rgba(14,26,18,0)');
+    ctx.fillStyle = side;
+    ctx.fillRect(0, V.sky, 80, V.h);
+    const sideR = ctx.createLinearGradient(V.w, 0, V.w-70, 0);
+    sideR.addColorStop(0, 'rgba(14,26,18,0.28)');
+    sideR.addColorStop(1, 'rgba(14,26,18,0)');
+    ctx.fillStyle = sideR;
+    ctx.fillRect(V.w-80, V.sky, 80, V.h);
+  }
+
   const wq = campaignWaterQuality();
   const murk = Math.max(0, Math.min(1, 1 - wq/100));
-  const stream = document.createElement('div');
-  stream.className = 'vmap-stream';
-  stream.setAttribute('aria-hidden', 'true');
-  const main = document.createElement('div');
-  main.className = 'vmap-water-main';
-  main.style.filter = `saturate(${1.05 - murk*0.45}) brightness(${1 - murk*0.18})`;
-  const creek = document.createElement('div');
-  creek.className = 'vmap-water-creek';
-  const wash = document.createElement('div');
-  wash.className = 'vmap-water-wash';
-  stream.appendChild(main);
-  stream.appendChild(creek);
-  stream.appendChild(wash);
-  const pond = document.createElement('img');
-  pond.className = 'vmap-pond';
-  pond.src = 'sprites/tile_water_pond.webp';
-  pond.alt = '';
-  const pp = atlasPct(3, 3, 6, 6);
-  pond.style.left = (pp.left + pp.width/2).toFixed(2) + '%';
-  pond.style.top = (pp.top + pp.height/2).toFixed(2) + '%';
-  stream.appendChild(pond);
-  const samples = [
-    {c:24, r:3, src:'sprites/tile_river_ns.webp'},
-    {c:25, r:8, src:'sprites/tile_river_ns.webp'},
-    {c:24, r:13, src:'sprites/tile_river_ew.webp'},
-    {c:25, r:18, src:'sprites/tile_river_ns.webp'},
-    {c:16, r:5, src:'sprites/tile_river_ew.webp'},
-    {c:20, r:6, src:'sprites/tile_river_ew.webp'},
-    {c:8, r:4, src:'sprites/tile_river_ew.webp'},
-  ];
-  samples.forEach(S=>{
-    const img = document.createElement('img');
-    img.className = 'vmap-rtile';
-    img.src = S.src;
-    img.alt = '';
-    const rc = atlasPct(S.c, S.r, 4, 3);
-    img.style.left = (rc.left + rc.width/2).toFixed(2) + '%';
-    img.style.top = (rc.top + rc.height/2).toFixed(2) + '%';
-    stream.appendChild(img);
+  const stem = atlasStemCenterline();
+  const creek = ATLAS_GEO.marshRun.concat(ATLAS_GEO.creek.slice(1));
+  const hs = camp.homestead || defaultHomestead();
+  const hsOn = !!(hs && hs.unlocked);
+  const houseTier = Math.max(1, Math.min(5, hsOn ? (hs.houseTier|0) : 1));
+
+  if(!usedSkin){
+    const last = stem[stem.length-1] || {c:24.5, r:22.5};
+    const liveStem = stem.map(p=>({
+      c: p.c + Math.sin(p.r*0.38)*0.62 + Math.sin(p.r*0.85)*0.22,
+      r: p.r
+    }));
+    const meadow = [
+      {c: last.c+0.35, r: 22.4},
+      {c: last.c+0.55, r: 23.2},
+      {c: last.c+0.85, r: 24.1},
+      {c: last.c+1.4, r: 25.4},
+      {c: last.c+2.1, r: 27.0},
+      {c: last.c+2.9, r: 28.8},
+      {c: last.c+3.8, r: 30.8}
+    ];
+    const stemPts = catmullPts(atlasPathExact(liveStem), 8);
+    const meadowPts = catmullPts(atlasPathExact([{c:last.c, r:last.r}].concat(meadow)), 7);
+    const creekPts = catmullPts(atlasPath(creek), 8);
+    const water = document.createElement('canvas');
+    water.width = V.w; water.height = V.h;
+    const wx = water.getContext('2d');
+    const deep = mixHex('#10282c', '#163034', 0.2-murk*0.12);
+    const body = mixHex('#163438', '#1c4040', 0.22-murk*0.1);
+    function stemHalf(i, t){
+      const bodyW = 10 + 4.2*Math.sin(t*10.5) + 2.4*Math.sin(t*4.8) + (t>0.2&&t<0.38?4:0);
+      if(t>0.74) return bodyW*0.7 + (t-0.74)*42;
+      return bodyW;
+    }
+    function creekHalf(i, t){ return 5.6 + 2.1*Math.sin(t*12) + Math.sin(t*6); }
+    fillWidthStrip(wx, stemPts, (i,t)=> stemHalf(i,t)+12, 'rgba(62,50,28,0.28)');
+    fillWidthStrip(wx, creekPts, (i,t)=> creekHalf(i,t)+8, 'rgba(62,50,28,0.22)');
+    fillWidthStrip(wx, stemPts, (i,t)=> stemHalf(i,t)+6, 'rgba(44,58,36,0.22)');
+    fillWidthStrip(wx, creekPts, (i,t)=> creekHalf(i,t)+3.2, 'rgba(44,58,36,0.18)');
+    fillWidthStrip(wx, stemPts, stemHalf, body);
+    fillWidthStrip(wx, creekPts, creekHalf, body);
+    fillWidthStrip(wx, stemPts, (i,t)=> stemHalf(i,t)*0.5, deep);
+    fillWidthStrip(wx, creekPts, (i,t)=> creekHalf(i,t)*0.46, deep);
+    fillWidthStrip(wx, meadowPts, (i,t)=> (18-t*9), 'rgba(52,70,40,0.38)');
+    fillWidthStrip(wx, meadowPts, (i,t)=> (10-t*5), 'rgba(40,62,44,0.22)');
+    const slack = atlasToView(last.c+0.4, 22.35);
+    fillPoly(wx, basinShore('stock', slack.x, slack.y, 0.72), 'rgba(42,36,20,0.26)');
+    fillPoly(wx, basinShore('stock', slack.x, slack.y, 0.55), body);
+    fillPoly(wx, basinShore('stock', slack.x+3, slack.y+2, 0.28), deep);
+    [[26.4, 24.8, 0.38], [27.6, 26.6, 0.32], [28.8, 28.6, 0.26], [29.8, 30.2, 0.2]].forEach(([c,r,sc],i)=>{
+      const q = atlasToView(c, r);
+      fillPoly(wx, basinShore(i%2?'garden':'marshB', q.x, q.y, sc), 'rgba(32,56,42,0.26)');
+    });
+    ctx.save();
+    ctx.filter = 'blur(4.2px)';
+    ctx.drawImage(water, 0, 0);
+    ctx.restore();
+    ctx.save();
+    ctx.globalAlpha = 0.22;
+    fillWidthStrip(ctx, stemPts, (i,t)=> stemHalf(i,t)*0.32, deep);
+    ctx.restore();
+
+    const washPts = catmullPts(atlasPath(ATLAS_GEO.wash), 6);
+    fillWidthStrip(ctx, washPts, (i,t)=> 7.5 - t*2.2, 'rgba(132,102,58,0.32)');
+    fillWidthStrip(ctx, washPts, (i,t)=> 3.4 - t, 'rgba(168,136,82,0.28)');
+
+    const POND_TINT = {
+      garden:{water:'#1e4a40', rim:'#355844', reed:6, s:0.92},
+      stock:{water:'#173e3c', rim:'#334e3a', reed:10, s:1},
+      high:{water:'#14343c', rim:'#2a4644', reed:3, s:0.95},
+      marshA:{water:'#16362e', rim:'#2a4436', reed:12, s:1.05},
+      marshB:{water:'#14322c', rim:'#263c32', reed:14, s:1.08}
+    };
+    Object.keys(ATLAS_GEO.ponds).forEach(k=>{
+      const b = ATLAS_GEO.ponds[k];
+      const look = POND_TINT[k] || POND_TINT.stock;
+      const p = atlasToView(b.c + b.w/2, b.r + b.h/2);
+      fillPoly(ctx, basinShore(k, p.x, p.y+2, look.s*1.18), 'rgba(46,36,20,0.32)');
+      fillPoly(ctx, basinShore(k, p.x, p.y, look.s*1.06), look.rim);
+      fillPoly(ctx, basinShore(k, p.x, p.y, look.s), look.water);
+      fillPoly(ctx, basinShore(k, p.x+2, p.y+2, look.s*0.52), mixHex(look.water, '#0c2224', 0.4+murk*0.12));
+      if(look.reed){
+        const rim = basinShore(k, p.x, p.y, look.s*1.02);
+        ctx.strokeStyle = 'rgba(40,64,36,0.45)';
+        ctx.lineWidth = 1.1;
+        for(let i=0;i<look.reed;i++){
+          const q = rim[(i*3+2)%rim.length];
+          ctx.beginPath(); ctx.moveTo(q.x, q.y+2); ctx.lineTo(q.x+atlasN2(i,2)-0.5, q.y-5-i%3); ctx.stroke();
+        }
+      }
+    });
+
+    const beds = [[3.1,23.3,1.8,1.2],[4.8,23.2,1.5,1.15],[3.3,24.4,1.7,1.1]];
+    beds.forEach(([c,r,w,h],i)=>{
+      const a = atlasToView(c, r), b = atlasToView(c+w, r+h);
+      ctx.fillStyle = mixHex('#5a3e24', '#3e6a34', 0.3 + atlasN2(i,3)*0.2);
+      ctx.beginPath();
+      if(ctx.roundRect) ctx.roundRect(a.x, a.y, Math.max(8,b.x-a.x), Math.max(6,b.y-a.y), 5);
+      else ctx.rect(a.x, a.y, Math.max(8,b.x-a.x), Math.max(6,b.y-a.y));
+      ctx.fill();
+    });
+
+    function canopyBelt(c0, c1, r0, r1, fat){
+      const pts = [];
+      for(let r=r0;r<=r1;r+=0.55) pts.push(atlasToView((c0+c1)*0.5 + Math.sin(r*1.3)*0.15, r));
+      const smooth = catmullPts(pts, 4);
+      fillWidthStrip(ctx, smooth, fat+6, 'rgba(16,28,14,0.28)');
+      fillWidthStrip(ctx, smooth, fat, 'rgba(28,58,28,0.78)');
+      fillWidthStrip(ctx, smooth, fat*0.55, 'rgba(46,86,40,0.55)');
+    }
+    canopyBelt(0, 1.2, 23.6, 30.4, 16);
+    canopyBelt(11, 12.2, 11, 19.2, 15);
+    const ridge = [];
+    for(let r=1;r<=5.4;r+=0.45) ridge.push(atlasToView(44.4+Math.sin(r*1.7)*0.4, r));
+    const ridgeS = catmullPts(ridge, 4);
+    fillWidthStrip(ctx, ridgeS, 28, 'rgba(16,28,14,0.3)');
+    fillWidthStrip(ctx, ridgeS, 22, 'rgba(30,62,30,0.8)');
+    fillWidthStrip(ctx, ridgeS, 13, 'rgba(48,88,42,0.5)');
+    [[13,22,13,26,7],[2,20,8,20,8],[4,12,4,14,6],[7,12,7,14,6]].forEach(([c0,r0,c1,r1,fat])=>{
+      const pts = catmullPts([atlasToView(c0,r0), atlasToView(c1,r1)], 5);
+      fillWidthStrip(ctx, pts, fat, 'rgba(32,64,30,0.62)');
+    });
+    const shade = catmullPts([atlasToView(4.6,14.1), atlasToView(6.4,14.05), atlasToView(7.1,14.3)], 4);
+    fillWidthStrip(ctx, shade, 11, 'rgba(24,52,26,0.72)');
+    fillWidthStrip(ctx, shade, 6, 'rgba(40,78,36,0.5)');
+
+    [14.15, 16.2].forEach((row, ri)=>{
+      const rowPts = [];
+      for(let c=13.8;c<=19.4;c+=0.45) rowPts.push(atlasToView(c, row + Math.sin(c*1.7+ri)*0.12));
+      const rs = catmullPts(rowPts, 4);
+      fillWidthStrip(ctx, rs, (i,t)=> 10 + 5*Math.abs(Math.sin(t*16+ri)), 'rgba(22,44,20,0.55)');
+      fillWidthStrip(ctx, rs, (i,t)=> 6 + 3*Math.abs(Math.sin(t*16+ri+0.6)), 'rgba(46,86,40,0.5)');
+    });
+
+    function dirtLane(points, half){
+      const raw = points.slice();
+      const pts = catmullPts(atlasPath(raw), 8);
+      const fade = (t)=> t>0.82 ? Math.max(0.12, 1-(t-0.82)/0.18) : (t<0.08 ? t/0.08 : 1);
+      fillWidthStrip(ctx, pts, (i,t)=> (half+7)*fade(t), 'rgba(58,88,40,0.42)');
+      fillWidthStrip(ctx, pts, (i,t)=> (half+1.5)*fade(t), 'rgba(88,64,38,0.72)');
+      fillWidthStrip(ctx, pts, (i,t)=> half*0.72*fade(t), 'rgba(112,84,50,0.4)');
+      const left = offsetPath(pts, half*0.28);
+      const right = offsetPath(pts, -half*0.28);
+      fillWidthStrip(ctx, left, (i,t)=> 1.15*fade(t), 'rgba(62,44,24,0.38)');
+      fillWidthStrip(ctx, right, (i,t)=> 1.15*fade(t), 'rgba(62,44,24,0.38)');
+    }
+    dirtLane(ATLAS_GEO.lane, 7.6);
+    dirtLane(ATLAS_GEO.paddockSpur, 4.2);
+    dirtLane(ATLAS_GEO.orchardSpur, 4.2);
+  }
+
+  if(!usedSkin){
+    const yard = atlasToView(4.4, 28.5);
+    ctx.fillStyle = 'rgba(52,40,22,0.28)';
+    ctx.beginPath(); ctx.ellipse(yard.x+18, yard.y+12, 92, 28, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = 'rgba(86,108,58,0.22)';
+    ctx.beginPath(); ctx.ellipse(yard.x+10, yard.y+2, 70, 20, 0, 0, Math.PI*2); ctx.fill();
+
+    function placeBuilding(name, c, r, w, h, mass){
+      const p = atlasToView(c, r);
+      mass(ctx, p, Math.max(0.7, w/140));
+      drawSprAt(ctx, name, c, r, w, h);
+    }
+    placeBuilding('barn', 8.15, 27.85, 148, 124, drawBarnMass);
+    placeBuilding('coop', 13.15, 19.85, 92, 78, drawCoopMass);
+    if(sprReady('market')) drawSprAt(ctx, 'market', 40.3, 15.6, 72, 62);
+    else {
+      const mp = atlasToView(40.3, 15.6);
+      ctx.fillStyle = '#8a6238';
+      ctx.fillRect(mp.x-18, mp.y-28, 36, 24);
+      ctx.fillStyle = '#c45a3a';
+      ctx.beginPath(); ctx.moveTo(mp.x-22, mp.y-26); ctx.lineTo(mp.x, mp.y-42); ctx.lineTo(mp.x+22, mp.y-26); ctx.fill();
+    }
+    if(sprReady('windmill')) drawSprAt(ctx, 'windmill', 41.2, 3.9, 88, 108);
+    const compost = atlasToView(5.5, 27.5);
+    ctx.fillStyle = 'rgba(86,58,28,0.9)';
+    ctx.beginPath(); ctx.ellipse(compost.x, compost.y, 14, 9, 0, 0, Math.PI*2); ctx.fill();
+    const hp = atlasToView(4.35, 28.7);
+    drawFarmhouseMass(ctx, hp, 1.2);
+    drawSprAt(ctx, 'house_t'+houseTier, 4.35, 28.7, 210, 176);
+  }
+
+  const fog = document.createElement('canvas');
+  fog.width = V.w; fog.height = V.h;
+  const fg = fog.getContext('2d');
+  VALLEY_PARCELS.forEach(P=>{
+    if(P.kind==='hub') return;
+    if(parcelMapState(P, camp)!=='locked') return;
+    const q = parcelViewQuad(P);
+    if(!q) return;
+    fg.fillStyle = '#fff';
+    fg.beginPath();
+    fg.moveTo(q[0].x, q[0].y);
+    q.slice(1).forEach(p=> fg.lineTo(p.x, p.y));
+    fg.closePath();
+    fg.fill();
   });
-  host.appendChild(stream);
+  ctx.save();
+  ctx.filter = 'blur(16px)';
+  ctx.globalAlpha = 0.2;
+  ctx.drawImage(fog, 0, 0);
+  ctx.restore();
+  return !!(usedSkin || hills);
+  } catch (err) {
+    console.warn('[Rootweave] valley paint', err);
+    return false;
+  }
 }
-function wireValleyLand(cell, P, ms){
+function wireValleyRegion(el, P, ms){
   const oneLiner = (P.desc && String(P.desc).trim()) ? P.desc : (P.teaser || P.name);
   const hint = parcelUnlockHint(P);
   const stateWord = ms==='restored'?'restored':ms==='mastered'?'mastered':ms==='in_progress'?'in progress':ms==='locked'?'still fogged':ms==='hub'?'home':'open';
-  cell.title = oneLiner + ' · ' + stateWord;
-  cell.setAttribute('aria-label', [P.name, oneLiner, ms==='locked'?hint:stateWord].filter(Boolean).join('. '));
-  cell.addEventListener('mouseenter', ()=>{
-    if(!camp.tipsShown) camp.tipsShown = {};
-    if(camp.tipsShown.map_pin_hover) return;
-    camp.tipsShown.map_pin_hover = true;
-    if(typeof save==='function') try{ save(); }catch(e){}
-    toast(`${P.name} — ${oneLiner}`, {throttleMs:4000});
-  });
-  cell.addEventListener('click', ()=>{
+  el.setAttribute('role', 'button');
+  el.setAttribute('tabindex', ms==='locked' ? '-1' : '0');
+  el.setAttribute('aria-label', [P.name, oneLiner, ms==='locked'?hint:stateWord].filter(Boolean).join('. '));
+  const go = ()=>{
     if(P.kind==='hub'){
       const hsOn = !!(camp.homestead && camp.homestead.unlocked);
-      if(!hsOn){ toast('🏡 Homestead opens after you clear Home Patch.'); SND.uhoh(); return; }
+      if(!hsOn){ toast('🏡 Homestead opens after you clear Home Patch.'); return; }
       SND.pop(); enterHomestead();
       return;
     }
     if(P.lvIndex==null) return;
     if(ms==='locked'){
-      toast(`${P.name} — ${hint || 'heal a neighboring field first.'}`);
-      SND.uhoh(); return;
+      toast(`${P.name} is still in mist — ${hint || 'heal a neighboring field first.'}`);
+      return;
     }
     journeyPick(P.lvIndex);
+  };
+  el.addEventListener('click', go);
+  el.addEventListener('keydown', e=>{
+    if(e.key==='Enter' || e.key===' '){ e.preventDefault(); go(); }
   });
-}
-function placeValleyLand(P, hsOn, houseTier){
-  const ms = parcelMapState(P, camp);
-  const landState = (P.kind==='hub' && !hsOn) ? 'locked' : ms;
-  const land = document.createElement('button');
-  land.type = 'button';
-  land.className = 'vland ' + parcelBiomeClass(P) + ' ' + landState;
-  if(P.id==='home_garden') land.classList.add('vland-home');
-  if(P.kind==='hub') land.classList.add('vland-hub');
-  if(P.kind==='hub'){
-    const house = document.createElement('img');
-    house.className = 'vland-house';
-    house.src = 'sprites/house_t' + houseTier + '.webp';
-    house.alt = '';
-    land.appendChild(house);
-  } else {
-    const markSrc = parcelLandMark(P);
-    if(markSrc && landState!=='locked'){
-      const mark = document.createElement('img');
-      mark.className = 'vland-mark';
-      mark.src = markSrc;
-      mark.alt = '';
-      land.appendChild(mark);
-    }
-  }
-  if(landState==='locked'){
-    const fog = document.createElement('span');
-    fog.className = 'vland-fog';
-    land.appendChild(fog);
-  }
-  const nm = document.createElement('span');
-  nm.className = 'vland-nm';
-  nm.textContent = P.id==='home_garden' ? 'Home Patch' : P.name;
-  land.appendChild(nm);
-  wireValleyLand(land, P, landState);
-  return land;
+  el.addEventListener('mouseenter', ()=>{
+    if(!camp.tipsShown) camp.tipsShown = {};
+    if(camp.tipsShown.map_pin_hover) return;
+    camp.tipsShown.map_pin_hover = true;
+    if(typeof save==='function') try{ save(); }catch(err){}
+    toast(`${P.name} — ${oneLiner}`, {throttleMs:4000});
+  });
 }
 function buildValleyMapEl(){
   ensureParcelState(camp);
   const wrap = document.createElement('div');
-  wrap.className = 'vmap vmap-valley';
+  wrap.className = 'vscene';
   wrap.setAttribute('role', 'group');
-  wrap.setAttribute('aria-label', 'Your valley — house, garden, water, and fields');
-  const hills = document.createElement('img');
-  hills.className = 'vmap-hills';
-  hills.src = 'sprites/bg_hills_summer.webp';
-  hills.alt = '';
-  wrap.appendChild(hills);
-  const ground = document.createElement('div');
-  ground.className = 'vmap-ground';
-  wrap.appendChild(ground);
-  buildValleyWaterMarks(wrap);
-  const board = document.createElement('div');
-  board.className = 'vmap-board';
+  wrap.setAttribute('aria-label', 'Your farm — house by the garden, river through the valley');
+  const cv = document.createElement('canvas');
+  cv.className = 'vscene-cv';
+  cv.width = VALLEY_VIEW.w;
+  cv.height = VALLEY_VIEW.h;
+  cv.setAttribute('aria-hidden', 'true');
+  wrap.appendChild(cv);
+  _journeyAtlasCv = cv;
+  let tries = 0;
+  const paint = ()=>{
+    if(!cv.isConnected) return;
+    const ok = paintValleyAtlas(cv);
+    if(!ok && tries++ < 80) setTimeout(paint, 120);
+  };
+  paint();
+
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('class', 'vscene-hit');
+  svg.setAttribute('viewBox', '0 0 '+VALLEY_VIEW.w+' '+VALLEY_VIEW.h);
+  svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
   const hs = camp.homestead || defaultHomestead();
   const hsOn = !!hs.unlocked;
-  const houseTier = Math.max(0, Math.min(5, hsOn ? (hs.houseTier|0) : 0));
-  const COLS = 4, ROWS = 3;
-  const cells = Array.from({length: ROWS}, ()=> Array(COLS).fill(null));
   VALLEY_PARCELS.forEach(P=>{
-    if(!P.mapCell || P.kind==='hub') return;
-    const [c,r] = P.mapCell;
-    if(r>=0 && r<ROWS && c>=0 && c<COLS && !cells[r][c]) cells[r][c] = P;
-  });
-  const riverP = valleyParcel('river_reach');
-  if(riverP && riverP.mapCell && riverP.mapCell[0]===2 && riverP.mapCell[1]===0){
-    cells[0][2] = riverP;
-    cells[1][2] = {__spanOf:'river_reach'};
-  }
-  for(let r=0;r<ROWS;r++){
-    for(let c=0;c<COLS;c++){
-      const slot = cells[r][c];
-      if(slot && slot.__spanOf) continue;
-      if(slot){
-        const land = placeValleyLand(slot, hsOn, houseTier);
-        land.style.gridColumn = String(c+1);
-        land.style.gridRow = slot.id==='river_reach' ? '1 / span 2' : String(r+1);
-        if(slot.id==='river_reach') land.classList.add('vmap-span');
-        board.appendChild(land);
-      } else {
-        const scenic = document.createElement('div');
-        scenic.className = 'vland biome-garden scenic';
-        scenic.setAttribute('aria-hidden', 'true');
-        scenic.style.gridColumn = String(c+1);
-        scenic.style.gridRow = String(r+1);
-        const nm = document.createElement('span');
-        nm.className = 'vland-nm';
-        nm.textContent = (r===2 && c===3) ? 'Lane' : 'Meadow';
-        scenic.appendChild(nm);
-        board.appendChild(scenic);
-      }
+    const q = parcelViewQuad(P);
+    if(!q) return;
+    const ms = (P.kind==='hub' && !hsOn) ? 'hub' : parcelMapState(P, camp);
+    const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    poly.setAttribute('points', q.map(p=>p.x.toFixed(1)+','+p.y.toFixed(1)).join(' '));
+    poly.setAttribute('class', 'vreg '+ms+(P.id==='home_garden'?' home':''));
+    poly.dataset.id = P.id;
+    wireValleyRegion(poly, P, ms==='hub' && P.kind==='hub' ? (hsOn?'hub':'available') : ms);
+    svg.appendChild(poly);
+    if(ms!=='locked'){
+      const mid = parcelViewCenter(P);
+      const lab = document.createElement('div');
+      lab.className = 'vlab '+ms;
+      lab.textContent = P.name;
+      lab.style.left = (mid.x/VALLEY_VIEW.w*100).toFixed(2)+'%';
+      lab.style.top = (mid.y/VALLEY_VIEW.h*100).toFixed(2)+'%';
+      wrap.appendChild(lab);
     }
-  }
-  const hubP = valleyParcel('homestead');
-  if(hubP){
-    const hub = placeValleyLand(hubP, hsOn, houseTier);
-    hub.style.gridColumn = '1 / span 2';
-    hub.style.gridRow = '4';
-    board.appendChild(hub);
-  }
-  const yard = document.createElement('div');
-  yard.className = 'vland biome-pasture scenic vland-yard';
-  yard.setAttribute('aria-hidden', 'true');
-  yard.style.gridColumn = '3 / span 2';
-  yard.style.gridRow = '4';
-  const ynm = document.createElement('span');
-  ynm.className = 'vland-nm';
-  ynm.textContent = 'Pasture';
-  yard.appendChild(ynm);
-  board.appendChild(yard);
-  wrap.appendChild(board);
-  const fogRim = document.createElement('div');
-  fogRim.className = 'vmap-fog';
-  wrap.appendChild(fogRim);
+  });
+  wrap.appendChild(svg);
   const compass = document.createElement('div');
   compass.className = 'vmap-compass';
   compass.textContent = 'N';
@@ -13174,7 +13622,7 @@ function buildJourney(){
   if(jh) jh.textContent = freeplayOn ? '🏆 Freeplay Valley' : '🌱 Rootweave';
   if(js) js.textContent = freeplayOn
     ? 'All plots cleared — sandbox Homestead or revisit any field'
-    : 'Your valley — house, garden, water, and the fields you heal';
+    : 'Your farm — house by the garden, river through the valley';
   // AZ — Share near freeplay title (before path list / CTA)
   if(freeplayOn){
     const shareTop = document.createElement('button');
@@ -13287,11 +13735,10 @@ function buildJourney(){
   prest.querySelector('#jAbout').addEventListener('click', ()=>{ SND.pop(); openAboutCredits(); });
   prest.querySelector('#jNew').addEventListener('click', ()=>{ SND.pop(); confirmNewGame(); });
 
-  // Geographic valley — house, garden, water, plots as land
   const mapHead = document.createElement('div');
   mapHead.className = 'jsub';
   mapHead.style.marginBottom = '8px';
-  mapHead.textContent = 'Your farm — tap a field. Fogged neighbors open as you heal.';
+  mapHead.textContent = 'Tap a field to walk it. Mist lifts as you heal the neighbors.';
   path.appendChild(mapHead);
   path.appendChild(buildValleyMapEl());
 
@@ -13302,50 +13749,7 @@ function buildJourney(){
   mapEl.addEventListener('click', ()=>{ SND.pop(); openPropertyMap(); });
   path.appendChild(mapEl);
 
-  // Design goals (F2) — light bank rewards for homestead actions
   path.appendChild(renderDesignGoalsEl());
-
-  // Parcel ledger (secondary — map is the farm)
-  const ledger = document.createElement('details');
-  ledger.className = 'jledger';
-  const ledSum = document.createElement('summary');
-  ledSum.textContent = 'Field names & unlocks';
-  ledger.appendChild(ledSum);
-  VALLEY_PARCELS.filter(P=>P.kind==='plot').forEach(P=>{
-    const ms = parcelMapState(P, camp);
-    const unlocked = ms !== 'locked';
-    const done = ms==='restored' || ms==='mastered';
-    const isCur = !homesteadMode && state && P.lvIndex===state.lv;
-    const el = document.createElement('button');
-    el.type = 'button';
-    el.className = 'jnode'+(unlocked?'':' locked')+(done?' done':'')+((isCur&&unlocked)?' cur':'');
-    const stars = done ? '⭐'.repeat(Math.max(1, (camp.parcels[P.id]&&camp.parcels[P.id].bestStars)||1)) : '';
-    const st = !unlocked ? 'fogged'
-             : done ? `✓ done<br>${stars}`
-             : (isCur && levelHasProgress()) ? '▶ continue' : '▶ play';
-    const grants = (P.grantUnlocks||[]).slice(0,3).join(', ');
-    const sys = (P.systemsTaught||[]).slice(0,2).join(', ');
-    const unlockHint = parcelUnlockHint(P);
-    const tipBits = [P.name, P.desc, unlockHint, grants?('Unlocks: '+grants):''].filter(Boolean);
-    el.title = tipBits.join(' — ');
-    el.setAttribute('aria-label', tipBits.join('. '));
-    const jtsLine = !unlocked
-      ? (unlockHint || P.desc || P.teaser || '')
-      : `${P.desc||''}${sys?` · ${sys}`:''}${grants?` · 🔓 ${grants}`:''}`;
-    el.innerHTML = `<span class="jem">${P.em}</span>
-      <span><span class="jnm">${P.name}</span><div class="jts">${jtsLine}</div></span>
-      <span class="jst">${st}</span>`;
-    el.addEventListener('click', ()=>{
-      if(P.lvIndex==null) return;
-      if(!unlocked){
-        toast(`${P.name} — ${unlockHint||('heal a neighboring field first.')}`);
-        SND.uhoh(); return;
-      }
-      journeyPick(P.lvIndex);
-    });
-    ledger.appendChild(el);
-  });
-  path.appendChild(ledger);
 }
 /** Light design goals — bank rewards for room/yard progress */
 function ensureDesignGoals(){
@@ -13520,7 +13924,7 @@ function enterLevel(lv, fresh){
   if(lv === LEVELS.length-1){
     state.valeBeaconT = 14;
     if(document.body.classList.contains('reduce-motion')) centerCamera();
-    else focusCameraOnTile(2, 2, 1.28);
+    else focusCameraOnTile(3, 5, 1.28);
   }else{
     centerCamera();
   }
@@ -13957,6 +14361,7 @@ function init(){
   refreshAnchors();
   if(!bundle) showSplash();     // brand new: title first, then the journey map
   else showJourney();           // returning: straight to the journey (▶ continue)
+  if(location.hash==='#journey'){ try{ closeModal(); }catch(e){} showJourney(); }
   if(bundle && resumed && state && !state.homesteadView && !state.levelDone){
     plotSessionReady = true;
   }
