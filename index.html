@@ -1603,12 +1603,14 @@ const ATLAS_GEO = {
   ],
   paddockSpur: [{c:5,r:26},{c:5,r:23},{c:5,r:20},{c:5,r:17}],
   orchardSpur: [{c:15,r:24},{c:15,r:21},{c:15,r:18},{c:15,r:15}],
+  gardenRill: [{c:5,r:25},{c:4,r:24},{c:3,r:24}],
+  orchardDrain: [{c:19,r:13},{c:19,r:14},{c:19,r:15},{c:19,r:16},{c:20,r:17}],
   ponds: {
     garden:{c:6,r:25,w:2,h:2,biome:'garden'},
     stock:{c:5,r:15,w:2,h:2,biome:'pasture'},
     high:{c:40,r:2,w:2,h:2,biome:'ridge'},
-    marshA:{c:4,r:5,w:2,h:2,biome:'marsh'},
-    marshB:{c:6,r:2,w:2,h:2,biome:'marsh'}
+    marshA:{c:4,r:6,w:2,h:2,biome:'marsh'},
+    marshB:{c:8,r:5,w:2,h:2,biome:'marsh'}
   }
 };
 function atlasBiomeAt(c, r){
@@ -1642,28 +1644,32 @@ function atlasBiomeAt(c, r){
   }
   atlasPaintWater(main, 'main');
   atlasPolyline(ATLAS_GEO.creek, 'main');
-  for(let c=13;c<=21;c++){
-    atlasSet(c, 5, {water:'main', biome:'riparian'});
-    atlasSet(c, 6, {water:'main', biome:'riparian'});
-  }
   atlasPolyline(ATLAS_GEO.marshRun, 'main');
+  // Stock crossing: one wider step, not a two-wide canal the whole way
+  atlasSet(16,5,{water:'main', biome:'riparian'});
+  atlasSet(16,6,{water:'main', biome:'riparian'});
+  // Slack water at the creek/stem confluence — a bend, not a T
+  atlasSet(23,7,{water:'main', biome:'riparian'});
   atlasPolyline(ATLAS_GEO.wash, 'wash');
   Object.keys(ATLAS_GEO.ponds).forEach(k=>{
     const p = ATLAS_GEO.ponds[k];
     atlasBasin(p.c, p.r, p.w, p.h, p.biome);
   });
-  // Swale on contour above Home Patch — soak, don't flood the tutorial garden
+  // Contour swale above the garden + rill from the pond into the beds
   atlasPaintDryFeature([{c:3,r:22},{c:4,r:22},{c:5,r:22},{c:6,r:22}], 'swale', {biome:'garden'});
+  atlasPaintDryFeature(atlasPolylinePts(ATLAS_GEO.gardenRill), 'swale', {biome:'garden'});
+  atlasPaintDryFeature(atlasPolylinePts(ATLAS_GEO.orchardDrain), 'swale', {biome:'orchard'});
   atlasPaintDryFeature(atlasPolylinePts(ATLAS_GEO.lane), 'path');
   atlasPaintDryFeature(atlasPolylinePts(ATLAS_GEO.paddockSpur), 'path');
   atlasPaintDryFeature(atlasPolylinePts(ATLAS_GEO.orchardSpur), 'path');
   // Barnyard lot by the barn (not the main pasture)
   atlasPaintDryFeature([{c:7,r:28},{c:8,r:28},{c:8,r:29}], 'path', {biome:'garden'});
-  // Paddock fold hedges — every fold still touches the stock pond
+  // Paddock fold hedges — every fold still has an open drink on the pond
   atlasPaintDryFeature([{c:4,r:12},{c:4,r:13},{c:4,r:14}], 'hedgerow', {biome:'pasture'});
   atlasPaintDryFeature([{c:7,r:12},{c:7,r:13},{c:7,r:14}], 'hedgerow', {biome:'pasture'});
   atlasPaintDryFeature([{c:2,r:17},{c:3,r:17},{c:8,r:17},{c:9,r:17}], 'hedgerow', {biome:'pasture'});
-  atlasPaintDryFeature([{c:4,r:15},{c:7,r:16},{c:5,r:14},{c:6,r:17}], 'woodlot', {biome:'pasture'});
+  // Shade on the north bank only — west/south stay open so stock can drink
+  atlasPaintDryFeature([{c:5,r:14},{c:6,r:14}], 'woodlot', {biome:'pasture'});
   // Windbreak W/NW of house and orchard; woodlot on the ridge
   for(let r=24;r<=30;r++) for(let c=0;c<=1;c++) atlasSet(c,r,{feature:'woodlot', biome:'garden'});
   for(let r=11;r<=18;r++) for(let c=11;c<=12;c++){
@@ -1686,7 +1692,7 @@ function atlasBiomeAt(c, r){
   atlasSet(13,19,{landmark:'coop', biome:'orchard'});
   atlasSet(5,24,{landmark:'shed', biome:'garden'});
   atlasSet(4,16,{landmark:'trough', biome:'pasture'});
-  atlasSet(22,5,{landmark:'bridge', biome:'riparian'});
+  atlasSet(22,4,{landmark:'bridge', biome:'riparian'});
   atlasSet(5,3,{landmark:'heron', biome:'marsh'});
   atlasSet(41,3,{landmark:'wind', biome:'ridge'});
   atlasSet(40,15,{landmark:'cart', biome:'market'});
@@ -1714,7 +1720,7 @@ const VALLEY_PARCELS = [
   {id:'home_garden', name:'Home Patch', em:'🌱', kind:'plot', levelId:'home', lvIndex:0,
    origin:{c:2, r:22}, size:{w:6, h:6}, teaser:'basics',
    systemsTaught:['feed_dead','compost','diversity'], neighborParcels:['homestead','back_paddock','school_garden'],
-   unlockRules:{type:'always'}, landmark:'shed_fence', desc:'Kitchen garden, pond, and swale beside the house.'},
+   unlockRules:{type:'always'}, landmark:'shed_fence', desc:'Kitchen garden above the floodplain — pond, rill, and swale.'},
   {id:'back_paddock', name:'Back Paddock', em:'🐄', kind:'plot', levelId:'field', lvIndex:1,
    origin:{c:2, r:12}, size:{w:8, h:8}, teaser:'herd',
    systemsTaught:['cattle','chicken','team_graze','clover'], neighborParcels:['home_garden','creek_bend','orchard_slope'],
@@ -13024,6 +13030,8 @@ function paintValleyAtlas(cv){
     ctx.fill();
   }
 
+  paintRibbon(atlasPath(ATLAS_GEO.gardenRill), 'rgba(46,68,40,0.5)', 4);
+  paintRibbon(atlasPath(ATLAS_GEO.orchardDrain), 'rgba(46,68,40,0.4)', 3.5);
   paintRibbon(atlasPath(ATLAS_GEO.lane), 'rgba(120,88,42,0.55)', 7);
   paintRibbon(atlasPath(ATLAS_GEO.paddockSpur), 'rgba(120,88,42,0.42)', 5);
   paintRibbon(atlasPath(ATLAS_GEO.orchardSpur), 'rgba(120,88,42,0.42)', 5);
