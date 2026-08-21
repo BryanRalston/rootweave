@@ -3291,6 +3291,16 @@ function loadSprites(){
   });
   registerSprite('duckT', 'sprites/animal_duck.webp'+BV, 2);
   registerSprite('duckT', 'sprites/animal_duck.png'+BV, 3);
+  // Motion kit keys cow_w0 … cow_w11 ← sprites/anim_cow_w00.webp … (12-frame packs).
+  // Idle stays the photoreal still. Do not register walk1/walk2 cartoon stills.
+  const ANIM_V = '?v=walkPack1';
+  ['cow','chicken','goat','sheep','pig','horse','duckT'].forEach(kind=>{
+    for(let i=0;i<12;i++){
+      registerSprite(kind+'_w'+i, 'sprites/anim_'+kind+'_w'+String(i).padStart(2,'0')+'.webp'+ANIM_V, 4);
+    }
+  });
+  registerSprite('cow_graze', 'sprites/anim_cow_graze.webp'+ANIM_V, 4);
+  registerSprite('chicken_peck', 'sprites/anim_chicken_peck.webp'+ANIM_V, 4);
   // Critters + wing frames (webp Pages-safe)
   [
     ['bee','critter_bee'],['butterfly','critter_butterfly'],['bird','critter_bird'],
