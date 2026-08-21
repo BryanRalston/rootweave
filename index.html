@@ -3689,6 +3689,39 @@ function ringAt(i, color, scale){
   const p = tileWorld(i);
   worldParts.push({kind:'ring', x:p.x, y:p.y, age:0, life:0.55, color, scale:scale||1});
 }
+const revivePopAt = Object.create(null);
+const REVIVE_POP_MS = 420;
+function startRevivePop(i){
+  if(typeof prefersQuietMotion==='function' && prefersQuietMotion()) return;
+  revivePopAt[i] = (typeof performance!=='undefined' && performance.now) ? performance.now() : Date.now();
+}
+function revivePopAmt(i){
+  const t0 = revivePopAt[i];
+  if(t0==null) return 0;
+  const now = (typeof performance!=='undefined' && performance.now) ? performance.now() : Date.now();
+  const u = (now - t0) / REVIVE_POP_MS;
+  if(u >= 1){ delete revivePopAt[i]; return 0; }
+  return Math.sin(Math.max(0, Math.min(1, u)) * Math.PI);
+}
+function withRevivePop(t, i, drawFn, glow){
+  const pop = revivePopAmt(i);
+  if(pop <= 0.01){ drawFn(); return; }
+  const o = tileOrigin(t);
+  const cx = o.x, cy = o.y + TH2;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(1 + pop * 0.18, 1 + pop * 0.18);
+  ctx.translate(-cx, -cy);
+  drawFn();
+  if(glow){
+    ctx.globalAlpha = pop * 0.40;
+    diamondPath(o.x, o.y);
+    ctx.fillStyle = '#fff4b8';
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+}
 function spawnStepDust(ag){
   if(prefersQuietMotion() || !state || !ag) return;
   const t = state.grid[ag.tile];
@@ -3842,6 +3875,7 @@ function wakeDeadTile(t, i){
   if(wasSalt) state.stats.saltRevived = (state.stats.saltRevived||0)+1;
   floater(i, '🌅 REVIVED!', '#ffe89a', 17);
   burst(i, '#c8f0a0', 14); ringAt(i, '#c8f0a0');
+  if(typeof startRevivePop==='function') startRevivePop(i);
   if(typeof haptic==='function') haptic('revive');
   if(isFirstEver || !state._firstReviveJuice){
     state._firstReviveJuice = true;
@@ -10912,7 +10946,7 @@ function render(time){
   drawBoardBorder();
   for(let r=0;r<GRID;r++) for(let c=0;c<GRID;c++){
     const t = state.grid[idx(c,r)];
-    if(tileVisible(t)) drawGround(t, time);
+    if(tileVisible(t)) withRevivePop(t, idx(c,r), ()=>drawGround(t, time));
   }
   // Rim stroke again on top of grass so border reads clean
   drawBoardRimTop();
@@ -10928,7 +10962,7 @@ function render(time){
   if(selected>=0) drawHighlight(selected, time, '#ffd45e');
   for(let r=0;r<GRID;r++) for(let c=0;c<GRID;c++){
     const t = state.grid[idx(c,r)];
-    if(tileVisible(t)) drawTileObjects(t, idx(c,r), time);
+    if(tileVisible(t)) withRevivePop(t, idx(c,r), ()=>drawTileObjects(t, idx(c,r), time));
   }
   drawWildlifeWorld(time);
   // AA — ambient glitter cheaper on large crowded boards
