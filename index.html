@@ -462,9 +462,12 @@ body.home-plot #questPanel{
 /* ---------- journey (valley atlas) ---------- */
 #journey{position:fixed; inset:0; z-index:62; display:none; flex-direction:column; align-items:center; overflow-y:auto; background:#0e1a12}
 #journey.show{display:flex}
-#journey .jbg{position:fixed; inset:0; background:url('sprites/title_farm.webp') center/cover no-repeat; opacity:.55; pointer-events:none}
-#journey .jshade{position:fixed; inset:0; background:linear-gradient(180deg, rgba(8,14,8,.74) 0%, rgba(8,14,8,.38) 42%, rgba(8,14,8,.8) 100%); pointer-events:none}
-#journey .jwrap{position:relative; z-index:1; width:100%; max-width:680px; padding:20px 16px calc(30px + env(safe-area-inset-bottom,0px))}
+#journey .jbg{position:fixed; inset:0; background:
+  radial-gradient(ellipse 80% 50% at 50% 18%, #24382a 0%, transparent 70%),
+  linear-gradient(180deg, #152418 0%, #0e1a12 55%, #0a140e 100%);
+  pointer-events:none}
+#journey .jshade{position:fixed; inset:0; background:linear-gradient(180deg, rgba(8,14,8,.35) 0%, rgba(8,14,8,.08) 40%, rgba(8,14,8,.55) 100%); pointer-events:none}
+#journey .jwrap{position:relative; z-index:1; width:100%; max-width:920px; padding:16px 14px calc(24px + env(safe-area-inset-bottom,0px))}
 #journey h1{color:#ffeece; font-size:30px; margin:4px 0 2px; text-align:center; text-shadow:0 2px 8px rgba(0,0,0,.6)}
 #journey .jsub{color:#e8d9ae; font-size:13.5px; font-weight:700; text-align:center; margin-bottom:12px; text-shadow:0 1px 4px rgba(0,0,0,.7)}
 /* Journey = one drawing of the 48×32 atlas. No cell board, no quilt. */
@@ -474,13 +477,15 @@ body.home-plot #questPanel{
   background:#1a2a18}
 .vscene-cv{display:block; width:100%; height:100%; vertical-align:top}
 .vscene-hit{position:absolute; inset:0; width:100%; height:100%; z-index:2}
-.vreg{fill:transparent; stroke:transparent; stroke-width:2; cursor:pointer; transition:fill .15s ease, stroke .15s ease}
-.vreg.available{stroke:rgba(234,181,67,.78); fill:rgba(234,181,67,.07)}
-.vreg.in_progress{stroke:rgba(120,190,255,.8); fill:rgba(90,160,230,.08)}
-.vreg.restored,.vreg.mastered{stroke:rgba(90,150,60,.4); fill:rgba(70,130,48,.05)}
-.vreg.hub{stroke:rgba(234,181,67,.55); fill:rgba(255,236,180,.05)}
+.vreg{fill:transparent; stroke:transparent; stroke-width:1.5; cursor:pointer; transition:fill .15s ease, stroke .15s ease}
+.vreg.available{stroke:rgba(234,181,67,.0); fill:rgba(234,181,67,.0)}
+.vreg.available:hover,.vreg.hub:hover,.vreg.in_progress:hover,.vreg.restored:hover,.vreg.mastered:hover{
+  fill:rgba(255,236,180,.08); stroke:rgba(234,181,67,.45)}
+.vreg.in_progress{stroke:rgba(120,190,255,.35); fill:rgba(90,160,230,.04)}
+.vreg.restored,.vreg.mastered{stroke:transparent; fill:transparent}
+.vreg.hub{stroke:transparent; fill:transparent}
 .vreg.locked{cursor:default; fill:transparent; stroke:transparent}
-.vreg.available.home{filter:drop-shadow(0 0 6px rgba(234,181,67,.35))}
+.vreg.available.home{stroke:rgba(234,181,67,.55); fill:rgba(234,181,67,.05)}
 .vlab{position:absolute; z-index:3; transform:translate(-50%,-50%); pointer-events:none;
   font-size:10px; font-weight:800; color:#fff8e4; letter-spacing:.01em; white-space:nowrap;
   text-shadow:0 1px 2px #1a1208, 0 0 8px rgba(0,0,0,.75); padding:2px 7px; border-radius:999px;
@@ -12810,14 +12815,21 @@ function parcelHealBoost(P){
   return 0;
 }
 function hexRgb(hex){
-  const n = parseInt(hex.slice(1), 16);
+  const h = String(hex||'#000000');
+  if(h[0]!=='#') return [90,120,70];
+  const n = parseInt(h.slice(1), 16);
+  if(!isFinite(n)) return [90,120,70];
   return [(n>>16)&255, (n>>8)&255, n&255];
 }
-function mixHex(a, b, t){
-  const A = hexRgb(a), B = hexRgb(b);
-  const r = (A[0]+(B[0]-A[0])*t)|0, g = (A[1]+(B[1]-A[1])*t)|0, bl = (A[2]+(B[2]-A[2])*t)|0;
-  return 'rgb('+r+','+g+','+bl+')';
+function mixRgb(a, b, t){
+  return [
+    Math.max(0, Math.min(255, (a[0]+(b[0]-a[0])*t)|0)),
+    Math.max(0, Math.min(255, (a[1]+(b[1]-a[1])*t)|0)),
+    Math.max(0, Math.min(255, (a[2]+(b[2]-a[2])*t)|0))
+  ];
 }
+function rgbCss(c){ return 'rgb('+c[0]+','+c[1]+','+c[2]+')'; }
+function mixHex(a, b, t){ return rgbCss(mixRgb(hexRgb(a), hexRgb(b), t)); }
 function parcelAtView(x, y){
   const hits = [];
   VALLEY_PARCELS.forEach(P=>{
@@ -12855,16 +12867,16 @@ function paintValleyAtlas(cv){
   if(!ctx) return false;
   ctx.clearRect(0, 0, V.w, V.h);
   const hills = sprReady('bg_hills_1') || sprReady('bg_hills');
-  const sky = ctx.createLinearGradient(0, 0, 0, V.sky+40);
-  sky.addColorStop(0, '#8eb4d4');
-  sky.addColorStop(0.55, '#c8d6b0');
-  sky.addColorStop(1, '#7a9a52');
+  const sky = ctx.createLinearGradient(0, 0, 0, V.sky+48);
+  sky.addColorStop(0, '#87b0d2');
+  sky.addColorStop(0.6, '#d2c8a0');
+  sky.addColorStop(1, '#6a8c4c');
   ctx.fillStyle = sky;
   ctx.fillRect(0, 0, V.w, V.h);
   if(hills){
     ctx.save();
-    ctx.globalAlpha = 0.92;
-    ctx.drawImage(hills, 0, 0, V.w, V.sky+36);
+    ctx.globalAlpha = 0.95;
+    ctx.drawImage(hills, 0, 0, V.w, V.sky+42);
     ctx.restore();
   }
   const BIOME = {
@@ -12875,6 +12887,27 @@ function paintValleyAtlas(cv){
     dust:['#c2a468','#d2b878'], wild:['#586248','#6a7256']
   };
   const LIVE = '#3a7a28';
+  function biomePair(c,r){
+    const A = atlasGet(c,r);
+    return BIOME[(A && A.biome) || 'wild'] || BIOME.wild;
+  }
+  function landColor(c, r){
+    let R=0,G=0,B=0,wsum=0;
+    for(let dr=-2; dr<=2; dr++) for(let dc=-2; dc<=2; dc++){
+      const w = 1 / (1 + Math.hypot(dc,dr));
+      const pair = biomePair(c+dc, r+dr);
+      const n = atlasN2(c+dc, r+dr);
+      const rgb = mixRgb(hexRgb(pair[0]), hexRgb(pair[1]), n);
+      R += rgb[0]*w; G += rgb[1]*w; B += rgb[2]*w; wsum += w;
+    }
+    let col = [ (R/wsum)|0, (G/wsum)|0, (B/wsum)|0 ];
+    const A = atlasGet(c,r) || {water:'none'};
+    const boost = healAt[r*ATLAS_W+c]||0;
+    if(boost>0 && A.water==='none') col = mixRgb(col, hexRgb(LIVE), 0.16 + boost*0.4);
+    if(A.feature==='saltflat') col = mixRgb(col, hexRgb('#d8c48a'), 0.4);
+    return rgbCss(col);
+  }
+
   ctx.fillStyle = '#5a7a40';
   ctx.beginPath();
   ctx.moveTo(atlasToView(0,0).x, atlasToView(0,0).y);
@@ -12896,91 +12929,92 @@ function paintValleyAtlas(cv){
 
   for(let r=0;r<ATLAS_H;r++){
     for(let c=0;c<ATLAS_W;c++){
-      const A = atlasGet(c,r) || {biome:'wild', water:'none'};
-      const pair = BIOME[A.biome] || BIOME.wild;
-      const n = atlasN2(c,r);
-      let col = mixHex(pair[0], pair[1], n);
-      const boost = healAt[r*ATLAS_W+c]||0;
-      if(boost>0 && A.water==='none') col = mixHex(col, LIVE, 0.18 + boost*0.42);
-      if(A.feature==='saltflat') col = mixHex(col, '#d8c48a', 0.55);
       const p = atlasToView(c+0.5, r+0.5);
-      const s = atlasToView(c+1.15, r+1.15);
-      const rw = Math.max(8, (s.x-p.x)*1.15 + 10);
-      const rh = Math.max(7, (s.y-p.y)*1.05 + 8);
-      ctx.fillStyle = col;
+      const s = atlasToView(c+1.4, r+1.4);
+      ctx.fillStyle = landColor(c,r);
       ctx.beginPath();
-      ctx.ellipse(p.x, p.y, rw, rh, 0, 0, Math.PI*2);
+      ctx.ellipse(p.x, p.y, Math.max(10, (s.x-p.x)+12), Math.max(8, (s.y-p.y)+10), 0, 0, Math.PI*2);
       ctx.fill();
     }
   }
 
   const wq = campaignWaterQuality();
   const murk = Math.max(0, Math.min(1, 1 - wq/100));
-  for(let r=0;r<ATLAS_H;r++){
-    for(let c=0;c<ATLAS_W;c++){
-      const A = atlasGet(c,r);
-      if(!A || A.water==='none') continue;
-      const p = atlasToView(c+0.5, r+0.5);
-      const s = atlasToView(c+1.2, r+1.2);
-      const rw = Math.max(7, (s.x-p.x)*1.35 + 7);
-      const rh = Math.max(6, (s.y-p.y)*1.15 + 6);
-      if(A.water==='wash'){
-        ctx.fillStyle = 'rgba(150,120,70,'+(0.42+murk*0.2)+')';
-      } else if(A.water==='pond_site'){
-        ctx.fillStyle = 'rgba(40,80,78,0.72)';
-      } else {
-        const deep = mixHex('#2f6e94', '#4a8aa8', 0.35 - murk*0.2);
-        ctx.fillStyle = deep;
-      }
-      ctx.beginPath();
-      ctx.ellipse(p.x, p.y, rw, rh, 0, 0, Math.PI*2);
-      ctx.fill();
-    }
+  const mains = [], washes = [], ponds = [];
+  for(let r=0;r<ATLAS_H;r++) for(let c=0;c<ATLAS_W;c++){
+    const A = atlasGet(c,r);
+    if(!A || A.water==='none') continue;
+    const p = atlasToView(c+0.5, r+0.5);
+    if(A.water==='wash') washes.push(p);
+    else if(A.water==='pond_site') ponds.push(p);
+    else mains.push(p);
   }
-  ctx.save();
-  ctx.globalAlpha = 0.28;
-  ctx.strokeStyle = 'rgba(210,236,245,0.9)';
-  ctx.lineWidth = 2.2;
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  let firstW = true;
-  for(let r=0;r<=22;r++){
-    const p = atlasToView(24.6, r+0.4);
-    if(firstW){ ctx.moveTo(p.x, p.y); firstW = false; }
-    else ctx.lineTo(p.x, p.y);
+  function paintRibbon(pts, color, width){
+    if(pts.length<2) return;
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    pts.forEach((p,i)=>{ if(i===0) ctx.moveTo(p.x,p.y); else ctx.lineTo(p.x,p.y); });
+    ctx.stroke();
+    ctx.restore();
   }
-  ctx.stroke();
-  ctx.restore();
+  function atlasPath(points){
+    return points.map(pt=> atlasToView(pt.c+0.5, pt.r+0.5));
+  }
+  mains.forEach(p=>{
+    ctx.fillStyle = mixHex('#2a6288', '#3f7ea0', 0.35-murk*0.2);
+    ctx.beginPath(); ctx.ellipse(p.x, p.y, 11, 8, 0, 0, Math.PI*2); ctx.fill();
+  });
+  const stem = [];
+  for(let r=0;r<=22;r++) stem.push({c:24.5, r});
+  const creek = [{c:2,r:3},{c:5,r:3},{c:8,r:4},{c:12,r:4},{c:15,r:4},{c:18,r:5},{c:21,r:5},{c:24,r:6}];
+  paintRibbon(atlasPath(stem), mixHex('#2a6288', '#3f7ea0', 0.4-murk*0.25), 14);
+  paintRibbon(atlasPath(creek), mixHex('#2a6288', '#3f7ea0', 0.4-murk*0.25), 10);
+  paintRibbon(atlasPath(stem), 'rgba(190,226,236,'+(0.32-murk*0.18)+')', 3.2);
+  paintRibbon(atlasPath(creek), 'rgba(190,226,236,'+(0.28-murk*0.16)+')', 2.4);
+  washes.forEach(p=>{
+    ctx.fillStyle = 'rgba(150,118,70,0.5)';
+    ctx.beginPath(); ctx.ellipse(p.x, p.y, 11, 8, 0, 0, Math.PI*2); ctx.fill();
+  });
+  ponds.forEach(p=>{
+    ctx.fillStyle = 'rgba(36,78,76,0.75)';
+    ctx.beginPath(); ctx.ellipse(p.x, p.y, 14, 11, 0, 0, Math.PI*2); ctx.fill();
+  });
 
-  // Kitchen beds on Home Patch (garden, not a river, not a grid of cells)
-  const beds = [[3.2,23.4,1.6,1.1],[5.1,23.2,1.5,1.2],[3.4,25.2,1.7,1.15],[5.3,25.1,1.4,1.2]];
+  const beds = [[3.1,23.3,1.8,1.2],[5.0,23.1,1.7,1.25],[3.3,25.1,1.9,1.2],[5.2,25.0,1.6,1.25]];
   beds.forEach(([c,r,w,h],i)=>{
     const a = atlasToView(c, r), b = atlasToView(c+w, r+h);
-    ctx.fillStyle = mixHex('#6b4a28', '#4a7a38', 0.25 + atlasN2(i,3)*0.2);
+    ctx.fillStyle = mixHex('#6b4a28', '#4a7a38', 0.28 + atlasN2(i,3)*0.22);
     ctx.beginPath();
-    ctx.roundRect(a.x, a.y, Math.max(8,b.x-a.x), Math.max(6,b.y-a.y), 4);
+    if(ctx.roundRect) ctx.roundRect(a.x, a.y, Math.max(8,b.x-a.x), Math.max(6,b.y-a.y), 5);
+    else ctx.rect(a.x, a.y, Math.max(8,b.x-a.x), Math.max(6,b.y-a.y));
     ctx.fill();
   });
 
-  // Orchard canopy — clustered trees, not a 3×3 stamp
-  for(let i=0;i<14;i++){
-    const c = 14.2 + (i%5)*1.35 + atlasN2(i,2)*0.4;
-    const r = 13.2 + Math.floor(i/5)*1.55 + atlasN2(i,7)*0.35;
+  for(let i=0;i<18;i++){
+    const c = 13.6 + (i%6)*1.2 + atlasN2(i,2)*0.55;
+    const r = 12.8 + Math.floor(i/6)*1.45 + atlasN2(i,7)*0.4;
     const p = atlasToView(c, r);
-    ctx.fillStyle = mixHex('#2f5a24', '#4a7a32', atlasN2(i,4));
+    ctx.fillStyle = mixHex('#2a5420', '#4a7a32', atlasN2(i,4));
     ctx.beginPath();
-    ctx.ellipse(p.x, p.y, 11+atlasN2(i,1)*4, 9+atlasN2(i,8)*3, 0, 0, Math.PI*2);
+    ctx.ellipse(p.x, p.y, 12+atlasN2(i,1)*5, 10+atlasN2(i,8)*3, 0, 0, Math.PI*2);
     ctx.fill();
   }
+  for(let i=0;i<8;i++){
+    const p = atlasToView(3+atlasN2(i,1)*6, 3+atlasN2(i,4)*4);
+    ctx.fillStyle = 'rgba(40,70,48,0.55)';
+    ctx.beginPath(); ctx.ellipse(p.x, p.y, 8, 6, 0, 0, Math.PI*2); ctx.fill();
+  }
 
-  // Dirt lane: house → school → market
   ctx.save();
-  ctx.strokeStyle = 'rgba(150,120,72,0.45)';
-  ctx.lineWidth = 5;
+  ctx.strokeStyle = 'rgba(150,118,70,0.5)';
+  ctx.lineWidth = 6;
   ctx.lineCap = 'round';
   ctx.beginPath();
-  const lane = [[4,28],[8,26],[14,24],[20,20],[28,16],[38,14]];
-  lane.forEach((pt,i)=>{
+  [[4,28],[8,26],[14,24],[20,20],[28,16],[38,14]].forEach((pt,i)=>{
     const p = atlasToView(pt[0], pt[1]);
     if(i===0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
   });
@@ -12996,40 +13030,34 @@ function paintValleyAtlas(cv){
   drawSprAt(ctx, 'greenhouse', 16.6, 25.6, 70, 58);
   drawSprAt(ctx, 'windmill', 41.2, 4.6, 64, 78);
   drawSprAt(ctx, 'market', 40.4, 15.4, 58, 50);
-  drawSprAt(ctx, 'barn', 27.2, 4.2, 54, 48);
-  drawSprAt(ctx, 'house_t'+houseTier, 4.2, 28.6, 118, 96);
+  drawSprAt(ctx, 'house_t'+houseTier, 4.2, 28.6, 128, 104);
 
-  // Morning mist on locked crops of the SAME picture
+  // One morning mist over locked land — same picture, feathered, not cell boxes
+  const fog = document.createElement('canvas');
+  fog.width = V.w; fog.height = V.h;
+  const fg = fog.getContext('2d');
   VALLEY_PARCELS.forEach(P=>{
-    const ms = parcelMapState(P, camp);
-    const locked = (P.kind==='hub' && !hsOn) ? false : ms==='locked';
-    if(!locked) return;
+    if(P.kind==='hub') return;
+    if(parcelMapState(P, camp)!=='locked') return;
     const q = parcelViewQuad(P);
     if(!q) return;
-    ctx.save();
-    ctx.beginPath();
-    ctx.moveTo(q[0].x, q[0].y);
-    q.slice(1).forEach(p=> ctx.lineTo(p.x, p.y));
-    ctx.closePath();
-    ctx.clip();
-    const fog = ctx.createLinearGradient(q[0].x, q[0].y, q[2].x, q[2].y);
-    fog.addColorStop(0, 'rgba(210,220,214,0.42)');
-    fog.addColorStop(0.5, 'rgba(160,176,168,0.34)');
-    fog.addColorStop(1, 'rgba(40,52,46,0.28)');
-    ctx.fillStyle = fog;
-    ctx.fillRect(0, 0, V.w, V.h);
-    ctx.fillStyle = 'rgba(230,236,232,0.16)';
-    for(let i=0;i<7;i++){
-      const px = q[0].x + (q[2].x-q[0].x)*(0.15+i*0.12);
-      const py = q[0].y + (q[2].y-q[0].y)*(0.2+atlasN2(i,9)*0.5);
-      ctx.beginPath();
-      ctx.ellipse(px, py, 28+i*3, 12+i, 0, 0, Math.PI*2);
-      ctx.fill();
-    }
-    ctx.restore();
+    fg.fillStyle = '#fff';
+    fg.beginPath();
+    fg.moveTo(q[0].x, q[0].y);
+    q.slice(1).forEach(p=> fg.lineTo(p.x, p.y));
+    fg.closePath();
+    fg.fill();
   });
+  ctx.save();
+  ctx.filter = 'blur(28px)';
+  ctx.globalAlpha = 0.22;
+  ctx.drawImage(fog, 0, 0);
+  ctx.filter = 'none';
+  ctx.globalAlpha = 0.10;
+  ctx.drawImage(fog, 0, 0);
+  ctx.restore();
 
-  ctx.fillStyle = 'rgba(8,14,8,0.16)';
+  ctx.fillStyle = 'rgba(8,14,8,0.14)';
   ctx.fillRect(0, V.h-10, V.w, 10);
   return !!(sprReady('house_t'+houseTier) && hills);
 }
