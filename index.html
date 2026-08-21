@@ -94,6 +94,15 @@ canvas#game.tooling{cursor:crosshair}
 }
 .hudbtn:active{transform:translateY(2px); box-shadow:0 1px 4px rgba(20,14,4,.2)}
 .hudbtn.on{background:linear-gradient(180deg,#ffedb8,#f5d98a); border-color:var(--gold2)}
+a.hudbtn{text-decoration:none; color:inherit}
+/* Quiet PWYW control — meta cluster, not a gold badge. Hidden on first-run coach / map / cottage. */
+#btnSupport{font-size:15px; padding:4px 8px}
+#btnSupport .slbl{font-size:11.5px; font-weight:800; letter-spacing:.01em}
+body.tut-open #btnSupport,
+body.overlay-open #btnSupport,
+body:has(#journey.show) #btnSupport,
+body:has(#cottage.show) #btnSupport,
+body:has(#bootSplash:not(.hide)) #btnSupport{display:none !important}
 /* Always-visible back-to-journey control (every plot + homestead) */
 #btnJourney{
   background:var(--woodgrain); color:#ffeece; border-color:var(--wood2);
@@ -429,6 +438,7 @@ body.home-plot #questPanel{
   background:#eef5e4; border:2px dashed #a8c890; border-radius:12px; padding:9px 12px;
   font-size:13px; font-style:italic; color:var(--green2); font-weight:600;
 }
+.lesson a{color:var(--wood2); font-style:normal; font-weight:800; text-decoration:underline}
 .legal-row{text-align:center;margin-top:10px;font-size:13px;font-weight:700}
 .legal-row a{color:var(--wood2);text-decoration:underline;pointer-events:auto}
 .legal-row a:hover{color:var(--green2)}
@@ -745,6 +755,7 @@ body.reduce-motion #badgeBanner{ transition:none; }
   #goalPill{flex:none; white-space:nowrap; max-width:none; overflow:visible; font-size:12.5px; padding:4px 9px; min-width:max-content}
   #goalPill b{font-variant-numeric:tabular-nums; display:inline-block; min-width:2.75ch}
   .hudbtn{min-width:36px; min-height:34px; font-size:14px; padding:3px 7px}
+  #btnSupport .slbl{display:none}
   .hud-hide-sm{display:none !important}
   #btnMore{display:flex}
   /* C2 / RW-077: toasts clear of top HUD (+ safe-area); do not re-override without inset */
@@ -861,6 +872,7 @@ body.reduce-motion #badgeBanner{ transition:none; }
     <button class="hudbtn" id="btnGoals" title="Goals & badges" aria-label="Goals and badges">⭐</button>
     <button class="hudbtn" id="btnMore" title="Map overlays & views" aria-label="Overlays menu">⋯</button>
     <button class="hudbtn" id="btnSound" title="Sound on/off" aria-label="Toggle sound">🔊</button>
+    <a class="hudbtn" id="btnSupport" href="https://ralstonia5.gumroad.com/l/oehmly" target="_blank" rel="noopener" title="Support the farm — play stays free (pay what you want)" aria-label="Support the farm">💛 <span class="slbl">Support</span></a>
   </div>
 </div>
 
@@ -7776,6 +7788,56 @@ function campaignProgress(){
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
 const SHIP_BUILD = '2026-08-15.h6';
+/** Official PWYW — play stays free. Single support hook (no second store). */
+const SUPPORT_FARM = {
+  url: 'https://ralstonia5.gumroad.com/l/oehmly',
+  email: 'b.ralston62989@gmail.com',
+  label: 'Support the farm',
+  thankYou: '💛 Thank you for supporting the farm. Play stays free — this early build starts on the Home Patch.'
+};
+function supportFarmHref(){
+  return (SUPPORT_FARM && SUPPORT_FARM.url) || 'https://ralstonia5.gumroad.com/l/oehmly';
+}
+function wireSupportFarmLink(el){
+  if(!el) return;
+  el.href = supportFarmHref();
+  el.target = '_blank';
+  el.rel = 'noopener';
+}
+/** Optional thank-you when returning from Gumroad (?supporter=1). Never gates content. */
+function maybeThankSupporter(){
+  let flagged = false;
+  try{
+    const q = new URLSearchParams(location.search || '');
+    const raw = String(q.get('supporter') || '').trim().toLowerCase();
+    flagged = raw === '1' || raw === 'true' || raw === 'yes';
+    if(flagged){
+      q.delete('supporter');
+      const qs = q.toString();
+      const next = (location.pathname || '/') + (qs ? ('?' + qs) : '') + (location.hash || '');
+      if(history && history.replaceState) history.replaceState({}, '', next);
+    }
+  }catch(e){ flagged = false; }
+  if(!flagged) return;
+  try{
+    if(sessionStorage.getItem('rw_supporter_thanks')) return;
+    sessionStorage.setItem('rw_supporter_thanks', '1');
+  }catch(e){}
+  const msg = (SUPPORT_FARM && SUPPORT_FARM.thankYou) || '💛 Thank you for supporting the farm.';
+  const started = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+  const fire = ()=>{
+    if(typeof toast !== 'function') return;
+    toast(msg, {force:true, throttleMs:400, once:'supporter_thanks'});
+  };
+  const tick = ()=>{
+    const splashUp = !!(typeof modalOpen !== 'undefined' && modalOpen)
+      || !!(document.getElementById('modalWrap') && document.getElementById('modalWrap').classList.contains('show'));
+    const waited = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - started;
+    if(!splashUp || waited > 8000){ fire(); return; }
+    setTimeout(tick, 400);
+  };
+  setTimeout(tick, 700);
+}
 function openAboutCredits(){
   const ver = SHIP_BUILD;
   // AG — once-per-save "what's new" so returning players see ship notes
@@ -7806,10 +7868,17 @@ function openAboutCredits(){
       <b>Desktop keys:</b> Space pause · Esc back · 1–9 tools · R turn fence · +/- zoom<br><br>
       Built with Cortex · data-driven crops, animals & tunables · version <b>${ver}</b>
     </div>
+    <div class="lesson" style="text-align:left">
+      This is an early build — <b>Home Patch</b> is the playable start. Play stays free: no ads, no pay-to-revive.
+      If the farm has been good to you, you can <a id="aboutSupport" href="${supportFarmHref()}" target="_blank" rel="noopener">${SUPPORT_FARM.label}</a>
+      (pay what you want, even $0). ${SUPPORT_FARM.email ? 'Questions: '+SUPPORT_FARM.email+'.' : ''}
+    </div>
     <div class="legal-row">
       <a href="legal/privacy.html">Privacy</a>
       <span style="opacity:.45"> · </span>
       <a href="legal/terms.html">Terms</a>
+      <span style="opacity:.45"> · </span>
+      <a id="aboutSupportLegal" href="${supportFarmHref()}" target="_blank" rel="noopener">${SUPPORT_FARM.label}</a>
     </div>
     <div class="modalbtns" style="flex-wrap:wrap">
       <button class="mbtn wood" data-act="exportsave">Export save</button>
@@ -13413,6 +13482,7 @@ function init(){
   });
   document.getElementById('btnSound').textContent = soundOn ? '🔊' : '🔇';
   document.getElementById('btnSound').title = soundOn ? 'Sound on — tap to mute' : 'Sound off — tap to unmute farm life';
+  wireSupportFarmLink(document.getElementById('btnSupport'));
   // BV/CH — quieter cold boot; skip while Journey/splash owns the screen (defer to first plot)
   if(!soundOn && typeof camp.sound !== 'boolean'){
     setTimeout(()=>{
@@ -13580,6 +13650,7 @@ function init(){
   refreshAnchors();
   if(!bundle) showSplash();     // brand new: title first, then the journey map
   else showJourney();           // returning: straight to the journey (▶ continue)
+  maybeThankSupporter();
   // N4 — reveal canvas after first layout paint (boot splash fades)
   requestAnimationFrame(()=>{
     requestAnimationFrame(()=>{
