@@ -490,7 +490,8 @@ body.home-plot #questPanel{
   font-size:10px; font-weight:800; color:#fff8e4; letter-spacing:.01em; white-space:nowrap;
   text-shadow:0 1px 2px #1a1208, 0 0 8px rgba(0,0,0,.75); padding:2px 7px; border-radius:999px;
   background:rgba(20,16,8,.38); border:1px solid rgba(255,236,200,.18)}
-.vlab.locked{opacity:.0}
+.vlab.locked{opacity:.82; color:#e8eef2; background:rgba(28,34,40,.48); border-color:rgba(210,220,230,.28)}
+.vlab.leftover{font-size:9px}
 .vlab.restored::after{content:' ✓'}
 .vlab.mastered::after{content:' ★'}
 .vmap-compass{position:absolute; top:8px; right:10px; z-index:4; pointer-events:none;
@@ -1521,8 +1522,40 @@ const LEVELS = [
      {html:'🛒 The <b>SHOP</b> is open (top bar)! Features you unlocked on side parcels stay free. Spend surplus on the rest.<br><br>🏆 Restore every region, clean the river, and welcome the wildlife home!', btn:'Restore the valley! 🚜'},
    ]},
 ];
-// Clear bonuses by level index (home…flats, orchard…school, valley)
+// Clear bonuses by level index (home…flats, orchard…school, valley). Leftover stamps append 45.
 const CLEAR_BONUS = [40, 60, 80, 100, 70, 75, 80, 90, 55, 150];
+/** Square crop that fits inside a leftover parcel. Caps at the valley board. */
+function leftoverPlayGrid(w,h){
+  const a = w|0, b = h|0;
+  const side = a && b ? Math.min(a,b) : (a||b||8);
+  return Math.max(8, Math.min(14, side));
+}
+/** Thin leftover field: atlas crop + revive/heal. No tutorial script. */
+function leftoverStampLevel(spec){
+  const grid = leftoverPlayGrid(spec.w, spec.h);
+  const revive = Math.max(5, Math.round(grid*0.65));
+  const heal = Math.max(8, Math.round(grid*grid*0.16));
+  return {
+    id: spec.id,
+    name: spec.name,
+    em: spec.em,
+    leftover: true,
+    grid, coins: spec.coins||50, parYears: 4,
+    teaser: spec.teaser,
+    story: spec.story,
+    doneText: spec.doneText,
+    tools: ['select','compost','covercrop','sisters','clover','trees','bulldoze'],
+    shop: false, river: !!spec.river, events: false, startPaused: false, regen: 1.35,
+    ovs: ['health'],
+    goalText: spec.goalText || ('Wake '+spec.name+' back to life.'),
+    goals: [
+      {em:'🌅', desc:'Revive '+revive+' dead tiles (dead → soil)', prog:()=>[Math.min(revive, countRevived()), revive]},
+      {em:'💚', desc:'Bring '+heal+' tiles to 50+ health', prog:()=>[Math.min(heal, countHealthyTiles(50)), heal]},
+    ],
+    gen: genLeftoverStamp,
+    tut: []
+  };
+}
 
 /* ===================== CONNECTED VALLEY ATLAS (full map)
    One geography. Plots are crops of this atlas. Water network is continuous.
@@ -1780,51 +1813,80 @@ const VALLEY_PARCELS = [
    systemsTaught:['shop','regions','wildlife_full'], neighborParcels:['creek_bend','south_reach','marsh_finger'],
    unlockRules:{type:'parcel_cleared_all', parcelIds:['creek_bend','dust_flats']}, landmark:'unique_valley',
    desc:'Main river corridor — the same stem as Creek Bend.'},
-  {id:'north_folds', name:'North Folds', em:'🌿', kind:'plot', leftover:true, levelId:null, lvIndex:null,
+  {id:'north_folds', name:'North Folds', em:'🌿', kind:'plot', leftover:true, levelId:'north_folds', lvIndex:null,
    origin:{c:8, r:16}, size:{w:18, h:16}, teaser:'herd',
    systemsTaught:[], neighborParcels:['back_paddock','wet_meadow'],
-   unlockRules:{type:'leftover'}, landmark:'fence',
+   unlockRules:{type:'parcel_cleared', parcelId:'back_paddock'}, landmark:'fence',
    desc:'More paddock folds north of the working herd.'},
-  {id:'west_folds', name:'West Folds', em:'🌿', kind:'plot', leftover:true, levelId:null, lvIndex:null,
+  {id:'west_folds', name:'West Folds', em:'🌿', kind:'plot', leftover:true, levelId:'west_folds', lvIndex:null,
    origin:{c:4, r:40}, size:{w:16, h:12}, teaser:'herd',
    systemsTaught:[], neighborParcels:['back_paddock','homestead'],
-   unlockRules:{type:'leftover'}, landmark:'fence',
+   unlockRules:{type:'parcel_cleared', parcelId:'back_paddock'}, landmark:'fence',
    desc:'Lower paddock folds between the house and the herd.'},
-  {id:'wet_meadow', name:'Wet Meadow', em:'🦢', kind:'plot', leftover:true, levelId:null, lvIndex:null,
+  {id:'wet_meadow', name:'Wet Meadow', em:'🦢', kind:'plot', leftover:true, levelId:'wet_meadow', lvIndex:null,
    origin:{c:2, r:2}, size:{w:18, h:14}, teaser:'wetland',
    systemsTaught:[], neighborParcels:['marsh_finger'],
-   unlockRules:{type:'leftover'}, landmark:'heron',
+   unlockRules:{type:'parcel_cleared', parcelId:'marsh_finger'}, landmark:'heron',
    desc:'Wilder marsh headwaters on the north-west.'},
-  {id:'orchard_block', name:'Orchard Block', em:'🍏', kind:'plot', leftover:true, levelId:null, lvIndex:null,
+  {id:'orchard_block', name:'Orchard Block', em:'🍏', kind:'plot', leftover:true, levelId:'orchard_block', lvIndex:null,
    origin:{c:54, r:10}, size:{w:16, h:12}, teaser:'perennials',
    systemsTaught:[], neighborParcels:['orchard_slope','river_reach'],
-   unlockRules:{type:'leftover'}, landmark:'stump_rows',
+   unlockRules:{type:'parcel_cleared', parcelId:'orchard_slope'}, landmark:'stump_rows',
    desc:'The larger orchard stand north of the playable slope.'},
-  {id:'hay_field', name:'Hay Field', em:'🌾', kind:'plot', leftover:true, levelId:null, lvIndex:null,
+  {id:'hay_field', name:'Hay Field', em:'🌾', kind:'plot', leftover:true, levelId:'hay_field', lvIndex:null,
    origin:{c:70, r:18}, size:{w:16, h:10}, teaser:'cover',
    systemsTaught:[], neighborParcels:['orchard_slope','market_cross'],
-   unlockRules:{type:'leftover'}, landmark:'cart',
+   unlockRules:{type:'parcel_cleared', parcelId:'orchard_slope'}, landmark:'cart',
    desc:'Hay and cover ground east of the orchard.'},
-  {id:'south_reach', name:'South Reach', em:'💧', kind:'plot', leftover:true, levelId:null, lvIndex:null,
+  {id:'south_reach', name:'South Reach', em:'💧', kind:'plot', leftover:true, levelId:'south_reach', lvIndex:null,
    origin:{c:42, r:20}, size:{w:12, h:20}, teaser:'water',
    systemsTaught:[], neighborParcels:['river_reach','dust_flats'],
-   unlockRules:{type:'leftover'}, landmark:'bridge_post',
+   unlockRules:{type:'parcel_cleared', parcelId:'dust_flats'}, landmark:'bridge_post',
    desc:'The long stem south of River Reach, where the wash arrives.'},
-  {id:'woodlot', name:'Woodlot', em:'🌲', kind:'plot', leftover:true, levelId:null, lvIndex:null,
+  {id:'woodlot', name:'Woodlot', em:'🌲', kind:'plot', leftover:true, levelId:'woodlot', lvIndex:null,
    origin:{c:70, r:2}, size:{w:14, h:10}, teaser:'weather',
    systemsTaught:[], neighborParcels:['wind_ridge'],
-   unlockRules:{type:'leftover'}, landmark:'wind',
+   unlockRules:{type:'parcel_cleared', parcelId:'wind_ridge'}, landmark:'wind',
    desc:'Evergreen woodlot on the ridge shoulder.'},
-  {id:'dust_scrub', name:'Dust Scrub', em:'🌵', kind:'plot', leftover:true, levelId:null, lvIndex:null,
+  {id:'dust_scrub', name:'Dust Scrub', em:'🌵', kind:'plot', leftover:true, levelId:'dust_scrub', lvIndex:null,
    origin:{c:66, r:44}, size:{w:24, h:16}, teaser:'salt',
    systemsTaught:[], neighborParcels:['dust_flats'],
-   unlockRules:{type:'leftover'}, landmark:'ruin',
+   unlockRules:{type:'parcel_cleared', parcelId:'dust_flats'}, landmark:'ruin',
    desc:'The wider south-east scrub beyond the playable flats.'},
 ];
 VALLEY_PARCELS.forEach(P=>{
   const w = (P.size && P.size.w) || 0, h = (P.size && P.size.h) || 0;
   P.mapXY = {x: (P.origin.c + w/2)/ATLAS_W, y: (P.origin.r + h/2)/ATLAS_H};
 });
+/** Leftover land becomes playable stamp crops after a real neighbor is cleared. */
+function attachLeftoverStampLevels(){
+  VALLEY_PARCELS.forEach(P=>{
+    if(!P || !P.leftover || P.kind!=='plot') return;
+    if(LEVELS.some(L=>L.id===P.id || (P.levelId && L.id===P.levelId))){
+      const existing = LEVELS.find(L=>L.id===P.id || (P.levelId && L.id===P.levelId));
+      P.levelId = existing.id;
+      P.lvIndex = LEVELS.indexOf(existing);
+      return;
+    }
+    const wet = P.id==='south_reach' || P.id==='wet_meadow';
+    LEVELS.push(leftoverStampLevel({
+      id: P.id,
+      name: P.name,
+      em: P.em,
+      w: P.size && P.size.w,
+      h: P.size && P.size.h,
+      teaser: P.teaser || P.desc,
+      story: (P.desc||P.name)+' The same atlas crop as every other field — wake the leftover ground.',
+      doneText: P.name+' is breathing again.',
+      goalText: 'Wake '+P.name+' back to life.',
+      river: wet
+    }));
+    CLEAR_BONUS.push(45);
+    P.levelId = P.id;
+    P.lvIndex = LEVELS.length-1;
+  });
+}
+attachLeftoverStampLevels();
 /** Centerline of the live stem (cols 48–49 + the slight meander). Not the creek. */
 function atlasStemCenterline(){
   const pts = [];
@@ -2470,8 +2532,16 @@ const DEFAULT_STATS = {planted:0, harvests:0, coinsEarned:0, synergy:0, cattle:0
 function playGridForLevel(lv){
   const L = LEVELS[lv];
   const P = typeof valleyParcelByLvIndex==='function' ? valleyParcelByLvIndex(lv) : null;
+  if(P && P.leftover && P.size){
+    return leftoverPlayGrid(P.size.w, P.size.h);
+  }
   if(P && P.size && (P.size.w|0) && (P.size.h|0)) return Math.max(P.size.w|0, P.size.h|0);
   return L.grid;
+}
+function isValleyLevel(lv){
+  const n = (typeof lv==='number') ? lv : (state && typeof state.lv==='number' ? state.lv : -1);
+  const L = LEVELS[n];
+  return !!(L && L.id==='valley');
 }
 function newGame(lv){
   if(typeof lv!=='number') lv = camp ? camp.cur : 0;
@@ -2795,6 +2865,11 @@ function genMarketCross(s){
 }
 function genSchoolGarden(s){
   sowAtlasCrop(s, 'school_garden');
+}
+/** Leftover land: same atlas crop / stamp path, no custom campaign gen. */
+function genLeftoverStamp(s){
+  const P = valleyParcelByLvIndex(s.lv);
+  if(P) sowAtlasCrop(s, P.id);
 }
 function soilTiles(){ return state.grid.filter(t=>t.terrain==='soil'); }
 function isWaterT(t){ return t.terrain==='pond' || t.terrain==='water'; }
@@ -4282,7 +4357,7 @@ function updateQuests(){
     finally{ _questSweeping = false; }
   }
   if(homesteadMode){ renderHomesteadQuests(); return; }
-  if(state.lv===LEVELS.length-1) updateValleyQuests();   // tasks & regions only on the finale
+  if(isValleyLevel(state.lv)) updateValleyQuests();   // tasks & regions only on the finale
   checkLevelComplete();
   renderQuests();
 }
@@ -4375,8 +4450,8 @@ function renderQuests(){
   const body = document.getElementById('qBody');
   const sumEl = document.getElementById('qSummary');
   if(!regEl || !body) return;
-  // ---- campaign plots 1–4: the level's own goal checklist
-  if(state.lv < LEVELS.length-1){
+  // ---- campaign + leftover plots: the level's own goal checklist
+  if(!isValleyLevel(state.lv)){
     const L = LV();
     regEl.textContent = L.name;
     let doneN = 0, totN = (L.goals||[]).length;
@@ -4574,7 +4649,7 @@ function checkLevelComplete(){
   }
   if(typeof scrapbookAdd==='function')
     scrapbookAdd('goal', `${L.em} ${L.name} cleared`, firstClear ? `First clear · 🪙${banked} banked` : `Replay · 🪙${banked} banked`);
-  const next = state.lv < LEVELS.length-1 ? LEVELS[state.lv+1] : null;
+  const next = nextUnlockedLevel(state.lv);
   const hsOpen = !!camp.homestead.unlocked;
   // CV/CX — at most one plot-system recap lesson (first clear only; mutually exclusive by L.id)
   let plotRecap = '';
@@ -4877,7 +4952,7 @@ function openPropertyMap(){
   }
   ensureParcelState(camp);
   const STATE_ICON = {locked:'🔒', available:'○', in_progress:'▶', restored:'✅', mastered:'⭐', hub:'🏡'};
-  const plots = VALLEY_PARCELS.filter(P=>P.kind==='plot' && !P.leftover).map(P=>{
+  const plots = VALLEY_PARCELS.filter(P=>P.kind==='plot').map(P=>{
     const ms = parcelMapState(P, camp);
     const unlocked = ms !== 'locked';
     const done = ms==='restored' || ms==='mastered';
@@ -7129,7 +7204,7 @@ function applyTool(i){
     return true;
   }
   if(t.terrain==='barn' || t.terrain==='coop'){ toast('That\'s the farmstead — pick open soil tiles around it.'); SND.uhoh(); return false; }
-  if(t.terrain==='riverbed'){ toast(state.lv===LEVELS.length-1 ? '🏜️ Dry creekbed — revive Dry Wash soil first, then water returns.' : '🏜️ Dry creekbed — heal the banks first; water once ran here.'); SND.uhoh(); return false; }
+  if(t.terrain==='riverbed'){ toast(isValleyLevel(state.lv) ? '🏜️ Dry creekbed — revive Dry Wash soil first, then water returns.' : '🏜️ Dry creekbed — heal the banks first; water once ran here.'); SND.uhoh(); return false; }
   if(t.terrain==='water'){
     if(tool==='bridge'){
       if(t.bridge) return false;
@@ -7822,18 +7897,28 @@ function copyShareValleyScore(){
     }
   }catch(e){ fail(); }
 }
-/** True when every campaign plot is cleared (sandbox freeplay). */
+/** True when every campaign plot is cleared (sandbox freeplay). Leftover stamps are extra fields, not the spine. */
 function campaignAllPlotsCleared(){
   if(!camp || !camp.done) return false;
   for(let i=0;i<LEVELS.length;i++){
-    if(LEVELS[i].id==='valley') continue; // finale optional
+    const L = LEVELS[i];
+    if(!L || L.id==='valley' || L.leftover) continue; // finale + leftover land optional
     if(!camp.done[i]) return false;
   }
-  // require majority of plot parcels if done array shorter
-  const need = Math.min(LEVELS.length, camp.done.length||0);
-  let n=0;
-  for(let i=0;i<need;i++) if(camp.done[i]) n++;
-  return n >= Math.max(1, LEVELS.length-1);
+  return true;
+}
+/** Next unlocked, uncleared plot after a clear — leftovers only if their neighbor rule is already open. */
+function nextUnlockedLevel(fromLv){
+  let best = null;
+  for(let i=0;i<LEVELS.length;i++){
+    if(i===fromLv) continue;
+    if(camp && camp.done && camp.done[i]) continue;
+    const P = valleyParcelByLvIndex(i);
+    if(P && !parcelIsUnlocked(P, camp)) continue;
+    if(!P && camp && i>(camp.unlocked|0)) continue;
+    if(best==null || i<best) best = i;
+  }
+  return best==null ? null : LEVELS[best];
 }
 /** AG — soft campaign progress for journey chrome (plots cleared / total). */
 function campaignProgress(){
@@ -7846,7 +7931,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-21.coins';
+const SHIP_BUILD = '2026-08-21.leftover-fields';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -8191,7 +8276,7 @@ function openGoals(){
   const rows = `<div class="sub" style="font-weight:800;color:var(--wood2);margin:10px 0 4px">⭐ Badges you can earn now</div>` +
     nowB.map(b=>badgeRow(b,false)).join('') +
     (laterB.length ? `<div class="sub" style="font-weight:800;color:var(--soft);margin:10px 0 4px">🗺️ Unlocks on later plots</div>` + laterB.map(b=>badgeRow(b,true)).join('') : '');
-  const mission = state.lv===LEVELS.length-1
+  const mission = isValleyLevel(state.lv)
     ? `Restore the <b>dying valley</b> into a living ecosystem: revive every 💀 dead tile, bring <b>every tile</b> to 💚 70+ health, restore all ${REGIONS.length} regions, grow Wildness to 60 — and send <b>clean water</b> 🌊 downstream!`
     : `Plot ${state.lv+1} of ${LEVELS.length}: <b>${L.em} ${L.name}</b> — ${L.goalText}`;
   showModal(`
@@ -10758,7 +10843,7 @@ function drawBirdsScreen(time){
 }
 // Valley first-minute beacon: pulse living Homestead Vale tiles + arrow on barn
 function drawValeBeacon(time){
-  if(!state || homesteadMode || state.lv !== LEVELS.length-1) return;
+  if(!state || homesteadMode || !isValleyLevel(state.lv)) return;
   if((state.regionIdx|0) > 0) return;
   if(state.valeBeaconT == null) state.valeBeaconT = 14;
   if(state.valeBeaconT <= 0) return;
@@ -11938,7 +12023,7 @@ function updateHUD(){
   const Lhud = typeof LV==='function' ? LV() : null;
   const goalEm = document.getElementById('goalEm');
   const gp = document.getElementById('goalPill');
-  if(Lhud && Lhud.goals && Lhud.goals.length && state.lv < LEVELS.length-1){
+  if(Lhud && Lhud.goals && Lhud.goals.length && !isValleyLevel(state.lv)){
     let doneN = 0, totN = Lhud.goals.length;
     Lhud.goals.forEach(g=>{
       const p = g.prog();
@@ -13593,15 +13678,13 @@ function buildValleyMapEl(){
     poly.dataset.id = P.id;
     wireValleyRegion(poly, P, ms==='hub' && P.kind==='hub' ? (hsOn?'hub':'available') : ms);
     svg.appendChild(poly);
-    if(ms!=='locked'){
-      const mid = parcelViewCenter(P);
-      const lab = document.createElement('div');
-      lab.className = 'vlab '+ms;
-      lab.textContent = P.name;
-      lab.style.left = (mid.x/VALLEY_VIEW.w*100).toFixed(2)+'%';
-      lab.style.top = (mid.y/VALLEY_VIEW.h*100).toFixed(2)+'%';
-      wrap.appendChild(lab);
-    }
+    const mid = parcelViewCenter(P);
+    const lab = document.createElement('div');
+    lab.className = 'vlab '+ms+(P.leftover?' leftover':'');
+    lab.textContent = P.name;
+    lab.style.left = (mid.x/VALLEY_VIEW.w*100).toFixed(2)+'%';
+    lab.style.top = (mid.y/VALLEY_VIEW.h*100).toFixed(2)+'%';
+    wrap.appendChild(lab);
   });
   wrap.appendChild(svg);
   const compass = document.createElement('div');
@@ -13921,7 +14004,7 @@ function enterLevel(lv, fresh){
   closeModal(); closeInfo();
   layout();
   // Valley finale: frame Homestead Vale first (RW-073 / RW-080)
-  if(lv === LEVELS.length-1){
+  if(isValleyLevel(lv)){
     state.valeBeaconT = 14;
     if(document.body.classList.contains('reduce-motion')) centerCamera();
     else focusCameraOnTile(3, 5, 1.28);
@@ -13944,7 +14027,7 @@ function enterLevel(lv, fresh){
       toast('🔇 Starts quiet — first tap wakes the farm, or use 🔊 anytime.', {once:'sound_muted_boot', throttleMs:4000});
     }, 1400);
   }
-  if(lv === LEVELS.length-1 && fresh){
+  if(isValleyLevel(lv) && fresh){
     // BL — valley start-here pocket (barn green corner + shop)
     setTimeout(()=>{
       toast('🏡 Start here — the green pocket by the barn still breathes. Expand outward; 🛒 Shop is open for the rest.', {once:'vale_beacon', throttleMs:4000});
@@ -14270,7 +14353,12 @@ function init(){
     else if(act==='gohomestead'){ closeModal(); maybeToastBankedLeave(); enterHomestead(); }
     else if(act==='propertymap'){ openPropertyMap(); SND.pop(); }
     else if(act==='goinside'){ closeModal(); closeInfo(); enterCottage(); }
-    else if(act==='nextlevel'){ closeModal(); maybeToastBankedLeave(); if(state.lv<LEVELS.length-1) enterLevel(state.lv+1, true); }
+    else if(act==='nextlevel'){
+      closeModal(); maybeToastBankedLeave();
+      const nxt = nextUnlockedLevel(state.lv);
+      if(nxt) enterLevel(LEVELS.indexOf(nxt), true);
+      else showJourney();
+    }
     else if(act==='roomfinish'){ upgradeRoomCondition(); openCottageShop('style'); }
     else if(act==='scrapbook'){ openScrapbook(); }
     else if(act==='sharevalley'){ copyShareValleyScore(); }
