@@ -2795,10 +2795,16 @@ function countSistersPlanted(){
 function deadWakeNeed(t){
   return (t && t.feature==='saltflat') ? 30 : 22;
 }
+/** Same number the inspect bar shows — round, not raw float. */
+function deadWakeShown(t){
+  if(t && typeof recalc==='function') recalc(t);
+  const need = deadWakeNeed(t);
+  const shown = Math.round(t && t.health || 0);
+  return { need, shown, full: shown >= need };
+}
 function maybeWakeDeadTile(t, i){
   if(!t || t.terrain!=='dead') return false;
-  if(typeof recalc==='function') recalc(t);
-  if((t.health||0) + 0.05 < deadWakeNeed(t)) return false;
+  if(!deadWakeShown(t).full) return false;
   return wakeDeadTile(t, i);
 }
 function sweepWakeDeadTiles(){
@@ -2809,10 +2815,14 @@ function sweepWakeDeadTiles(){
 }
 function countRevived(){
   if(!state || !state.grid) return 0;
-  // Live grid only — never a one-shot increment that can stall at 3/4
+  // Live tiles this tick: Field that woke from dead. Never a sticky increment.
   let n = 0;
-  state.grid.forEach(t=>{ if(t.terrain==='soil' && t.revivedOnce) n++; });
-  if(state.stats && (state.stats.revived|0) !== n) state.stats.revived = n;
+  state.grid.forEach(t=>{
+    if(t.terrain!=='soil') return;
+    if(!t.revivedOnce && (t.playerFed|0) > 0) t.revivedOnce = true;
+    if(t.revivedOnce) n++;
+  });
+  if(state.stats) state.stats.revived = n;
   return n;
 }
 /** Soil tiles at or above a health threshold (shared by HUD, goals, farmStats). */
@@ -4193,7 +4203,13 @@ function newTask(){
   const td = pool[(Math.random()*pool.length)|0];
   return {id:td.id, base: td.stat ? (state.stats[td.stat]||0) : 0};
 }
+let _questSweeping = false;
 function updateQuests(){
+  if(!homesteadMode && !_questSweeping && typeof sweepWakeDeadTiles==='function'){
+    _questSweeping = true;
+    try{ sweepWakeDeadTiles(); }
+    finally{ _questSweeping = false; }
+  }
   if(homesteadMode){ renderHomesteadQuests(); return; }
   if(state.lv===LEVELS.length-1) updateValleyQuests();   // tasks & regions only on the finale
   checkLevelComplete();
@@ -7199,9 +7215,7 @@ function applyTool(i){
   }
   if(tool==='compost'){
     recalc(t);
-    const need = deadWakeNeed(t);
-    const shown = Math.round(t.health||0);
-    const barFull = dead && (shown >= need || (t.health||0) >= need);
+    const barFull = dead && deadWakeShown(t).full;
     const winter = !!(SEASONS[state.season] && SEASONS[state.season].canPlant===false);
     if(dead && barFull){
       if(maybeWakeDeadTile(t, i)){ afterBuild(); return true; }
@@ -11877,12 +11891,13 @@ function openInfo(refreshOnly){
                : t.feature==='gully' ? '⛏️ An erosion gully — the storms carved this scar.'
                : t.feature==='swale' ? '〰️ An old swale scar in the dust.'
                : '';
-    const need = deadWakeNeed(t);
+    const wk = deadWakeShown(t);
+    const need = wk.need;
     const story = soilStoryLine(t);
     body = `
       <div class="istory">${story}</div>
-      <div class="hbarw"><div class="hbar" style="width:${Math.max(3,(t.health/need*100)|0).toFixed(0)}%; background:linear-gradient(90deg,#9a8340,#c98a3d)"></div></div>
-      <div style="font-weight:800; font-size:13px">Waking up: <b>${t.health.toFixed(0)}</b>/${need}</div>
+      <div class="hbarw"><div class="hbar" style="width:${Math.max(3, Math.min(100,(wk.shown/need*100)|0))}%; background:linear-gradient(90deg,#9a8340,#c98a3d)"></div></div>
+      <div style="font-weight:800; font-size:13px">Waking up: <b>${Math.min(wk.shown, need)}</b>/${need}</div>
       <div class="chiprow">💀 Nothing can grow here yet — the soil is DEAD.</div>
       ${feat?`<div class="chiprow">${feat}</div>`:''}
       ${t.compost>0?`<div class="chiprow">🪣 compost working — ${t.compost.toFixed(0)}d left</div>`:''}
