@@ -32,7 +32,7 @@
   box-shadow:0 0 0 3px rgba(234,181,67,.35);
 }
 button:focus-visible, .tool:focus-visible, .hudbtn:focus-visible, .mbtn:focus-visible,
-.jnode:focus-visible, .vreg:focus-visible, .prestige-pill:focus-visible, .ovbtn:focus-visible{
+.vreg:focus-visible, .prestige-pill:focus-visible, .ovbtn:focus-visible{
   outline:2px solid rgba(234,181,67,.95);
   outline-offset:2px;
 }
@@ -495,22 +495,10 @@ body.home-plot #questPanel{
 .vlab.mastered::after{content:' ★'}
 .vmap-compass{position:absolute; top:8px; right:10px; z-index:4; pointer-events:none;
   color:rgba(255,238,206,.55); font-size:11px; font-weight:800; text-shadow:0 1px 3px #000}
-.jnode.done .jnm::after{ content:' ✓'; color:#4a8f4d; }
-.jnode.done .jst{ color:#3a7a30; }
 .vmap-hub{width:100%;margin:0 0 12px;padding:10px 12px;border-radius:12px;border:2px solid var(--line);
   background:var(--glass);font:800 13px inherit;cursor:pointer;color:var(--wood2);
   box-shadow:inset 0 1px 0 rgba(255,250,230,.7), 0 3px 8px rgba(10,8,2,.25)}
 .vmap-hub.locked{filter:grayscale(.35);opacity:.75}
-.jledger{margin:0 0 16px;border-radius:16px;border:2px solid var(--line);background:var(--glass);
-  box-shadow:inset 0 1px 0 rgba(255,250,230,.75), 0 4px 12px rgba(10,8,2,.28); overflow:hidden}
-.jledger > summary{cursor:pointer; font:800 13.5px inherit; color:var(--wood2); padding:12px 14px; list-style:none}
-.jledger > summary::-webkit-details-marker{display:none}
-.jledger > summary::after{content:' ▾'; opacity:.55}
-.jledger[open] > summary::after{content:' ▴'}
-.jledger .jnode{width:calc(100% - 24px); margin:0 12px 12px}
-.jledger .jnode:last-child{margin-bottom:14px}
-.jledger .jnode.locked{filter:saturate(.45) brightness(.92); opacity:.78}
-.jledger .jnode.locked .jem{filter:none}
 .jcontinue{display:block; width:100%; margin:0 0 14px; padding:14px 16px; border-radius:16px; border:2px solid var(--gold2);
   background:linear-gradient(180deg,#e8c86a,#c98f1e); color:var(--ink); font:800 16px inherit; cursor:pointer;
   box-shadow:0 4px 0 #8a6010, 0 8px 20px rgba(0,0,0,.35); text-align:left;
@@ -550,21 +538,6 @@ body.reduce-motion #badgeBanner.show{ opacity:1; }
   background-image:linear-gradient(rgba(255,255,255,.06) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.06) 1px, transparent 1px);
   background-size:8.33% 10%}
 .cot-edit.cot-placing .cot-snap-grid, #cotRoom.cot-placing .cot-snap-grid{opacity:1}
-.jnode{position:relative; display:flex; align-items:center; gap:12px; width:100%; text-align:left;
-  background:var(--glass); border:2px solid var(--line); border-bottom:4px solid var(--wood2); border-radius:18px;
-  padding:12px 14px; margin:0 0 26px; cursor:pointer; font-family:inherit; min-height:74px;
-  box-shadow:0 6px 18px rgba(10,8,2,.45), inset 0 1px 0 rgba(255,250,230,.8)}
-.jnode:active{transform:translateY(2px)}
-.jnode .jem{width:52px; height:52px; flex:none; border-radius:50%; background:var(--woodgrain); border:2px solid var(--wood2);
-  display:flex; align-items:center; justify-content:center; font-size:26px; box-shadow:inset 0 2px 4px rgba(0,0,0,.25)}
-.jnode .jnm{font-weight:800; font-size:16.5px; color:var(--wood2)}
-.jnode .jts{font-size:12px; font-weight:700; color:var(--soft); line-height:1.25; margin-top:1px}
-.jnode .jst{margin-left:auto; flex:none; font-weight:800; font-size:12.5px; text-align:right; color:var(--green2); white-space:nowrap; line-height:1.35}
-.jnode.locked{filter:grayscale(.85); opacity:.62; cursor:default}
-.jnode.locked .jst{color:var(--soft)}
-.jnode.done{border-color:#8fb768}
-.jnode.cur .jem{box-shadow:0 0 0 3px rgba(234,181,67,.65), inset 0 2px 4px rgba(0,0,0,.25)}
-.jnode:not(:last-child)::after{content:''; position:absolute; left:38px; top:100%; height:26px; border-left:4px dotted rgba(245,230,190,.75)}
 #btnJourney .jlbl{font-size:12.5px; margin-left:3px}
 /* ─── Farmhouse multi-room interior (adult material chrome) ─── */
 #cottage{position:fixed; inset:0; z-index:80; display:none; flex-direction:column;
@@ -1634,7 +1607,7 @@ const ATLAS_GEO = {
     garden:{c:6,r:25,w:2,h:2,biome:'garden'},
     stock:{c:5,r:15,w:2,h:2,biome:'pasture'},
     high:{c:40,r:2,w:2,h:2,biome:'ridge'},
-    marshA:{c:1,r:5,w:2,h:2,biome:'marsh'},
+    marshA:{c:4,r:5,w:2,h:2,biome:'marsh'},
     marshB:{c:6,r:2,w:2,h:2,biome:'marsh'}
   }
 };
@@ -1714,7 +1687,7 @@ function atlasBiomeAt(c, r){
   atlasSet(5,24,{landmark:'shed', biome:'garden'});
   atlasSet(4,16,{landmark:'trough', biome:'pasture'});
   atlasSet(22,5,{landmark:'bridge', biome:'riparian'});
-  atlasSet(2,3,{landmark:'heron', biome:'marsh'});
+  atlasSet(5,3,{landmark:'heron', biome:'marsh'});
   atlasSet(41,3,{landmark:'wind', biome:'ridge'});
   atlasSet(40,15,{landmark:'cart', biome:'market'});
   atlasSet(14,24,{landmark:'bell', biome:'garden'});
@@ -1761,7 +1734,7 @@ const VALLEY_PARCELS = [
    unlockRules:{type:'parcel_cleared', parcelId:'back_paddock'}, landmark:'stump_rows',
    desc:'Perennial food forest.', grantUnlocks:['orchard','berrybush','beehive']},
   {id:'marsh_finger', name:'Marsh Finger', em:'🦩', kind:'plot', levelId:'marsh', lvIndex:5,
-   origin:{c:1, r:1}, size:{w:8, h:8}, teaser:'wetland',
+   origin:{c:4, r:1}, size:{w:8, h:8}, teaser:'wetland',
    systemsTaught:['wetland','ducks','filters'], neighborParcels:['creek_bend'],
    unlockRules:{type:'parcel_cleared', parcelId:'creek_bend'}, landmark:'heron',
    desc:'Wetland tributary into the creek.', grantUnlocks:['wetland','duckT']},
@@ -13941,6 +13914,7 @@ function init(){
   refreshAnchors();
   if(!bundle) showSplash();     // brand new: title first, then the journey map
   else showJourney();           // returning: straight to the journey (▶ continue)
+  if(location.hash==='#journey'){ try{ closeModal(); }catch(e){} showJourney(); }
   if(bundle && resumed && state && !state.homesteadView && !state.levelDone){
     plotSessionReady = true;
   }
