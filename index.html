@@ -10946,7 +10946,7 @@ function render(time){
   drawBoardBorder();
   for(let r=0;r<GRID;r++) for(let c=0;c<GRID;c++){
     const t = state.grid[idx(c,r)];
-    if(tileVisible(t)) withRevivePop(t, idx(c,r), ()=>drawGround(t, time));
+    if(tileVisible(t)) withRevivePop(t, idx(c,r), ()=>drawGround(t, time), true);
   }
   // Rim stroke again on top of grass so border reads clean
   drawBoardRimTop();
