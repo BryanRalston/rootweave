@@ -13182,49 +13182,46 @@ function paintValleyAtlas(cv){
 
   if(!usedSkin){
     const last = stem[stem.length-1] || {c:24.5, r:22.5};
-    const paintedStem = stem.map((p,i)=>({
-      c: p.c + Math.sin(p.r*0.48)*0.28 + Math.sin(p.r*1.1)*0.08,
+    const liveStem = stem.map(p=>({
+      c: p.c + Math.sin(p.r*0.42)*0.55 + Math.sin(p.r*0.9)*0.18,
       r: p.r
-    })).concat([
-      {c: last.c+0.2, r: 23.4},
-      {c: last.c+0.55, r: 24.8},
-      {c: last.c+1.25, r: 26.6},
-      {c: last.c+2.35, r: 28.4},
-      {c: last.c+3.6, r: 30.4}
-    ]);
-    const stemPts = catmullPts(atlasPathExact(paintedStem), 6);
+    }));
+    const meadow = [
+      {c: last.c+0.15, r: 22.8},
+      {c: last.c+0.7, r: 24.2},
+      {c: last.c+1.6, r: 26.0},
+      {c: last.c+2.8, r: 28.2},
+      {c: last.c+4.1, r: 30.6}
+    ];
+    const stemPts = catmullPts(atlasPathExact(liveStem), 7);
+    const meadowPts = catmullPts(atlasPathExact([liveStem[liveStem.length-1]].concat(meadow)), 6);
     const creekPts = catmullPts(atlasPath(creek), 8);
-    const liveN = stem.length * 6;
     const water = document.createElement('canvas');
     water.width = V.w; water.height = V.h;
     const wx = water.getContext('2d');
-    const deep = mixHex('#12343e', '#1a4a52', 0.25-murk*0.2);
-    const body = mixHex('#1b4e5c', '#2a6a72', 0.32-murk*0.18);
-    const rim = mixHex('#6ea8b0', '#8ec0c4', 0.4-murk*0.15);
+    const deep = mixHex('#0f3036', '#163e42', 0.22-murk*0.18);
+    const body = mixHex('#1a4650', '#245860', 0.28-murk*0.16);
     function stemHalf(i, t){
-      const fade = t > 0.78 ? Math.max(0.18, 1 - (t-0.78)/0.22) : 1;
-      const meander = 1 + 0.18*Math.sin(t*22) + (t>0.22 && t<0.38 ? 0.22 : 0);
-      return (15 * meander) * fade;
+      return 12 + 5.5*Math.sin(t*13.5) + 3.2*Math.sin(t*6.2) + (t>0.18 && t<0.4 ? 5 : 0);
     }
-    function creekHalf(i, t){ return 5.8 + 1.8*Math.sin(t*16); }
-    fillWidthStrip(wx, stemPts, (i,t)=> stemHalf(i,t)+10, 'rgba(70,54,30,0.42)');
-    fillWidthStrip(wx, creekPts, (i,t)=> creekHalf(i,t)+7, 'rgba(70,54,30,0.36)');
-    fillWidthStrip(wx, stemPts, (i,t)=> stemHalf(i,t)+5, 'rgba(58,72,40,0.28)');
-    fillWidthStrip(wx, creekPts, (i,t)=> creekHalf(i,t)+3.5, 'rgba(58,72,40,0.22)');
+    function creekHalf(i, t){ return 6.4 + 2.4*Math.sin(t*14) + 1.2*Math.sin(t*7); }
+    fillWidthStrip(wx, stemPts, (i,t)=> stemHalf(i,t)+14, 'rgba(68,52,28,0.38)');
+    fillWidthStrip(wx, creekPts, (i,t)=> creekHalf(i,t)+9, 'rgba(68,52,28,0.32)');
+    fillWidthStrip(wx, stemPts, (i,t)=> stemHalf(i,t)+7, 'rgba(48,64,36,0.3)');
+    fillWidthStrip(wx, creekPts, (i,t)=> creekHalf(i,t)+4, 'rgba(48,64,36,0.24)');
     fillWidthStrip(wx, stemPts, stemHalf, body);
     fillWidthStrip(wx, creekPts, creekHalf, body);
-    fillWidthStrip(wx, stemPts, (i,t)=> stemHalf(i,t)*0.42, deep);
-    fillWidthStrip(wx, creekPts, (i,t)=> creekHalf(i,t)*0.4, deep);
-    fillWidthStrip(wx, stemPts, (i,t)=> Math.max(1.1, stemHalf(i,t)*0.16), rim);
-    fillWidthStrip(wx, creekPts, (i,t)=> 1.1, 'rgba(190,226,228,0.22)');
-    const tail = stemPts.slice(Math.max(0, liveN-4));
-    fillWidthStrip(wx, tail, (i,t)=> (12-t*7), 'rgba(62,86,48,0.28)');
+    fillWidthStrip(wx, stemPts, (i,t)=> stemHalf(i,t)*0.48, deep);
+    fillWidthStrip(wx, creekPts, (i,t)=> creekHalf(i,t)*0.45, deep);
+    fillWidthStrip(wx, meadowPts, (i,t)=> 16 - t*7, 'rgba(58,78,42,0.34)');
+    fillWidthStrip(wx, meadowPts, (i,t)=> 8 - t*3, 'rgba(46,72,48,0.2)');
     ctx.save();
-    ctx.filter = 'blur(2.8px)';
+    ctx.filter = 'blur(3.6px)';
     ctx.drawImage(water, 0, 0);
-    ctx.filter = 'none';
-    ctx.globalAlpha = 0.88;
-    ctx.drawImage(water, 0, 0);
+    ctx.restore();
+    ctx.save();
+    ctx.globalAlpha = 0.35;
+    fillWidthStrip(ctx, stemPts, (i,t)=> stemHalf(i,t)*0.28, deep);
     ctx.restore();
 
     const washPts = catmullPts(atlasPath(ATLAS_GEO.wash), 6);
@@ -13299,22 +13296,12 @@ function paintValleyAtlas(cv){
     fillWidthStrip(ctx, shade, 11, 'rgba(24,52,26,0.72)');
     fillWidthStrip(ctx, shade, 6, 'rgba(40,78,36,0.5)');
 
-    [14, 16].forEach((row, ri)=>{
+    [14.15, 16.2].forEach((row, ri)=>{
       const rowPts = [];
-      for(let c=14;c<=19;c+=1){
-        if(c===15) continue;
-        rowPts.push(atlasToView(c+0.15, row+0.15+ri*0.05));
-      }
-      const rs = catmullPts(rowPts, 5);
-      fillWidthStrip(ctx, rs, 7, 'rgba(48,36,18,0.22)');
-      fillWidthStrip(ctx, rs, 9, 'rgba(36,70,32,0.4)');
-      rowPts.forEach((p,i)=>{
-        const n = atlasN2(i+ri, row);
-        ctx.fillStyle = 'rgba(18,30,14,0.28)';
-        ctx.beginPath(); ctx.ellipse(p.x, p.y+5, 11, 5, 0, 0, Math.PI*2); ctx.fill();
-        ctx.fillStyle = mixHex('#2a4e26', '#4a7a38', n);
-        ctx.beginPath(); ctx.ellipse(p.x, p.y-4, 10+n*3, 8+n*2, 0.2, 0, Math.PI*2); ctx.fill();
-      });
+      for(let c=13.8;c<=19.4;c+=0.45) rowPts.push(atlasToView(c, row + Math.sin(c*1.7+ri)*0.12));
+      const rs = catmullPts(rowPts, 4);
+      fillWidthStrip(ctx, rs, (i,t)=> 10 + 5*Math.abs(Math.sin(t*16+ri)), 'rgba(22,44,20,0.55)');
+      fillWidthStrip(ctx, rs, (i,t)=> 6 + 3*Math.abs(Math.sin(t*16+ri+0.6)), 'rgba(46,86,40,0.5)');
     });
 
     paintRibbon(atlasPath(ATLAS_GEO.gardenRill), 'rgba(46,68,40,0.5)', 4);
@@ -13323,15 +13310,15 @@ function paintValleyAtlas(cv){
     paintRibbon(atlasPath(ATLAS_GEO.overflowSpur), 'rgba(58,78,48,0.32)', 2.6);
 
     function dirtLane(points, half){
-      const pts = catmullPts(atlasPath(points), 6);
-      fillWidthStrip(ctx, pts, half+2.2, 'rgba(62,44,24,0.45)');
-      fillWidthStrip(ctx, pts, half, 'rgba(122,90,52,0.8)');
-      fillWidthStrip(ctx, pts, half*0.42, 'rgba(148,112,68,0.55)');
-      fillWidthStrip(ctx, pts, 0.7, 'rgba(78,56,30,0.35)');
+      const pts = catmullPts(atlasPath(points), 7);
+      fillWidthStrip(ctx, pts, half+3.4, 'rgba(58,40,22,0.5)');
+      fillWidthStrip(ctx, pts, half, 'rgba(110,82,48,0.82)');
+      fillWidthStrip(ctx, pts, half*0.55, 'rgba(128,96,58,0.45)');
+      fillWidthStrip(ctx, pts, 0.85, 'rgba(72,52,28,0.4)');
     }
-    dirtLane(ATLAS_GEO.lane, 6.2);
-    dirtLane(ATLAS_GEO.paddockSpur, 3.6);
-    dirtLane(ATLAS_GEO.orchardSpur, 3.6);
+    dirtLane(ATLAS_GEO.lane, 8.4);
+    dirtLane(ATLAS_GEO.paddockSpur, 4.4);
+    dirtLane(ATLAS_GEO.orchardSpur, 4.4);
 
     const br = atlasToView(22.4, 4.55);
     const br2 = atlasToView(23.6, 4.7);
