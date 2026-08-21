@@ -145,6 +145,10 @@ body.overlay-open #questPanel{ opacity:0; pointer-events:none; }
 #questPanel .qhead{
   background:var(--woodgrain); color:#ffeece; font-weight:800; padding:7px 10px; font-size:13px;
   display:flex; align-items:center; gap:6px; cursor:pointer; text-shadow:0 1px 2px rgba(30,15,0,.5);
+  min-width:0;
+}
+#qRegion{
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; flex:1;
 }
 #questPanel .qhead .qcaret{margin-left:auto; font-size:11px; opacity:.85}
 #questPanel .qsum{font-size:11.5px; font-weight:800; opacity:.92; margin-left:4px; white-space:nowrap}
@@ -294,8 +298,8 @@ body.home-plot #questPanel{
 .tool.shopbtn .tcost{color:#f5d98a}
 /* ---------- info panel ---------- */
 #infoPanel{
-  position:absolute; left:10px; bottom:96px; z-index:21; width:290px; max-width:calc(100% - 20px);
-  max-height:52vh; overflow-y:auto; display:none;
+  position:absolute; left:10px; bottom:calc(108px + env(safe-area-inset-bottom, 0px)); z-index:21; width:290px; max-width:calc(100% - 20px);
+  max-height:min(42vh, 340px); overflow-y:auto; display:none;
   background:var(--glass); border:2px solid var(--line); border-radius:16px;
   padding:12px 14px; box-shadow:0 8px 26px rgba(10,8,2,.4); font-size:14px;
 }
@@ -755,7 +759,7 @@ body.reduce-motion #badgeBanner{ transition:none; }
     right:8px; max-height:42vh; overflow-y:auto;
   }
   #overlaybar.open{display:flex}
-  #infoPanel{bottom:96px; width:min(280px, calc(100% - 16px)); left:8px}
+  #infoPanel{bottom:calc(108px + env(safe-area-inset-bottom,0px)); width:min(280px, calc(100% - 16px)); left:8px; max-height:28vh; overflow-y:auto}
   .tool{width:54px; min-height:54px}
   #palette{padding:6px 6px calc(8px + env(safe-area-inset-bottom,0px)); position:absolute}
   #palette.pal-scrollable{ padding-right:18px; }
@@ -1341,16 +1345,16 @@ const BADGES = [
    the next. The old giant dying valley is the finale.
    ========================================================================== */
 const LEVELS = [
-  {id:'home', name:'Home Garden', em:'🏡', grid:6, coins:40, parYears:3,
+  {id:'home', name:'Home Patch', em:'🏡', grid:6, coins:40, parYears:3,
    teaser:'A tiny tired patch — learn to wake dead ground.',
    story:'Grandpa\'s kitchen garden — small, dusty, and the safest place to learn. Feed gray cracked tiles, plant a crop team, and watch green return. You can\'t fail here — just grow.',
-   doneText:'Home Garden is green again! You know the heart of it now: feed the ground, plant many kinds, let the seasons work.',
+   doneText:'Home Patch is green again! You know the heart of it now: feed the ground, plant many kinds, let the seasons work.',
    // Iso play (diorama experiments parked — cohesive board first)
    view:'iso',
    tools:['select','compost','covercrop','sisters'],
    shop:false, river:false, events:false, startPaused:true, regen:1.8,
    ovs:['health'],
-   goalText:'Wake the little Home Garden back to life.',
+   goalText:'Wake the little Home Patch back to life.',
    goals:[
      {em:'🌅', desc:'Revive 4 dead tiles (dead → soil)', prog:()=>[Math.min(4, countRevived()), 4]},
      {em:'🌽', desc:'Plant 3 Three Sisters',            prog:()=>[Math.min(3, countSistersPlanted()), 3]},
@@ -1659,7 +1663,7 @@ const VALLEY_PARCELS = [
    origin:{c:8, r:28}, size:{w:0, h:0}, mapCell:[0,3], teaser:'home', systemsTaught:[],
    neighborParcels:['home_garden','school_garden'], unlockRules:{type:'always'}, landmark:'full_farmstead',
    desc:'Fixed home base — yard, house tiers, rooms.'},
-  {id:'home_garden', name:'Home Garden', em:'🌱', kind:'plot', levelId:'home', lvIndex:0,
+  {id:'home_garden', name:'Home Patch', em:'🌱', kind:'plot', levelId:'home', lvIndex:0,
    origin:{c:2, r:22}, size:{w:6, h:6}, mapCell:[0,2], teaser:'basics',
    systemsTaught:['feed_dead','compost','diversity'], neighborParcels:['homestead','back_paddock','school_garden'],
    unlockRules:{type:'always'}, landmark:'shed_fence', desc:'Kitchen garden — wake dead ground.'},
@@ -2788,14 +2792,28 @@ function countSistersPlanted(){
   const stat = (state.stats && state.stats.sistersPlanted)|0;
   return Math.max(live, stat);
 }
+function deadWakeNeed(t){
+  return (t && t.feature==='saltflat') ? 30 : 22;
+}
+function maybeWakeDeadTile(t, i){
+  if(!t || t.terrain!=='dead') return false;
+  if(typeof recalc==='function') recalc(t);
+  if((t.health||0) + 0.05 < deadWakeNeed(t)) return false;
+  return wakeDeadTile(t, i);
+}
+function sweepWakeDeadTiles(){
+  if(!state || !state.grid) return 0;
+  let n = 0;
+  state.grid.forEach((t,i)=>{ if(maybeWakeDeadTile(t, i)) n++; });
+  return n;
+}
 function countRevived(){
   if(!state || !state.grid) return 0;
-  // revivedOnce flag is the real definition of "dead → living soil"
-  const flagged = state.grid.filter(t=>t.revivedOnce).length;
-  const stat = (state.stats && state.stats.revived)|0;
-  // Self-heal stats if flag exists but counter lagged (older sessions / mid-tick)
-  if(flagged > stat && state.stats) state.stats.revived = flagged;
-  return Math.max(flagged, stat);
+  // Live grid only — never a one-shot increment that can stall at 3/4
+  let n = 0;
+  state.grid.forEach(t=>{ if(t.terrain==='soil' && t.revivedOnce) n++; });
+  if(state.stats && (state.stats.revived|0) !== n) state.stats.revived = n;
+  return n;
 }
 /** Soil tiles at or above a health threshold (shared by HUD, goals, farmStats). */
 function countHealthyTiles(threshold){
@@ -3916,10 +3934,7 @@ function simStep(dt){
         });
       }
       recalc(t);
-      const need = t.feature==='saltflat' ? 30 : 22;
-      if(t.health >= need){                          // 🌅 the ground WAKES UP
-        wakeDeadTile(t, i);
-      }
+      maybeWakeDeadTile(t, i);
       return;
     }
     if(t.terrain!=='soil') return;
@@ -4046,6 +4061,7 @@ function simStep(dt){
   // periodic autosave + passive badge/win check (bio & health cross thresholds on their own)
   autosaveT += dt;
   if(autosaveT > 15){ autosaveT = 0; checkBadges(); save(); }
+  if(typeof sweepWakeDeadTiles==='function') sweepWakeDeadTiles();
 }
 function harvestCrop(t, i){
   const c = CROPS[t.crop.type];
@@ -4101,7 +4117,10 @@ function advanceSeason(){
     if(state.season===3){
       if(!camp.tipsShown) camp.tipsShown = {};
       if(!camp.tipsShown.winter_first){
-        toast(`${sn.emoji} Winter settles — snow on the fields. Plant only beside a 🪴 greenhouse (or rest the soil).`, {once:'winter_first', throttleMs:4000});
+        const gh = typeof toolAllowed==='function' && (toolAllowed('greenhouse') || !!(LV() && LV().shop));
+        toast(gh
+          ? `${sn.emoji} Winter settles — plant only beside a 🪴 greenhouse, or rest the soil.`
+          : `${sn.emoji} Winter settles — nothing new will root until spring. Tend what's already in the ground.`, {once:'winter_first', throttleMs:4000});
       }else{
         toast(`${sn.emoji} ${sn.name} begins — Year ${state.year}`, {throttleMs:2500});
       }
@@ -7056,7 +7075,11 @@ function applyTool(i){
   }
   if(tool==='sisters' || tool==='wheat' || tool==='clover' || tool==='covercrop'){
     const canWinter = buildNear(t,'greenhouse',2);
-    if(!SEASONS[state.season].canPlant && !canWinter){ toast('❄️ Too cold — wait for spring, or plant beside a 🪴 greenhouse.'); ringAt(i, '#8ec5e8'); SND.uhoh(); return false; }
+    if(!SEASONS[state.season].canPlant && !canWinter){
+      const gh = toolAllowed('greenhouse') || !!(LV() && LV().shop);
+      toast(gh ? '❄️ Too cold — wait for spring, or plant beside a 🪴 greenhouse.' : '❄️ Too cold — wait for spring. Rest the soil until it thaws.');
+      ringAt(i, '#8ec5e8'); SND.uhoh(); return false;
+    }
     if(t.crop){ return false; }
     if(t.graze){ toast('Can\'t plant here — animals are grazing. Move them — they live here.'); ringAt(i, '#e06666'); SND.uhoh(); return false; }
     let cost = td.cost;
@@ -7175,26 +7198,32 @@ function applyTool(i){
     afterBuild(); return true;
   }
   if(tool==='compost'){
-    if(t.compost > 5){ return false; }
+    recalc(t);
+    if(dead && maybeWakeDeadTile(t, i)){ afterBuild(); return true; }
+    if(t.compost > 5){
+      toast(dead ? '🪣 Compost is already working here — press ▶️ so days can wake it.' : '🪣 Already composted — the soil is still digesting.');
+      SND.uhoh();
+      return false;
+    }
     const cost = state.unlocks.upg_compost ? 2 : td.cost;
     if(!spend(cost)) return false;
     t.compost = state.unlocks.upg_compost ? 14 : 10;
     state.stats.composts++;
     floater(i, '🪣 +compost', '#d8c8a0'); burst(i, '#9a7d54', 10); SND.place();
-    // CH — skip compost place toast while tutorial already coaches feed_dead
+    if(dead){
+      markPlayerFedDead(t); tutEvent('feed_dead');
+      if(typeof earnNote==='function') earnNote('wake', {delay:700});
+    }
+    recalc(t);
+    if(dead && maybeWakeDeadTile(t, i)){ afterBuild(); return true; }
     if(dead && !state.deadTip2){
       state.deadTip2 = true;
       if(!tutCoachActive()) toast('🪣 Food for the dead ground — keep feeding and it will wake!');
     }
-    // BH/BI — first salt-pan touch (Dust Flats literacy) + soft ring
     if(t.feature==='saltflat'){
       if(typeof ringAt==='function') ringAt(i, '#c9a050');
       toast('🧂 Salt pan — needs extra feed (wakes at 30❤️). Ring compost + pioneers; goats can browse dead scrub.', {once:'salt_first_touch', throttleMs:4000});
       if(typeof earnNote==='function') earnNote('salt', {delay:1100});
-    }
-    if(dead){
-      markPlayerFedDead(t); tutEvent('feed_dead');
-      if(typeof earnNote==='function') earnNote('wake', {delay:700});
     }
     afterBuild(); return true;
   }
@@ -11823,11 +11852,16 @@ function openInfo(refreshOnly){
     mushroom:'Fungal threads knit nearby soil together.', berrybush:'Berries each season + blossoms for pollinators.'};
   let body = '';
   if(t.terrain==='dead'){
+    recalc(t);
+    if(maybeWakeDeadTile(t, selected)){
+      openInfo(true);
+      return;
+    }
     const feat = t.feature==='saltflat' ? '🧂 A crust of salt poisons this ground — it needs extra feeding.'
                : t.feature==='gully' ? '⛏️ An erosion gully — the storms carved this scar.'
                : t.feature==='swale' ? '〰️ An old swale scar in the dust.'
                : '';
-    const need = t.feature==='saltflat' ? 30 : 25;
+    const need = deadWakeNeed(t);
     const story = soilStoryLine(t);
     body = `
       <div class="istory">${story}</div>
@@ -12357,6 +12391,7 @@ function loadLevelState(d){
       recalc(t);
       return t;
     });
+    if(typeof sweepWakeDeadTiles==='function') sweepWakeDeadTiles();
     // respawn animals
     agents = [];
     inferHerdFromGrid();
