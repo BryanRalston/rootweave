@@ -485,7 +485,7 @@ body.home-plot #questPanel{
 .vreg.restored,.vreg.mastered{stroke:transparent; fill:transparent}
 .vreg.hub{stroke:transparent; fill:transparent}
 .vreg.locked{cursor:default; fill:transparent; stroke:transparent}
-.vreg.available.home{stroke:rgba(234,181,67,.55); fill:rgba(234,181,67,.05)}
+.vreg.available.home{stroke:transparent; fill:transparent}
 .vlab{position:absolute; z-index:3; transform:translate(-50%,-50%); pointer-events:none;
   font-size:10px; font-weight:800; color:#fff8e4; letter-spacing:.01em; white-space:nowrap;
   text-shadow:0 1px 2px #1a1208, 0 0 8px rgba(0,0,0,.75); padding:2px 7px; border-radius:999px;
@@ -12977,13 +12977,61 @@ function fillWidthStrip(ctx, pts, halfW, fill){
 }
 function pondShore(cx, cy, rx, ry, seed, organic){
   const pts = [];
-  const n = 20;
+  const n = 22;
   for(let i=0;i<n;i++){
     const a = i/n*Math.PI*2;
     const wob = 1 + organic*Math.sin(a*3 + seed*8.1)*0.55 + organic*Math.sin(a*5 + seed*3.4)*0.32;
     pts.push({x: cx+Math.cos(a)*rx*wob, y: cy+Math.sin(a)*ry*wob});
   }
   return pts;
+}
+/** Unique basin outlines — not one ellipse stamp. */
+function basinShore(kind, cx, cy, s){
+  const n = 24;
+  const pts = [];
+  for(let i=0;i<n;i++){
+    const t = i/n, a = t*Math.PI*2;
+    let rx = 16, ry = 11, m = 1;
+    if(kind==='garden'){
+      rx = 13*s; ry = 8*s;
+      m = 0.82 + 0.22*Math.sin(a+0.4) + 0.18*Math.sin(a*2-0.6);
+      if(Math.cos(a-0.9)>0.35) m *= 0.72;
+    } else if(kind==='stock'){
+      rx = 26*s; ry = 15*s;
+      m = 0.88 + 0.2*Math.sin(a*2+1.1) + 0.12*Math.cos(a*3);
+      if(Math.sin(a+0.3)>0.55) m *= 0.62;
+    } else if(kind==='high'){
+      rx = 15*s; ry = 10*s;
+      m = 0.7 + 0.38*Math.sin(a-0.5) + 0.16*Math.sin(a*3+1.4);
+      if(Math.cos(a-0.2)>0.15) m *= 0.48;
+    } else if(kind==='marshA'){
+      rx = 24*s; ry = 13*s;
+      m = 0.75 + 0.4*Math.sin(a*2+0.2) + 0.2*Math.sin(a*5);
+    } else {
+      rx = 18*s; ry = 17*s;
+      m = 0.7 + 0.34*Math.cos(a*2-0.8) + 0.22*Math.sin(a*4+0.3);
+    }
+    pts.push({x: cx+Math.cos(a)*rx*m, y: cy+Math.sin(a)*ry*m});
+  }
+  return pts;
+}
+function fadePlateEdges(pctx, w, h){
+  pctx.save();
+  pctx.globalCompositeOperation = 'destination-in';
+  pctx.filter = 'blur(26px)';
+  pctx.fillStyle = '#fff';
+  pctx.fillRect(40, 32, w-80, h-58);
+  pctx.restore();
+}
+function offsetPath(pts, px){
+  if(!pts || pts.length<2) return [];
+  const out = [];
+  for(let i=0;i<pts.length;i++){
+    const a = pts[Math.max(0,i-1)], b = pts[Math.min(pts.length-1,i+1)];
+    const dx = b.x-a.x, dy = b.y-a.y, len = Math.hypot(dx,dy)||1;
+    out.push({x: pts[i].x + (-dy/len)*px, y: pts[i].y + (dx/len)*px});
+  }
+  return out;
 }
 function fillPoly(ctx, pts, fill){
   if(!pts || pts.length<3) return;
@@ -13169,6 +13217,7 @@ function paintValleyAtlas(cv){
     const lctx = land.getContext('2d');
     lctx.filter = 'blur(12px)';
     lctx.drawImage(plate, 0, 0);
+    fadePlateEdges(lctx, land.width, land.height);
     blitAtlasImageToView(ctx, land);
   }
 
@@ -13183,92 +13232,84 @@ function paintValleyAtlas(cv){
   if(!usedSkin){
     const last = stem[stem.length-1] || {c:24.5, r:22.5};
     const liveStem = stem.map(p=>({
-      c: p.c + Math.sin(p.r*0.42)*0.55 + Math.sin(p.r*0.9)*0.18,
+      c: p.c + Math.sin(p.r*0.38)*0.62 + Math.sin(p.r*0.85)*0.22,
       r: p.r
     }));
     const meadow = [
-      {c: last.c+0.15, r: 22.8},
-      {c: last.c+0.7, r: 24.2},
-      {c: last.c+1.6, r: 26.0},
-      {c: last.c+2.8, r: 28.2},
-      {c: last.c+4.1, r: 30.6}
+      {c: last.c+0.35, r: 22.4},
+      {c: last.c+0.55, r: 23.2},
+      {c: last.c+0.85, r: 24.1},
+      {c: last.c+1.4, r: 25.4},
+      {c: last.c+2.1, r: 27.0},
+      {c: last.c+2.9, r: 28.8},
+      {c: last.c+3.8, r: 30.8}
     ];
-    const stemPts = catmullPts(atlasPathExact(liveStem), 7);
-    const meadowPts = catmullPts(atlasPathExact([liveStem[liveStem.length-1]].concat(meadow)), 6);
+    const stemPts = catmullPts(atlasPathExact(liveStem), 8);
+    const meadowPts = catmullPts(atlasPathExact([{c:last.c, r:last.r}].concat(meadow)), 7);
     const creekPts = catmullPts(atlasPath(creek), 8);
     const water = document.createElement('canvas');
     water.width = V.w; water.height = V.h;
     const wx = water.getContext('2d');
-    const deep = mixHex('#0f3036', '#163e42', 0.22-murk*0.18);
-    const body = mixHex('#1a4650', '#245860', 0.28-murk*0.16);
+    const deep = mixHex('#10282c', '#163034', 0.2-murk*0.12);
+    const body = mixHex('#163438', '#1c4040', 0.22-murk*0.1);
     function stemHalf(i, t){
-      return 12 + 5.5*Math.sin(t*13.5) + 3.2*Math.sin(t*6.2) + (t>0.18 && t<0.4 ? 5 : 0);
+      const taper = t>0.68 ? Math.max(0.08, 1-(t-0.68)/0.32) : 1;
+      return (10 + 4.2*Math.sin(t*10.5) + 2.4*Math.sin(t*4.8) + (t>0.2&&t<0.38?4:0)) * taper;
     }
-    function creekHalf(i, t){ return 6.4 + 2.4*Math.sin(t*14) + 1.2*Math.sin(t*7); }
-    fillWidthStrip(wx, stemPts, (i,t)=> stemHalf(i,t)+14, 'rgba(68,52,28,0.38)');
-    fillWidthStrip(wx, creekPts, (i,t)=> creekHalf(i,t)+9, 'rgba(68,52,28,0.32)');
-    fillWidthStrip(wx, stemPts, (i,t)=> stemHalf(i,t)+7, 'rgba(48,64,36,0.3)');
-    fillWidthStrip(wx, creekPts, (i,t)=> creekHalf(i,t)+4, 'rgba(48,64,36,0.24)');
+    function creekHalf(i, t){ return 5.6 + 2.1*Math.sin(t*12) + Math.sin(t*6); }
+    fillWidthStrip(wx, stemPts, (i,t)=> stemHalf(i,t)+12, 'rgba(62,50,28,0.28)');
+    fillWidthStrip(wx, creekPts, (i,t)=> creekHalf(i,t)+8, 'rgba(62,50,28,0.22)');
+    fillWidthStrip(wx, stemPts, (i,t)=> stemHalf(i,t)+6, 'rgba(44,58,36,0.22)');
+    fillWidthStrip(wx, creekPts, (i,t)=> creekHalf(i,t)+3.2, 'rgba(44,58,36,0.18)');
     fillWidthStrip(wx, stemPts, stemHalf, body);
     fillWidthStrip(wx, creekPts, creekHalf, body);
-    fillWidthStrip(wx, stemPts, (i,t)=> stemHalf(i,t)*0.48, deep);
-    fillWidthStrip(wx, creekPts, (i,t)=> creekHalf(i,t)*0.45, deep);
-    fillWidthStrip(wx, meadowPts, (i,t)=> 16 - t*7, 'rgba(58,78,42,0.34)');
-    fillWidthStrip(wx, meadowPts, (i,t)=> 8 - t*3, 'rgba(46,72,48,0.2)');
-    const slack = atlasToView(last.c + 0.25, 22.15);
-    const slackShore = pondShore(slack.x, slack.y, 22, 13, 6.1, 0.34);
-    fillPoly(wx, pondShore(slack.x, slack.y+2, 26, 16, 6.1, 0.3), 'rgba(48,38,20,0.28)');
-    fillPoly(wx, slackShore, body);
-    fillPoly(wx, pondShore(slack.x+2, slack.y+2, 12, 7, 6.4, 0.22), deep);
-    [[26.6, 24.6, 7, 4], [28.1, 26.8, 6, 3.2], [29.6, 29.0, 5, 3]].forEach(([c,r,rx,ry],i)=>{
+    fillWidthStrip(wx, stemPts, (i,t)=> stemHalf(i,t)*0.5, deep);
+    fillWidthStrip(wx, creekPts, (i,t)=> creekHalf(i,t)*0.46, deep);
+    fillWidthStrip(wx, meadowPts, (i,t)=> (18-t*9), 'rgba(52,70,40,0.38)');
+    fillWidthStrip(wx, meadowPts, (i,t)=> (10-t*5), 'rgba(40,62,44,0.22)');
+    const slack = atlasToView(last.c+0.4, 22.35);
+    fillPoly(wx, basinShore('stock', slack.x, slack.y, 0.72), 'rgba(42,36,20,0.26)');
+    fillPoly(wx, basinShore('stock', slack.x, slack.y, 0.55), body);
+    fillPoly(wx, basinShore('stock', slack.x+3, slack.y+2, 0.28), deep);
+    [[26.4, 24.8, 0.38], [27.6, 26.6, 0.32], [28.8, 28.6, 0.26], [29.8, 30.2, 0.2]].forEach(([c,r,sc],i)=>{
       const q = atlasToView(c, r);
-      fillPoly(wx, pondShore(q.x, q.y, rx, ry, 7+i, 0.4), 'rgba(36,64,48,0.28)');
+      fillPoly(wx, basinShore(i%2?'garden':'marshB', q.x, q.y, sc), 'rgba(32,56,42,0.26)');
     });
     ctx.save();
-    ctx.filter = 'blur(3.6px)';
+    ctx.filter = 'blur(4.2px)';
     ctx.drawImage(water, 0, 0);
     ctx.restore();
     ctx.save();
-    ctx.globalAlpha = 0.35;
-    fillWidthStrip(ctx, stemPts, (i,t)=> stemHalf(i,t)*0.28, deep);
+    ctx.globalAlpha = 0.22;
+    fillWidthStrip(ctx, stemPts, (i,t)=> stemHalf(i,t)*0.32, deep);
     ctx.restore();
 
     const washPts = catmullPts(atlasPath(ATLAS_GEO.wash), 6);
     fillWidthStrip(ctx, washPts, (i,t)=> 7.5 - t*2.2, 'rgba(132,102,58,0.32)');
     fillWidthStrip(ctx, washPts, (i,t)=> 3.4 - t, 'rgba(168,136,82,0.28)');
 
-    const POND_LOOK = {
-      garden:{rx:15, ry:11, org:0.22, reed:0.35, water:'#245a4e', rim:'#3a6a48', seed:1.1},
-      stock:{rx:24, ry:16, org:0.28, reed:0.48, water:'#1a4c4a', rim:'#3a6244', seed:2.4},
-      high:{rx:13, ry:11, org:0.12, reed:0.12, water:'#164450', rim:'#2a5a58', seed:3.7},
-      marshA:{rx:22, ry:15, org:0.48, reed:0.62, water:'#1a4038', rim:'#2e5440', seed:4.2},
-      marshB:{rx:19, ry:17, org:0.52, reed:0.68, water:'#173c34', rim:'#2a4e3c', seed:5.8}
+    const POND_TINT = {
+      garden:{water:'#1e4a40', rim:'#355844', reed:6, s:0.92},
+      stock:{water:'#173e3c', rim:'#334e3a', reed:10, s:1},
+      high:{water:'#14343c', rim:'#2a4644', reed:3, s:0.95},
+      marshA:{water:'#16362e', rim:'#2a4436', reed:12, s:1.05},
+      marshB:{water:'#14322c', rim:'#263c32', reed:14, s:1.08}
     };
     Object.keys(ATLAS_GEO.ponds).forEach(k=>{
       const b = ATLAS_GEO.ponds[k];
-      const look = POND_LOOK[k] || POND_LOOK.stock;
+      const look = POND_TINT[k] || POND_TINT.stock;
       const p = atlasToView(b.c + b.w/2, b.r + b.h/2);
-      const mud = pondShore(p.x, p.y+2, look.rx+6, look.ry+5, look.seed, look.org+0.08);
-      const shore = pondShore(p.x, p.y, look.rx, look.ry, look.seed, look.org);
-      const inner = pondShore(p.x+look.rx*0.04, p.y+look.ry*0.06, look.rx*0.62, look.ry*0.58, look.seed+1, look.org*0.7);
-      fillPoly(ctx, mud, 'rgba(48,38,20,0.4)');
-      fillPoly(ctx, pondShore(p.x, p.y, look.rx+3, look.ry+3, look.seed, look.org), look.rim);
-      fillPoly(ctx, shore, look.water);
-      fillPoly(ctx, inner, mixHex(look.water, '#0e2a2e', 0.35+murk*0.15));
-      if(k==='garden' || k==='high'){
-        ctx.fillStyle = 'rgba(200,228,220,'+(k==='high'?0.2:0.12)+')';
-        ctx.beginPath();
-        ctx.ellipse(p.x-look.rx*(k==='high'?0.18:0.3), p.y-look.ry*0.28, look.rx*0.18, look.ry*0.07, -0.5, 0, Math.PI*2);
-        ctx.fill();
-      }
-      if(look.reed>0.1){
-        ctx.strokeStyle = 'rgba(46,72,40,'+(0.35+look.reed*0.25)+')';
-        ctx.lineWidth = 1.2;
-        for(let i=0;i<Math.round(8+look.reed*10);i++){
-          const a = (i*2.3 + look.seed) % (Math.PI*2);
-          const x = p.x + Math.cos(a)*(look.rx+2);
-          const y = p.y + Math.sin(a)*(look.ry+2);
-          ctx.beginPath(); ctx.moveTo(x, y+3); ctx.lineTo(x+atlasN2(i,3)*2-1, y-6-look.reed*4); ctx.stroke();
+      fillPoly(ctx, basinShore(k, p.x, p.y+2, look.s*1.18), 'rgba(46,36,20,0.32)');
+      fillPoly(ctx, basinShore(k, p.x, p.y, look.s*1.06), look.rim);
+      fillPoly(ctx, basinShore(k, p.x, p.y, look.s), look.water);
+      fillPoly(ctx, basinShore(k, p.x+2, p.y+2, look.s*0.52), mixHex(look.water, '#0c2224', 0.4+murk*0.12));
+      if(look.reed){
+        const rim = basinShore(k, p.x, p.y, look.s*1.02);
+        ctx.strokeStyle = 'rgba(40,64,36,0.45)';
+        ctx.lineWidth = 1.1;
+        for(let i=0;i<look.reed;i++){
+          const q = rim[(i*3+2)%rim.length];
+          ctx.beginPath(); ctx.moveTo(q.x, q.y+2); ctx.lineTo(q.x+atlasN2(i,2)-0.5, q.y-5-i%3); ctx.stroke();
         }
       }
     });
@@ -13315,31 +13356,21 @@ function paintValleyAtlas(cv){
       fillWidthStrip(ctx, rs, (i,t)=> 6 + 3*Math.abs(Math.sin(t*16+ri+0.6)), 'rgba(46,86,40,0.5)');
     });
 
-    paintRibbon(atlasPath(ATLAS_GEO.gardenRill), 'rgba(46,68,40,0.5)', 4);
-    paintRibbon(atlasPath(ATLAS_GEO.orchardDrain), 'rgba(46,68,40,0.4)', 3.5);
-    paintRibbon(atlasPath(ATLAS_GEO.overflow), 'rgba(58,78,48,0.42)', 3.2);
-    paintRibbon(atlasPath(ATLAS_GEO.overflowSpur), 'rgba(58,78,48,0.32)', 2.6);
-
     function dirtLane(points, half){
-      const pts = catmullPts(atlasPath(points), 7);
-      fillWidthStrip(ctx, pts, half+3.4, 'rgba(58,40,22,0.5)');
-      fillWidthStrip(ctx, pts, half, 'rgba(110,82,48,0.82)');
-      fillWidthStrip(ctx, pts, half*0.55, 'rgba(128,96,58,0.45)');
-      fillWidthStrip(ctx, pts, 0.85, 'rgba(72,52,28,0.4)');
+      const raw = points.slice();
+      const pts = catmullPts(atlasPath(raw), 8);
+      const fade = (t)=> t>0.82 ? Math.max(0.12, 1-(t-0.82)/0.18) : (t<0.08 ? t/0.08 : 1);
+      fillWidthStrip(ctx, pts, (i,t)=> (half+7)*fade(t), 'rgba(58,88,40,0.42)');
+      fillWidthStrip(ctx, pts, (i,t)=> (half+1.5)*fade(t), 'rgba(88,64,38,0.72)');
+      fillWidthStrip(ctx, pts, (i,t)=> half*0.72*fade(t), 'rgba(112,84,50,0.4)');
+      const left = offsetPath(pts, half*0.28);
+      const right = offsetPath(pts, -half*0.28);
+      fillWidthStrip(ctx, left, (i,t)=> 1.15*fade(t), 'rgba(62,44,24,0.38)');
+      fillWidthStrip(ctx, right, (i,t)=> 1.15*fade(t), 'rgba(62,44,24,0.38)');
     }
-    dirtLane(ATLAS_GEO.lane, 8.4);
-    dirtLane(ATLAS_GEO.paddockSpur, 4.4);
-    dirtLane(ATLAS_GEO.orchardSpur, 4.4);
-
-    const br = atlasToView(22.4, 4.55);
-    const br2 = atlasToView(23.6, 4.7);
-    ctx.strokeStyle = '#6a4e2c';
-    ctx.lineWidth = 5;
-    ctx.lineCap = 'round';
-    ctx.beginPath(); ctx.moveTo(br.x, br.y); ctx.lineTo(br2.x, br2.y); ctx.stroke();
-    ctx.strokeStyle = '#8a6a3c';
-    ctx.lineWidth = 2.2;
-    ctx.beginPath(); ctx.moveTo(br.x, br.y-3); ctx.lineTo(br2.x, br2.y-3); ctx.stroke();
+    dirtLane(ATLAS_GEO.lane, 7.6);
+    dirtLane(ATLAS_GEO.paddockSpur, 4.2);
+    dirtLane(ATLAS_GEO.orchardSpur, 4.2);
   }
 
   if(!usedSkin){
@@ -13368,7 +13399,6 @@ function paintValleyAtlas(cv){
     const compost = atlasToView(5.5, 27.5);
     ctx.fillStyle = 'rgba(86,58,28,0.9)';
     ctx.beginPath(); ctx.ellipse(compost.x, compost.y, 14, 9, 0, 0, Math.PI*2); ctx.fill();
-    if(sprReady('cow')) drawSprAt(ctx, 'cow', 4.8, 16.4, 48, 36);
     const hp = atlasToView(4.35, 28.7);
     drawFarmhouseMass(ctx, hp, 1.2);
     drawSprAt(ctx, 'house_t'+houseTier, 4.35, 28.7, 210, 176);
@@ -13390,29 +13420,10 @@ function paintValleyAtlas(cv){
     fg.fill();
   });
   ctx.save();
-  ctx.filter = 'blur(56px)';
-  ctx.globalAlpha = 0.14;
-  ctx.drawImage(fog, 0, 0);
-  ctx.filter = 'blur(28px)';
-  ctx.globalAlpha = 0.06;
+  ctx.filter = 'blur(16px)';
+  ctx.globalAlpha = 0.2;
   ctx.drawImage(fog, 0, 0);
   ctx.restore();
-
-  const mist = ctx.createLinearGradient(0, V.sky, 0, V.sky + (V.h-V.sky)*0.42);
-  mist.addColorStop(0, 'rgba(255,252,246,0.12)');
-  mist.addColorStop(0.55, 'rgba(255,252,246,0.04)');
-  mist.addColorStop(1, 'rgba(255,252,246,0)');
-  ctx.fillStyle = mist;
-  ctx.beginPath();
-  ctx.moveTo(atlasToView(0,0).x, atlasToView(0,0).y);
-  ctx.lineTo(atlasToView(ATLAS_W,0).x, atlasToView(ATLAS_W,0).y);
-  ctx.lineTo(atlasToView(ATLAS_W,18).x, atlasToView(ATLAS_W,18).y);
-  ctx.lineTo(atlasToView(0,18).x, atlasToView(0,18).y);
-  ctx.closePath();
-  ctx.fill();
-
-  ctx.fillStyle = 'rgba(8,14,8,0.14)';
-  ctx.fillRect(0, V.h-10, V.w, 10);
   return !!hills;
   } catch (err) {
     console.warn('[Rootweave] valley paint', err);
