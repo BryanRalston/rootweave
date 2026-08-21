@@ -12893,7 +12893,7 @@ function paintValleyAtlas(cv){
   }
   function landColor(c, r){
     let R=0,G=0,B=0,wsum=0;
-    for(let dr=-2; dr<=2; dr++) for(let dc=-2; dc<=2; dc++){
+    for(let dr=-4; dr<=4; dr++) for(let dc=-4; dc<=4; dc++){
       const w = 1 / (1 + Math.hypot(dc,dr));
       const pair = biomePair(c+dc, r+dr);
       const n = atlasN2(c+dc, r+dr);
@@ -12964,24 +12964,22 @@ function paintValleyAtlas(cv){
   function atlasPath(points){
     return points.map(pt=> atlasToView(pt.c+0.5, pt.r+0.5));
   }
-  mains.forEach(p=>{
-    ctx.fillStyle = mixHex('#2a6288', '#3f7ea0', 0.35-murk*0.2);
-    ctx.beginPath(); ctx.ellipse(p.x, p.y, 11, 8, 0, 0, Math.PI*2); ctx.fill();
-  });
   const stem = [];
   for(let r=0;r<=22;r++) stem.push({c:24.5, r});
   const creek = [{c:2,r:3},{c:5,r:3},{c:8,r:4},{c:12,r:4},{c:15,r:4},{c:18,r:5},{c:21,r:5},{c:24,r:6}];
-  paintRibbon(atlasPath(stem), mixHex('#2a6288', '#3f7ea0', 0.4-murk*0.25), 14);
-  paintRibbon(atlasPath(creek), mixHex('#2a6288', '#3f7ea0', 0.4-murk*0.25), 10);
-  paintRibbon(atlasPath(stem), 'rgba(190,226,236,'+(0.32-murk*0.18)+')', 3.2);
-  paintRibbon(atlasPath(creek), 'rgba(190,226,236,'+(0.28-murk*0.16)+')', 2.4);
+  paintRibbon(atlasPath(stem), 'rgba(62,78,42,0.55)', 22);
+  paintRibbon(atlasPath(creek), 'rgba(62,78,42,0.5)', 16);
+  paintRibbon(atlasPath(stem), mixHex('#245a7c', '#3a7696', 0.35-murk*0.2), 12);
+  paintRibbon(atlasPath(creek), mixHex('#245a7c', '#3a7696', 0.35-murk*0.2), 8);
+  paintRibbon(atlasPath(stem), 'rgba(200,230,238,'+(0.28-murk*0.14)+')', 2.6);
+  paintRibbon(atlasPath(creek), 'rgba(200,230,238,'+(0.24-murk*0.12)+')', 2);
   washes.forEach(p=>{
-    ctx.fillStyle = 'rgba(150,118,70,0.5)';
-    ctx.beginPath(); ctx.ellipse(p.x, p.y, 11, 8, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = 'rgba(150,118,70,0.42)';
+    ctx.beginPath(); ctx.ellipse(p.x, p.y, 9, 6, 0, 0, Math.PI*2); ctx.fill();
   });
   ponds.forEach(p=>{
-    ctx.fillStyle = 'rgba(36,78,76,0.75)';
-    ctx.beginPath(); ctx.ellipse(p.x, p.y, 14, 11, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = 'rgba(36,78,76,0.7)';
+    ctx.beginPath(); ctx.ellipse(p.x, p.y, 12, 9, 0, 0, Math.PI*2); ctx.fill();
   });
 
   const beds = [[3.1,23.3,1.8,1.2],[5.0,23.1,1.7,1.25],[3.3,25.1,1.9,1.2],[5.2,25.0,1.6,1.25]];
