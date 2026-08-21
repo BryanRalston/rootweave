@@ -470,7 +470,7 @@ body.home-plot #questPanel{
 #journey .jwrap{position:relative; z-index:1; width:100%; max-width:920px; padding:16px 14px calc(24px + env(safe-area-inset-bottom,0px))}
 #journey h1{color:#ffeece; font-size:30px; margin:4px 0 2px; text-align:center; text-shadow:0 2px 8px rgba(0,0,0,.6)}
 #journey .jsub{color:#e8d9ae; font-size:13.5px; font-weight:700; text-align:center; margin-bottom:12px; text-shadow:0 1px 4px rgba(0,0,0,.7)}
-/* Journey = one drawing of the 48×32 atlas. No cell board, no quilt. */
+/* Journey = one drawing of the 96×64 (3∶2) quarter-section atlas. No cell board, no quilt. */
 .vscene{position:relative; width:100%; aspect-ratio:1000/720; min-height:260px; border-radius:18px; overflow:hidden; margin:0 0 14px;
   border:2px solid var(--line);
   box-shadow:0 0 0 3px #6b4423, 0 0 0 5px #c4a06a, 0 10px 28px rgba(0,0,0,.5);
@@ -1526,15 +1526,15 @@ const CLEAR_BONUS = [40, 60, 80, 100, 70, 75, 80, 90, 55, 150];
 
 /* ===================== CONNECTED VALLEY ATLAS (full map)
    One geography. Plots are crops of this atlas. Water network is continuous.
-   See scripts/playtest/VALLEY_ATLAS.md
+   World is a ~160-acre quarter section (3∶2). House is a small SW corner.
    ========================================================================== */
-const ATLAS_W = 48, ATLAS_H = 32;
+const ATLAS_W = 96, ATLAS_H = 64;
 /**
  * Optional 1:1 painted skin of THIS atlas (not a new landscape).
- * Image space = atlas space: (0,0) NW, house SW, marsh NW, river cols 24–25, dust SE.
- * Any resolution is fine if the aspect is 48:32. blitAtlasImageToView warps it
- * onto the journey canvas. Set to a SPRITES key (e.g. 'valley_atlas_skin') to
- * swap the procedural farm. Hotspots stay on VALLEY_PARCELS. Do not reverse-fit.
+ * Image space = atlas space: (0,0) NW, house SW (small), marsh NW,
+ * river cols 48–49, orchard east, dust SE, ridge/woodlot NE.
+ * Any resolution is fine if the aspect is 96:64 (3∶2). blitAtlasImageToView
+ * draws it 1:1. Hotspots stay on VALLEY_PARCELS. Do not reverse-fit.
  */
 const VALLEY_ATLAS_SKIN = 'valley_atlas_skin';
 /** Sparse atlas: key = "c,r" → {water, biome, feature?, landmark?} */
@@ -1556,7 +1556,7 @@ function atlasWalk(c0,r0,c1,r1){
   const tc=c1|0, tr=r1|0;
   pts.push({c,r});
   let guard=0;
-  while((c!==tc || r!==tr) && guard++<240){
+  while((c!==tc || r!==tr) && guard++<480){
     if(c < tc) c++; else if(c > tc) c--;
     else if(r < tr) r++; else if(r > tr) r--;
     pts.push({c,r});
@@ -1600,37 +1600,39 @@ function atlasBasin(c, r, w, h, biome){
 }
 /** Shared farm geography — journey painter and water stamps read the same paths. */
 const ATLAS_GEO = {
-  creek: [{c:12,r:4},{c:15,r:4},{c:18,r:5},{c:21,r:5},{c:23,r:6},{c:24,r:6}],
-  marshRun: [{c:2,r:3},{c:5,r:3},{c:8,r:4},{c:11,r:4},{c:12,r:4}],
-  wash: [{c:34,r:22},{c:32,r:20},{c:30,r:18},{c:28,r:16},{c:26,r:15},{c:26,r:14},{c:25,r:14}],
+  creek: [{c:22,r:8},{c:28,r:8},{c:34,r:9},{c:40,r:10},{c:46,r:10},{c:48,r:10}],
+  marshRun: [{c:6,r:6},{c:12,r:7},{c:18,r:8},{c:22,r:8}],
+  wash: [{c:60,r:48},{c:58,r:44},{c:56,r:42},{c:54,r:40},{c:50,r:36},{c:49,r:34}],
   lane: [
-    {c:4,r:28},{c:6,r:27},{c:8,r:27},{c:11,r:26},{c:14,r:25},{c:17,r:24},
-    {c:20,r:23},{c:22,r:23},{c:24,r:23},{c:27,r:23},{c:31,r:23},{c:35,r:18},{c:38,r:15},{c:41,r:15}
+    {c:10,r:56},{c:20,r:54},{c:32,r:52},{c:42,r:48},{c:48,r:46},
+    {c:56,r:42},{c:68,r:36},{c:80,r:32}
   ],
-  paddockSpur: [{c:5,r:26},{c:5,r:23},{c:5,r:20},{c:5,r:17}],
-  orchardSpur: [{c:15,r:24},{c:15,r:21},{c:15,r:18},{c:15,r:15}],
-  gardenRill: [{c:5,r:25},{c:4,r:24},{c:3,r:24}],
-  orchardDrain: [{c:19,r:13},{c:19,r:14},{c:19,r:15},{c:19,r:16},{c:20,r:17}],
-  // High-pond overflow: dry channel on the shoulder, around the stem, into orchard then paddock
+  paddockSpur: [{c:12,r:52},{c:12,r:44},{c:12,r:38},{c:12,r:34}],
+  orchardSpur: [{c:56,r:42},{c:56,r:36},{c:56,r:30},{c:56,r:26}],
+  gardenRill: [{c:11,r:58},{c:10,r:57},{c:9,r:57}],
+  orchardDrain: [{c:60,r:22},{c:62,r:24},{c:64,r:26},{c:66,r:28}],
   overflow: [
-    {c:40,r:4},{c:38,r:6},{c:36,r:9},{c:34,r:13},{c:32,r:17},
-    {c:29,r:21},{c:27,r:23},{c:22,r:23},{c:19,r:20},{c:16,r:18}
+    {c:86,r:8},{c:80,r:12},{c:74,r:18},{c:68,r:24},
+    {c:60,r:32},{c:54,r:38},{c:48,r:46}
   ],
-  overflowSpur: [{c:19,r:20},{c:12,r:20},{c:8,r:19},{c:6,r:18}],
+  overflowSpur: [{c:54,r:38},{c:40,r:38},{c:24,r:36},{c:14,r:34}],
   ponds: {
-    garden:{c:6,r:25,w:2,h:2,biome:'garden'},
-    stock:{c:5,r:15,w:2,h:2,biome:'pasture'},
-    high:{c:40,r:2,w:2,h:2,biome:'ridge'},
-    marshA:{c:4,r:6,w:2,h:2,biome:'marsh'},
-    marshB:{c:8,r:5,w:2,h:2,biome:'marsh'}
+    garden:{c:11,r:59,w:2,h:2,biome:'garden'},
+    stock:{c:14,r:34,w:2,h:2,biome:'pasture'},
+    padA:{c:18,r:22,w:2,h:2,biome:'pasture'},
+    padB:{c:26,r:28,w:2,h:2,biome:'pasture'},
+    high:{c:86,r:6,w:2,h:2,biome:'ridge'},
+    wood:{c:76,r:8,w:2,h:2,biome:'ridge'},
+    marshA:{c:22,r:6,w:2,h:2,biome:'marsh'},
+    marshB:{c:25,r:8,w:2,h:2,biome:'marsh'}
   }
 };
 function atlasBiomeAt(c, r){
   const rooms = [
-    {c:4,r:4,biome:'marsh'}, {c:16,r:5,biome:'riparian'}, {c:28,r:8,biome:'heartland'},
-    {c:42,r:4,biome:'ridge'}, {c:5,r:16,biome:'pasture'}, {c:16,r:15,biome:'orchard'},
-    {c:42,r:15,biome:'market'}, {c:6,r:26,biome:'garden'}, {c:16,r:25,biome:'garden'},
-    {c:32,r:22,biome:'dust'}
+    {c:12,r:8,biome:'marsh'}, {c:32,r:10,biome:'riparian'}, {c:48,r:16,biome:'heartland'},
+    {c:86,r:8,biome:'ridge'}, {c:16,r:32,biome:'pasture'}, {c:22,r:20,biome:'pasture'},
+    {c:60,r:24,biome:'orchard'}, {c:78,r:26,biome:'pasture'}, {c:82,r:32,biome:'market'},
+    {c:12,r:56,biome:'garden'}, {c:26,r:58,biome:'garden'}, {c:70,r:48,biome:'dust'}
   ];
   let best = 'wild', bestD = 1e9;
   for(let i=0;i<rooms.length;i++){
@@ -1648,27 +1650,24 @@ function atlasBiomeAt(c, r){
   for(let r=0;r<ATLAS_H;r++) for(let c=0;c<ATLAS_W;c++){
     atlasSet(c,r,{water:'none', biome: atlasBiomeAt(c,r)});
   }
-  // MAIN STEM: north edge → south through River Reach (cols 24–25). Stops above the garden.
+  // MAIN STEM: north edge → south (cols 48–49). Stops above the garden / house yard.
   const main = [];
-  for(let r=0;r<=22;r++){
-    main.push({c:24, r}, {c:25, r});
-    if(r%5===2 && r<=14) main.push({c:26, r});
+  for(let r=0;r<=48;r++){
+    main.push({c:48, r}, {c:49, r});
+    if(r%6===3 && r<=30) main.push({c:50, r});
   }
   atlasPaintWater(main, 'main');
   atlasPolyline(ATLAS_GEO.creek, 'main');
   atlasPolyline(ATLAS_GEO.marshRun, 'main');
-  // Stock crossing: one wider step, not a two-wide canal the whole way
-  atlasSet(16,5,{water:'main', biome:'riparian'});
-  atlasSet(16,6,{water:'main', biome:'riparian'});
-  // Slack water at the creek/stem confluence — a bend, not a T
-  atlasSet(23,7,{water:'main', biome:'riparian'});
+  atlasSet(30,8,{water:'main', biome:'riparian'});
+  atlasSet(30,9,{water:'main', biome:'riparian'});
+  atlasSet(47,11,{water:'main', biome:'riparian'});
   atlasPolyline(ATLAS_GEO.wash, 'wash');
   Object.keys(ATLAS_GEO.ponds).forEach(k=>{
     const p = ATLAS_GEO.ponds[k];
     atlasBasin(p.c, p.r, p.w, p.h, p.biome);
   });
-  // Contour swale above the garden + rill from the pond into the beds
-  atlasPaintDryFeature([{c:3,r:22},{c:4,r:22},{c:5,r:22},{c:6,r:22}], 'swale', {biome:'garden'});
+  atlasPaintDryFeature([{c:8,r:58},{c:9,r:58},{c:10,r:58},{c:11,r:58},{c:12,r:58}], 'swale', {biome:'garden'});
   atlasPaintDryFeature(atlasPolylinePts(ATLAS_GEO.gardenRill), 'swale', {biome:'garden'});
   atlasPaintDryFeature(atlasPolylinePts(ATLAS_GEO.orchardDrain), 'swale', {biome:'orchard'});
   atlasPaintDryFeature(atlasPolylinePts(ATLAS_GEO.overflow), 'swale');
@@ -1676,47 +1675,36 @@ function atlasBiomeAt(c, r){
   atlasPaintDryFeature(atlasPolylinePts(ATLAS_GEO.lane), 'path');
   atlasPaintDryFeature(atlasPolylinePts(ATLAS_GEO.paddockSpur), 'path');
   atlasPaintDryFeature(atlasPolylinePts(ATLAS_GEO.orchardSpur), 'path');
-  // Barnyard / winter lot by the barn — keep the main pasture out of the mud
-  atlasPaintDryFeature([{c:7,r:28},{c:8,r:28},{c:8,r:29},{c:9,r:28}], 'path', {biome:'garden'});
-  // Coop run between garden and orchard
-  atlasPaintDryFeature([{c:13,r:18},{c:14,r:19},{c:12,r:19}], 'hedgerow', {biome:'orchard'});
-  // Living fences between fields (not a zone legend — just the hedges)
-  atlasPaintDryFeature([{c:13,r:22},{c:13,r:23},{c:13,r:24},{c:13,r:25},{c:13,r:26}], 'hedgerow', {biome:'garden'});
-  atlasPaintDryFeature([{c:2,r:20},{c:3,r:20},{c:4,r:20},{c:6,r:20},{c:7,r:20},{c:8,r:20}], 'hedgerow', {biome:'pasture'});
-  // Paddock fold hedges — every fold still has an open drink on the pond
-  atlasPaintDryFeature([{c:4,r:12},{c:4,r:13},{c:4,r:14}], 'hedgerow', {biome:'pasture'});
-  atlasPaintDryFeature([{c:7,r:12},{c:7,r:13},{c:7,r:14}], 'hedgerow', {biome:'pasture'});
-  atlasPaintDryFeature([{c:2,r:17},{c:3,r:17},{c:8,r:17},{c:9,r:17}], 'hedgerow', {biome:'pasture'});
-  // Shade on the north bank only — west/south stay open so stock can drink
-  atlasPaintDryFeature([{c:5,r:14},{c:6,r:14}], 'woodlot', {biome:'pasture'});
-  // Two-row windbreak west of house and orchard; woodlot on the ridge by the high pond
-  for(let r=24;r<=30;r++) for(let c=0;c<=1;c++) atlasSet(c,r,{feature:'woodlot', biome:'garden'});
-  for(let r=11;r<=19;r++) for(let c=11;c<=12;c++){
+  atlasPaintDryFeature([{c:13,r:56},{c:14,r:56},{c:14,r:57},{c:15,r:56}], 'path', {biome:'garden'});
+  atlasPaintDryFeature([{c:20,r:32},{c:21,r:32},{c:22,r:32},{c:8,r:28},{c:9,r:28}], 'hedgerow', {biome:'pasture'});
+  atlasPaintDryFeature([{c:16,r:20},{c:16,r:21},{c:16,r:22},{c:24,r:20},{c:24,r:21}], 'hedgerow', {biome:'pasture'});
+  atlasPaintDryFeature([{c:14,r:33},{c:15,r:33}], 'woodlot', {biome:'pasture'});
+  for(let r=52;r<=62;r++) for(let c=0;c<=1;c++) atlasSet(c,r,{feature:'woodlot', biome:'garden'});
+  for(let r=10;r<=28;r++) for(let c=52;c<=53;c++){
     if(!atlasIsWetCell(atlasGet(c,r))) atlasSet(c,r,{feature:'woodlot', biome:'orchard'});
   }
-  for(let r=1;r<=5;r++) for(let c=43;c<=46;c++) atlasSet(c,r,{feature:'woodlot', biome:'ridge'});
-  for(let c=14;c<=19;c+=2){
-    if(c!==15){
-      atlasSet(c,14,{landmark:'stump', biome:'orchard'});
-      atlasSet(c,16,{landmark:'stump', biome:'orchard'});
-    }
+  for(let r=2;r<=12;r++) for(let c=88;c<=94;c++){
+    if(!atlasIsWetCell(atlasGet(c,r))) atlasSet(c,r,{feature:'woodlot', biome:'ridge'});
   }
-  for(let r=18;r<=25;r++) for(let c=28;c<=35;c++){
+  for(let c=56;c<=66;c+=2){
+    atlasSet(c,24,{landmark:'stump', biome:'orchard'});
+    atlasSet(c,26,{landmark:'stump', biome:'orchard'});
+  }
+  for(let r=42;r<=54;r++) for(let c=64;c<=78;c++){
     if(((c+r)%3)===0 && !atlasIsWetCell(atlasGet(c,r))) atlasSet(c,r,{feature:'saltflat', biome:'dust'});
   }
-  // Structures stacked for short work: house+garden, barn+compost, coop toward orchard
-  atlasSet(4,28,{landmark:'house', biome:'garden'});
-  atlasSet(8,27,{landmark:'barn', biome:'garden'});
-  atlasSet(5,27,{landmark:'compost', biome:'garden'});
-  atlasSet(13,19,{landmark:'coop', biome:'orchard'});
-  atlasSet(5,24,{landmark:'shed', biome:'garden'});
-  atlasSet(4,16,{landmark:'trough', biome:'pasture'});
-  atlasSet(22,4,{landmark:'bridge', biome:'riparian'});
-  atlasSet(5,3,{landmark:'heron', biome:'marsh'});
-  atlasSet(41,3,{landmark:'wind', biome:'ridge'});
-  atlasSet(40,15,{landmark:'cart', biome:'market'});
-  atlasSet(14,24,{landmark:'bell', biome:'garden'});
-  atlasSet(30,20,{landmark:'ruin', biome:'dust'});
+  atlasSet(10,56,{landmark:'house', biome:'garden'});
+  atlasSet(14,55,{landmark:'barn', biome:'garden'});
+  atlasSet(8,55,{landmark:'compost', biome:'garden'});
+  atlasSet(22,40,{landmark:'coop', biome:'pasture'});
+  atlasSet(12,54,{landmark:'shed', biome:'garden'});
+  atlasSet(12,36,{landmark:'trough', biome:'pasture'});
+  atlasSet(46,46,{landmark:'bridge', biome:'riparian'});
+  atlasSet(22,5,{landmark:'heron', biome:'marsh'});
+  atlasSet(88,6,{landmark:'wind', biome:'ridge'});
+  atlasSet(80,32,{landmark:'cart', biome:'market'});
+  atlasSet(24,58,{landmark:'bell', biome:'garden'});
+  atlasSet(60,46,{landmark:'ruin', biome:'dust'});
   // Riparian banks along the live stem (not the dry wash, not the garden pond)
   for(let r=0;r<ATLAS_H;r++) for(let c=0;c<ATLAS_W;c++){
     const A = atlasGet(c,r);
@@ -1733,80 +1721,121 @@ function atlasBiomeAt(c, r){
 /* Crops of the atlas. Journey hit regions = origin/size. No mapCell board. */
 const VALLEY_PARCELS = [
   {id:'homestead', name:'Homestead', em:'🏡', kind:'hub', levelId:null, lvIndex:null,
-   origin:{c:0, r:27}, size:{w:9, h:5}, teaser:'home', systemsTaught:[],
+   origin:{c:4, r:52}, size:{w:12, h:6}, teaser:'home', systemsTaught:[],
    neighborParcels:['home_garden','school_garden'], unlockRules:{type:'always'}, landmark:'full_farmstead',
-   desc:'House, barn, and yard on the south-west garden.'},
+   desc:'House and barn — one small corner of the quarter section.'},
   {id:'home_garden', name:'Home Patch', em:'🌱', kind:'plot', levelId:'home', lvIndex:0,
-   origin:{c:2, r:22}, size:{w:6, h:6}, teaser:'basics',
+   origin:{c:8, r:58}, size:{w:6, h:6}, teaser:'basics',
    systemsTaught:['feed_dead','compost','diversity'], neighborParcels:['homestead','back_paddock','school_garden'],
-   unlockRules:{type:'always'}, landmark:'shed_fence', desc:'Kitchen garden above the floodplain — pond, rill, and swale.'},
+   unlockRules:{type:'always'}, landmark:'shed_fence', desc:'A small kitchen garden by the house, above the floodplain.'},
   {id:'back_paddock', name:'Back Paddock', em:'🐄', kind:'plot', levelId:'field', lvIndex:1,
-   origin:{c:2, r:12}, size:{w:8, h:8}, teaser:'herd',
-   systemsTaught:['cattle','chicken','team_graze','clover'], neighborParcels:['home_garden','creek_bend','orchard_slope'],
-   unlockRules:{type:'parcel_cleared', parcelId:'home_garden'}, landmark:'fence_trough', desc:'Folds around the stock pond.'},
+   origin:{c:10, r:32}, size:{w:8, h:8}, teaser:'herd',
+   systemsTaught:['cattle','chicken','team_graze','clover'], neighborParcels:['home_garden','north_folds','west_folds'],
+   unlockRules:{type:'parcel_cleared', parcelId:'home_garden'}, landmark:'fence_trough', desc:'One grazing fold around the stock pond.'},
   {id:'creek_bend', name:'Creek Bend', em:'🏞️', kind:'plot', levelId:'creek', lvIndex:2,
-   origin:{c:12, r:1}, size:{w:9, h:9}, teaser:'water',
+   origin:{c:28, r:6}, size:{w:9, h:9}, teaser:'water',
    systemsTaught:['buffers','pond','runoff','water_hud'], neighborParcels:['back_paddock','river_reach','marsh_finger'],
    unlockRules:{type:'parcel_cleared', parcelId:'back_paddock'}, landmark:'bridge_post', desc:'Creek flows east into the same main river.'},
   {id:'dust_flats', name:'Dust Flats', em:'🏜️', kind:'plot', levelId:'flats', lvIndex:3,
-   origin:{c:26, r:15}, size:{w:11, h:11}, teaser:'salt',
-   systemsTaught:['goats','salt','hard_land'], neighborParcels:['river_reach','wind_ridge','market_cross'],
+   origin:{c:53, r:40}, size:{w:11, h:11}, teaser:'salt',
+   systemsTaught:['goats','salt','hard_land'], neighborParcels:['south_reach','wind_ridge','market_cross'],
    unlockRules:{type:'parcel_cleared', parcelId:'back_paddock'}, landmark:'ruin_windmill',
    desc:'Dry wash meets the river on the south bank.', grantUnlocks:['goat','wetland']},
   {id:'orchard_slope', name:'Orchard Slope', em:'🍎', kind:'plot', levelId:'orchard', lvIndex:4,
-   origin:{c:13, r:12}, size:{w:8, h:8}, teaser:'perennials',
-   systemsTaught:['orchard','berrybush','beehive'], neighborParcels:['back_paddock','market_cross'],
+   origin:{c:54, r:22}, size:{w:8, h:8}, teaser:'perennials',
+   systemsTaught:['orchard','berrybush','beehive'], neighborParcels:['hay_field','orchard_block','market_cross'],
    unlockRules:{type:'parcel_cleared', parcelId:'back_paddock'}, landmark:'stump_rows',
-   desc:'Perennial food forest.', grantUnlocks:['orchard','berrybush','beehive']},
+   desc:'Perennial food forest east of the river.', grantUnlocks:['orchard','berrybush','beehive']},
   {id:'marsh_finger', name:'Marsh Finger', em:'🦩', kind:'plot', levelId:'marsh', lvIndex:5,
-   origin:{c:4, r:1}, size:{w:8, h:8}, teaser:'wetland',
-   systemsTaught:['wetland','ducks','filters'], neighborParcels:['creek_bend'],
+   origin:{c:20, r:4}, size:{w:8, h:8}, teaser:'wetland',
+   systemsTaught:['wetland','ducks','filters'], neighborParcels:['creek_bend','wet_meadow'],
    unlockRules:{type:'parcel_cleared', parcelId:'creek_bend'}, landmark:'heron',
    desc:'Wetland tributary into the creek.', grantUnlocks:['wetland','duckT']},
   {id:'wind_ridge', name:'Wind Ridge', em:'🌬️', kind:'plot', levelId:'wind', lvIndex:6,
-   origin:{c:38, r:1}, size:{w:8, h:8}, teaser:'weather',
-   systemsTaught:['windmill','solar','raintank'], neighborParcels:['dust_flats','market_cross'],
+   origin:{c:84, r:4}, size:{w:8, h:8}, teaser:'weather',
+   systemsTaught:['windmill','solar','raintank'], neighborParcels:['woodlot','dust_flats'],
    unlockRules:{type:'parcel_cleared', parcelId:'dust_flats'}, landmark:'wind',
-   desc:'High pond and woodlot above the valley.', grantUnlocks:['windmill','solar','raintank','well']},
+   desc:'High pond and woodlot on the north-east ridge.', grantUnlocks:['windmill','solar','raintank','well']},
   {id:'market_cross', name:'Market Cross', em:'🏪', kind:'plot', levelId:'market', lvIndex:7,
-   origin:{c:38, r:12}, size:{w:8, h:8}, teaser:'trade',
-   systemsTaught:['market','silo','sheep','pig'], neighborParcels:['orchard_slope','creek_bend','dust_flats'],
+   origin:{c:78, r:28}, size:{w:8, h:8}, teaser:'trade',
+   systemsTaught:['market','silo','sheep','pig'], neighborParcels:['orchard_slope','hay_field','dust_flats'],
    unlockRules:{type:'parcel_cleared_any', parcelIds:['orchard_slope','creek_bend']}, landmark:'cart',
-   desc:'Lane-end trade yard east of the river.', grantUnlocks:['market','silo','sheep','pig','fence']},
+   desc:'Lane-end trade yard east of the hay field.', grantUnlocks:['market','silo','sheep','pig','fence']},
   {id:'school_garden', name:'School Garden', em:'📚', kind:'plot', levelId:'school', lvIndex:8,
-   origin:{c:14, r:22}, size:{w:6, h:6}, teaser:'teach-back',
+   origin:{c:22, r:56}, size:{w:6, h:6}, teaser:'teach-back',
    systemsTaught:['basics_mastery'], neighborParcels:['home_garden','homestead'],
    unlockRules:{type:'parcel_cleared', parcelId:'home_garden'}, landmark:'bell',
-   desc:'Humble teach-back plot.', grantUnlocks:['greenhouse','wormfarm','mushroom']},
+   desc:'Humble teach-back plot by the lane.', grantUnlocks:['greenhouse','wormfarm','mushroom']},
   {id:'river_reach', name:'River Reach', em:'🌄', kind:'plot', levelId:'valley', lvIndex:9,
-   origin:{c:21, r:1}, size:{w:14, h:14}, teaser:'all',
-   systemsTaught:['shop','regions','wildlife_full'], neighborParcels:['creek_bend','dust_flats','marsh_finger'],
+   origin:{c:37, r:6}, size:{w:14, h:14}, teaser:'all',
+   systemsTaught:['shop','regions','wildlife_full'], neighborParcels:['creek_bend','south_reach','marsh_finger'],
    unlockRules:{type:'parcel_cleared_all', parcelIds:['creek_bend','dust_flats']}, landmark:'unique_valley',
    desc:'Main river corridor — the same stem as Creek Bend.'},
+  {id:'north_folds', name:'North Folds', em:'🌿', kind:'plot', leftover:true, levelId:null, lvIndex:null,
+   origin:{c:8, r:16}, size:{w:18, h:16}, teaser:'herd',
+   systemsTaught:[], neighborParcels:['back_paddock','wet_meadow'],
+   unlockRules:{type:'leftover'}, landmark:'fence',
+   desc:'More paddock folds north of the working herd.'},
+  {id:'west_folds', name:'West Folds', em:'🌿', kind:'plot', leftover:true, levelId:null, lvIndex:null,
+   origin:{c:4, r:40}, size:{w:16, h:12}, teaser:'herd',
+   systemsTaught:[], neighborParcels:['back_paddock','homestead'],
+   unlockRules:{type:'leftover'}, landmark:'fence',
+   desc:'Lower paddock folds between the house and the herd.'},
+  {id:'wet_meadow', name:'Wet Meadow', em:'🦢', kind:'plot', leftover:true, levelId:null, lvIndex:null,
+   origin:{c:2, r:2}, size:{w:18, h:14}, teaser:'wetland',
+   systemsTaught:[], neighborParcels:['marsh_finger'],
+   unlockRules:{type:'leftover'}, landmark:'heron',
+   desc:'Wilder marsh headwaters on the north-west.'},
+  {id:'orchard_block', name:'Orchard Block', em:'🍏', kind:'plot', leftover:true, levelId:null, lvIndex:null,
+   origin:{c:54, r:10}, size:{w:16, h:12}, teaser:'perennials',
+   systemsTaught:[], neighborParcels:['orchard_slope','river_reach'],
+   unlockRules:{type:'leftover'}, landmark:'stump_rows',
+   desc:'The larger orchard stand north of the playable slope.'},
+  {id:'hay_field', name:'Hay Field', em:'🌾', kind:'plot', leftover:true, levelId:null, lvIndex:null,
+   origin:{c:70, r:18}, size:{w:16, h:10}, teaser:'cover',
+   systemsTaught:[], neighborParcels:['orchard_slope','market_cross'],
+   unlockRules:{type:'leftover'}, landmark:'cart',
+   desc:'Hay and cover ground east of the orchard.'},
+  {id:'south_reach', name:'South Reach', em:'💧', kind:'plot', leftover:true, levelId:null, lvIndex:null,
+   origin:{c:42, r:20}, size:{w:12, h:20}, teaser:'water',
+   systemsTaught:[], neighborParcels:['river_reach','dust_flats'],
+   unlockRules:{type:'leftover'}, landmark:'bridge_post',
+   desc:'The long stem south of River Reach, where the wash arrives.'},
+  {id:'woodlot', name:'Woodlot', em:'🌲', kind:'plot', leftover:true, levelId:null, lvIndex:null,
+   origin:{c:70, r:2}, size:{w:14, h:10}, teaser:'weather',
+   systemsTaught:[], neighborParcels:['wind_ridge'],
+   unlockRules:{type:'leftover'}, landmark:'wind',
+   desc:'Evergreen woodlot on the ridge shoulder.'},
+  {id:'dust_scrub', name:'Dust Scrub', em:'🌵', kind:'plot', leftover:true, levelId:null, lvIndex:null,
+   origin:{c:66, r:44}, size:{w:24, h:16}, teaser:'salt',
+   systemsTaught:[], neighborParcels:['dust_flats'],
+   unlockRules:{type:'leftover'}, landmark:'ruin',
+   desc:'The wider south-east scrub beyond the playable flats.'},
 ];
 VALLEY_PARCELS.forEach(P=>{
   const w = (P.size && P.size.w) || 0, h = (P.size && P.size.h) || 0;
   P.mapXY = {x: (P.origin.c + w/2)/ATLAS_W, y: (P.origin.r + h/2)/ATLAS_H};
 });
-/** Centerline of the live stem (cols 24–25 + the slight meander). Not the creek. */
+/** Centerline of the live stem (cols 48–49 + the slight meander). Not the creek. */
 function atlasStemCenterline(){
   const pts = [];
-  for(let r=0;r<=22;r++){
+  for(let r=0;r<=48;r++){
     let s=0, n=0;
-    for(let c=23;c<=27;c++){
+    for(let c=47;c<=51;c++){
       const A = atlasGet(c,r);
       if(A && A.water==='main'){ s += c; n++; }
     }
-    pts.push({c: n ? (s/n)+0.5 : 24.5, r: r+0.5});
+    pts.push({c: n ? (s/n)+0.5 : 48.5, r: r+0.5});
   }
   return pts;
 }
 const VALLEY_CONNECTIONS = [
   ['homestead','home_garden'],['home_garden','back_paddock'],['home_garden','school_garden'],
-  ['back_paddock','creek_bend'],['back_paddock','orchard_slope'],['back_paddock','dust_flats'],
+  ['back_paddock','north_folds'],['back_paddock','west_folds'],
   ['creek_bend','river_reach'],['creek_bend','marsh_finger'],['creek_bend','market_cross'],
-  ['dust_flats','river_reach'],['dust_flats','wind_ridge'],
-  ['orchard_slope','market_cross'],
+  ['marsh_finger','wet_meadow'],['river_reach','south_reach'],['south_reach','dust_flats'],
+  ['dust_flats','wind_ridge'],['orchard_slope','orchard_block'],['orchard_slope','hay_field'],
+  ['orchard_slope','market_cross'],['hay_field','market_cross'],['wind_ridge','woodlot'],
 ];
 function valleyParcel(id){
   return VALLEY_PARCELS.find(P=>P.id===id) || null;
@@ -4836,7 +4865,7 @@ function openPropertyMap(){
   }
   ensureParcelState(camp);
   const STATE_ICON = {locked:'🔒', available:'○', in_progress:'▶', restored:'✅', mastered:'⭐', hub:'🏡'};
-  const plots = VALLEY_PARCELS.filter(P=>P.kind==='plot').map(P=>{
+  const plots = VALLEY_PARCELS.filter(P=>P.kind==='plot' && !P.leftover).map(P=>{
     const ms = parcelMapState(P, camp);
     const unlocked = ms !== 'locked';
     const done = ms==='restored' || ms==='mastered';
@@ -12835,7 +12864,7 @@ function openScrapbook(){
   showModal(`<h2>📔 Your scrapbook</h2><div class="sub">${n? n+' moment'+(n===1?'':'s')+' earned — keep going.':'Light retention loop — moments you earn.'}</div>${firstLine}${rows}
     <div class="modalbtns"><button class="mbtn" data-act="close">Close</button></div>`);
 }
-/** Journey view of the 48×32 atlas — one farm picture, not a cell board. */
+/** Journey view of the 96×64 (3∶2) quarter-section atlas — one farm picture, not a cell board. */
 const VALLEY_VIEW = {w:1000, h:720, sky:86, pad:18};
 function atlasN2(c, r){
   return ((Math.sin(c*12.9898 + r*78.233)*43758.5453)%1 + 1)%1;
@@ -12926,8 +12955,8 @@ function drawSprAt(ctx, name, c, r, w, h){
   return true;
 }
 /**
- * Project an atlas-space image onto the journey view (1:1 with the 48×32 grid).
- * Source (0,0) = NW. House SW, marsh NW, river cols 24–25, dust SE.
+ * Project an atlas-space image onto the journey view (1:1 with the 96×64 grid).
+ * Source (0,0) = NW. House SW (small), marsh NW, river cols 48–49, dust SE.
  * A later painted skin uses this same warp — hotspots do not move.
  */
 function blitAtlasImageToView(ctx, img){
