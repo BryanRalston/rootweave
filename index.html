@@ -12939,6 +12939,121 @@ function blitAtlasImageToView(ctx, img){
 function blitValleyAtlasSkin(ctx, img){
   return blitAtlasImageToView(ctx, img);
 }
+function catmullPts(pts, segs){
+  if(!pts || pts.length<2) return (pts||[]).slice();
+  const out = [];
+  for(let i=0;i<pts.length-1;i++){
+    const p0 = pts[Math.max(0,i-1)], p1 = pts[i];
+    const p2 = pts[i+1], p3 = pts[Math.min(pts.length-1,i+2)];
+    for(let s=0;s<segs;s++){
+      const t = s/segs, t2 = t*t, t3 = t2*t;
+      out.push({
+        x: 0.5*((2*p1.x)+(-p0.x+p2.x)*t+(2*p0.x-5*p1.x+4*p2.x-p3.x)*t2+(-p0.x+3*p1.x-3*p2.x+p3.x)*t3),
+        y: 0.5*((2*p1.y)+(-p0.y+p2.y)*t+(2*p0.y-5*p1.y+4*p2.y-p3.y)*t2+(-p0.y+3*p1.y-3*p2.y+p3.y)*t3)
+      });
+    }
+  }
+  out.push(pts[pts.length-1]);
+  return out;
+}
+function fillWidthStrip(ctx, pts, halfW, fill){
+  if(!pts || pts.length<2) return;
+  const L = [], R = [];
+  for(let i=0;i<pts.length;i++){
+    const a = pts[Math.max(0,i-1)], b = pts[Math.min(pts.length-1,i+1)];
+    const dx = b.x-a.x, dy = b.y-a.y, len = Math.hypot(dx,dy)||1;
+    const nx = -dy/len, ny = dx/len;
+    const w = (typeof halfW==='function') ? halfW(i, i/(pts.length-1)) : halfW;
+    L.push({x: pts[i].x+nx*w, y: pts[i].y+ny*w});
+    R.push({x: pts[i].x-nx*w, y: pts[i].y-ny*w});
+  }
+  ctx.fillStyle = fill;
+  ctx.beginPath();
+  ctx.moveTo(L[0].x, L[0].y);
+  for(let i=1;i<L.length;i++) ctx.lineTo(L[i].x, L[i].y);
+  for(let i=R.length-1;i>=0;i--) ctx.lineTo(R[i].x, R[i].y);
+  ctx.closePath();
+  ctx.fill();
+}
+function pondShore(cx, cy, rx, ry, seed, organic){
+  const pts = [];
+  const n = 20;
+  for(let i=0;i<n;i++){
+    const a = i/n*Math.PI*2;
+    const wob = 1 + organic*Math.sin(a*3 + seed*8.1)*0.55 + organic*Math.sin(a*5 + seed*3.4)*0.32;
+    pts.push({x: cx+Math.cos(a)*rx*wob, y: cy+Math.sin(a)*ry*wob});
+  }
+  return pts;
+}
+function fillPoly(ctx, pts, fill){
+  if(!pts || pts.length<3) return;
+  ctx.fillStyle = fill;
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.closePath();
+  ctx.fill();
+}
+function drawFarmhouseMass(ctx, p, s){
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.scale(s, s);
+  ctx.fillStyle = 'rgba(32,22,10,0.32)';
+  ctx.beginPath(); ctx.ellipse(6, 10, 78, 22, 0, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#e8e2d4';
+  ctx.beginPath();
+  ctx.moveTo(-56, -8); ctx.lineTo(-56, -72); ctx.lineTo(8, -118); ctx.lineTo(70, -72); ctx.lineTo(70, -8);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#6d5340';
+  ctx.beginPath();
+  ctx.moveTo(-64, -68); ctx.lineTo(8, -124); ctx.lineTo(80, -68); ctx.lineTo(8, -52);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#8a3a32';
+  ctx.fillRect(28, -116, 12, 28);
+  ctx.fillStyle = '#d8d0c0';
+  ctx.fillRect(-48, -22, 46, 18);
+  ctx.strokeStyle = '#cfc6b4';
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(-44, -22); ctx.lineTo(-44, -4); ctx.moveTo(-26, -22); ctx.lineTo(-26, -4); ctx.stroke();
+  ctx.fillStyle = '#5a3a22';
+  ctx.fillRect(-32, -18, 12, 22);
+  ctx.fillStyle = '#7aa0b8';
+  ctx.fillRect(-50, -58, 14, 14);
+  ctx.fillRect(-8, -58, 14, 14);
+  ctx.fillRect(28, -54, 14, 14);
+  ctx.restore();
+}
+function drawBarnMass(ctx, p, s){
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.scale(s, s);
+  ctx.fillStyle = 'rgba(32,22,10,0.28)';
+  ctx.beginPath(); ctx.ellipse(4, 8, 58, 16, 0, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#a33a2e';
+  ctx.fillRect(-48, -70, 96, 66);
+  ctx.fillStyle = '#5a4636';
+  ctx.beginPath(); ctx.moveTo(-54, -68); ctx.lineTo(0, -108); ctx.lineTo(54, -68); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#f2ece0';
+  ctx.fillRect(-16, -36, 32, 32);
+  ctx.strokeStyle = '#f2ece0';
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(-16, -20); ctx.lineTo(16, -20); ctx.moveTo(0, -36); ctx.lineTo(0, -4); ctx.stroke();
+  ctx.restore();
+}
+function drawCoopMass(ctx, p, s){
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.scale(s, s);
+  ctx.fillStyle = 'rgba(32,22,10,0.24)';
+  ctx.beginPath(); ctx.ellipse(2, 6, 28, 10, 0, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#d8b48a';
+  ctx.fillRect(-22, -28, 44, 26);
+  ctx.fillStyle = '#b85a3a';
+  ctx.beginPath(); ctx.moveTo(-26, -26); ctx.lineTo(0, -48); ctx.lineTo(26, -26); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#5a3a22';
+  ctx.beginPath(); ctx.arc(-2, -12, 6, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
+}
 function paintValleyAtlas(cv){
   const V = VALLEY_VIEW;
   const ctx = cv.getContext('2d');
@@ -13065,83 +13180,157 @@ function paintValleyAtlas(cv){
   const houseTier = Math.max(1, Math.min(5, hsOn ? (hs.houseTier|0) : 1));
 
   if(!usedSkin){
-    // River in a bed — soil banks, then water, then a thin morning highlight
-    paintRibbon(atlasPathExact(stem), 'rgba(72,58,32,0.62)', 30);
-    paintRibbon(atlasPath(creek), 'rgba(72,58,32,0.52)', 18);
-    paintRibbon(atlasPathExact(stem), 'rgba(62,78,42,0.42)', 22);
-    paintRibbon(atlasPath(creek), 'rgba(62,78,42,0.35)', 14);
-    paintRibbon(atlasPathExact(stem), mixHex('#1f5474', '#3a7a96', 0.38-murk*0.22), 12);
-    paintRibbon(atlasPath(creek), mixHex('#1f5474', '#3a7a96', 0.38-murk*0.22), 7);
-    paintRibbon(atlasPathExact(stem), 'rgba(210,236,242,'+(0.18-murk*0.08)+')', 2);
-    paintRibbon(atlasPath(creek), 'rgba(210,236,242,'+(0.14-murk*0.06)+')', 1.4);
-    paintRibbon(atlasPath(ATLAS_GEO.wash), 'rgba(120,88,48,0.4)', 10);
-    paintRibbon(atlasPath(ATLAS_GEO.wash), 'rgba(176,138,78,0.42)', 5);
+    const last = stem[stem.length-1] || {c:24.5, r:22.5};
+    const paintedStem = stem.map((p,i)=>({
+      c: p.c + Math.sin(p.r*0.48)*0.28 + Math.sin(p.r*1.1)*0.08,
+      r: p.r
+    })).concat([
+      {c: last.c+0.2, r: 23.4},
+      {c: last.c+0.55, r: 24.8},
+      {c: last.c+1.25, r: 26.6},
+      {c: last.c+2.35, r: 28.4},
+      {c: last.c+3.6, r: 30.4}
+    ]);
+    const stemPts = catmullPts(atlasPathExact(paintedStem), 6);
+    const creekPts = catmullPts(atlasPath(creek), 8);
+    const liveN = stem.length * 6;
+    const water = document.createElement('canvas');
+    water.width = V.w; water.height = V.h;
+    const wx = water.getContext('2d');
+    const deep = mixHex('#12343e', '#1a4a52', 0.25-murk*0.2);
+    const body = mixHex('#1b4e5c', '#2a6a72', 0.32-murk*0.18);
+    const rim = mixHex('#6ea8b0', '#8ec0c4', 0.4-murk*0.15);
+    function stemHalf(i, t){
+      const fade = t > 0.78 ? Math.max(0.18, 1 - (t-0.78)/0.22) : 1;
+      const meander = 1 + 0.18*Math.sin(t*22) + (t>0.22 && t<0.38 ? 0.22 : 0);
+      return (15 * meander) * fade;
+    }
+    function creekHalf(i, t){ return 5.8 + 1.8*Math.sin(t*16); }
+    fillWidthStrip(wx, stemPts, (i,t)=> stemHalf(i,t)+10, 'rgba(70,54,30,0.42)');
+    fillWidthStrip(wx, creekPts, (i,t)=> creekHalf(i,t)+7, 'rgba(70,54,30,0.36)');
+    fillWidthStrip(wx, stemPts, (i,t)=> stemHalf(i,t)+5, 'rgba(58,72,40,0.28)');
+    fillWidthStrip(wx, creekPts, (i,t)=> creekHalf(i,t)+3.5, 'rgba(58,72,40,0.22)');
+    fillWidthStrip(wx, stemPts, stemHalf, body);
+    fillWidthStrip(wx, creekPts, creekHalf, body);
+    fillWidthStrip(wx, stemPts, (i,t)=> stemHalf(i,t)*0.42, deep);
+    fillWidthStrip(wx, creekPts, (i,t)=> creekHalf(i,t)*0.4, deep);
+    fillWidthStrip(wx, stemPts, (i,t)=> Math.max(1.1, stemHalf(i,t)*0.16), rim);
+    fillWidthStrip(wx, creekPts, (i,t)=> 1.1, 'rgba(190,226,228,0.22)');
+    const tail = stemPts.slice(Math.max(0, liveN-4));
+    fillWidthStrip(wx, tail, (i,t)=> (12-t*7), 'rgba(62,86,48,0.28)');
+    ctx.save();
+    ctx.filter = 'blur(2.8px)';
+    ctx.drawImage(water, 0, 0);
+    ctx.filter = 'none';
+    ctx.globalAlpha = 0.88;
+    ctx.drawImage(water, 0, 0);
+    ctx.restore();
 
+    const washPts = catmullPts(atlasPath(ATLAS_GEO.wash), 6);
+    fillWidthStrip(ctx, washPts, (i,t)=> 7.5 - t*2.2, 'rgba(132,102,58,0.32)');
+    fillWidthStrip(ctx, washPts, (i,t)=> 3.4 - t, 'rgba(168,136,82,0.28)');
+
+    const POND_LOOK = {
+      garden:{rx:15, ry:11, org:0.22, reed:0.35, water:'#245a4e', rim:'#3a6a48', seed:1.1},
+      stock:{rx:24, ry:16, org:0.28, reed:0.48, water:'#1a4c4a', rim:'#3a6244', seed:2.4},
+      high:{rx:13, ry:11, org:0.12, reed:0.12, water:'#164450', rim:'#2a5a58', seed:3.7},
+      marshA:{rx:22, ry:15, org:0.48, reed:0.62, water:'#1a4038', rim:'#2e5440', seed:4.2},
+      marshB:{rx:19, ry:17, org:0.52, reed:0.68, water:'#173c34', rim:'#2a4e3c', seed:5.8}
+    };
     Object.keys(ATLAS_GEO.ponds).forEach(k=>{
       const b = ATLAS_GEO.ponds[k];
+      const look = POND_LOOK[k] || POND_LOOK.stock;
       const p = atlasToView(b.c + b.w/2, b.r + b.h/2);
-      const rim = atlasToView(b.c + b.w, b.r + b.h);
-      const rw = Math.max(16, Math.abs(rim.x-p.x)+11);
-      const rh = Math.max(12, Math.abs(rim.y-p.y)+9);
-      ctx.fillStyle = 'rgba(48,38,20,0.45)';
-      ctx.beginPath(); ctx.ellipse(p.x, p.y+3, rw+7, rh+5, 0, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = mixHex('#163e40', '#2a6a6e', 0.28-murk*0.15);
-      ctx.beginPath(); ctx.ellipse(p.x, p.y, rw, rh, 0, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = 'rgba(210,236,242,'+(0.24-murk*0.1)+')';
-      ctx.beginPath(); ctx.ellipse(p.x-rw*0.22, p.y-rh*0.3, rw*0.34, rh*0.2, 0, 0, Math.PI*2); ctx.fill();
+      const mud = pondShore(p.x, p.y+2, look.rx+6, look.ry+5, look.seed, look.org+0.08);
+      const shore = pondShore(p.x, p.y, look.rx, look.ry, look.seed, look.org);
+      const inner = pondShore(p.x+look.rx*0.04, p.y+look.ry*0.06, look.rx*0.62, look.ry*0.58, look.seed+1, look.org*0.7);
+      fillPoly(ctx, mud, 'rgba(48,38,20,0.4)');
+      fillPoly(ctx, pondShore(p.x, p.y, look.rx+3, look.ry+3, look.seed, look.org), look.rim);
+      fillPoly(ctx, shore, look.water);
+      fillPoly(ctx, inner, mixHex(look.water, '#0e2a2e', 0.35+murk*0.15));
+      ctx.fillStyle = 'rgba(200,228,220,'+(0.16-murk*0.06)+')';
+      ctx.beginPath();
+      ctx.ellipse(p.x-look.rx*0.28, p.y-look.ry*0.32, look.rx*0.22, look.ry*0.1, -0.4, 0, Math.PI*2);
+      ctx.fill();
+      if(look.reed>0.1){
+        ctx.strokeStyle = 'rgba(46,72,40,'+(0.35+look.reed*0.25)+')';
+        ctx.lineWidth = 1.2;
+        for(let i=0;i<Math.round(8+look.reed*10);i++){
+          const a = (i*2.3 + look.seed) % (Math.PI*2);
+          const x = p.x + Math.cos(a)*(look.rx+2);
+          const y = p.y + Math.sin(a)*(look.ry+2);
+          ctx.beginPath(); ctx.moveTo(x, y+3); ctx.lineTo(x+atlasN2(i,3)*2-1, y-6-look.reed*4); ctx.stroke();
+        }
+      }
     });
 
     const beds = [[3.1,23.3,1.8,1.2],[4.8,23.2,1.5,1.15],[3.3,24.4,1.7,1.1]];
     beds.forEach(([c,r,w,h],i)=>{
       const a = atlasToView(c, r), b = atlasToView(c+w, r+h);
-      ctx.fillStyle = mixHex('#6b4a28', '#4a7a38', 0.28 + atlasN2(i,3)*0.22);
+      ctx.fillStyle = mixHex('#5a3e24', '#3e6a34', 0.3 + atlasN2(i,3)*0.2);
       ctx.beginPath();
       if(ctx.roundRect) ctx.roundRect(a.x, a.y, Math.max(8,b.x-a.x), Math.max(6,b.y-a.y), 5);
       else ctx.rect(a.x, a.y, Math.max(8,b.x-a.x), Math.max(6,b.y-a.y));
       ctx.fill();
     });
 
-    function beltLine(c0, c1, r0, r1){
+    function canopyBelt(c0, c1, r0, r1, fat){
       const pts = [];
-      for(let r=r0;r<=r1;r++) pts.push({c:(c0+c1)*0.5, r:r+0.5});
-      paintRibbon(atlasPathExact(pts), 'rgba(22,42,18,0.55)', 18 + (c1-c0)*4);
-      paintRibbon(atlasPathExact(pts), 'rgba(40,78,34,0.7)', 11 + (c1-c0)*3);
+      for(let r=r0;r<=r1;r+=0.55) pts.push(atlasToView((c0+c1)*0.5 + Math.sin(r*1.3)*0.15, r));
+      const smooth = catmullPts(pts, 4);
+      fillWidthStrip(ctx, smooth, fat+6, 'rgba(16,28,14,0.28)');
+      fillWidthStrip(ctx, smooth, fat, 'rgba(28,58,28,0.78)');
+      fillWidthStrip(ctx, smooth, fat*0.55, 'rgba(46,86,40,0.55)');
     }
-    beltLine(0, 1, 24, 30);
-    beltLine(11, 12, 11, 19);
-    beltLine(43, 46, 1, 5);
-    paintRibbon(atlasPath([{c:13,r:22},{c:13,r:26}]), 'rgba(32,62,28,0.55)', 8);
-    paintRibbon(atlasPath([{c:2,r:20},{c:8,r:20}]), 'rgba(32,62,28,0.5)', 8);
-    paintRibbon(atlasPath([{c:4,r:12},{c:4,r:14}]), 'rgba(32,62,28,0.5)', 7);
-    paintRibbon(atlasPath([{c:7,r:12},{c:7,r:14}]), 'rgba(32,62,28,0.5)', 7);
+    canopyBelt(0, 1.2, 23.6, 30.4, 16);
+    canopyBelt(11, 12.2, 11, 19.2, 15);
+    const ridge = [];
+    for(let r=1;r<=5.4;r+=0.45) ridge.push(atlasToView(44.4+Math.sin(r*1.7)*0.4, r));
+    const ridgeS = catmullPts(ridge, 4);
+    fillWidthStrip(ctx, ridgeS, 28, 'rgba(16,28,14,0.3)');
+    fillWidthStrip(ctx, ridgeS, 22, 'rgba(30,62,30,0.8)');
+    fillWidthStrip(ctx, ridgeS, 13, 'rgba(48,88,42,0.5)');
+    [[13,22,13,26,7],[2,20,8,20,8],[4,12,4,14,6],[7,12,7,14,6]].forEach(([c0,r0,c1,r1,fat])=>{
+      const pts = catmullPts([atlasToView(c0,r0), atlasToView(c1,r1)], 5);
+      fillWidthStrip(ctx, pts, fat, 'rgba(32,64,30,0.62)');
+    });
+    const shade = catmullPts([atlasToView(4.6,14.1), atlasToView(6.4,14.05), atlasToView(7.1,14.3)], 4);
+    fillWidthStrip(ctx, shade, 11, 'rgba(24,52,26,0.72)');
+    fillWidthStrip(ctx, shade, 6, 'rgba(40,78,36,0.5)');
 
-    for(let r=0;r<ATLAS_H;r++) for(let c=0;c<ATLAS_W;c++){
-      const A = atlasGet(c,r);
-      if(!A) continue;
-      const puff = (A.feature==='woodlot' && ((c+r)%2===0)) || A.landmark==='stump';
-      if(!puff) continue;
-      const p = atlasToView(c+0.45, r+0.55);
-      const n = atlasN2(c,r);
-      const wood = A.feature==='woodlot';
-      ctx.fillStyle = 'rgba(18,28,14,0.28)';
-      ctx.beginPath(); ctx.ellipse(p.x, p.y+5, wood?18:9, wood?8:4, 0, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = mixHex('#1a381c', '#3a6a30', n);
-      ctx.beginPath();
-      ctx.ellipse(p.x, p.y-3, wood?17+n*4:9+n*2, wood?13+n*3:7+n*2, 0, 0, Math.PI*2);
-      ctx.fill();
-    }
+    [14, 16].forEach((row, ri)=>{
+      const rowPts = [];
+      for(let c=14;c<=19;c+=1){
+        if(c===15) continue;
+        rowPts.push(atlasToView(c+0.15, row+0.15+ri*0.05));
+      }
+      const rs = catmullPts(rowPts, 5);
+      fillWidthStrip(ctx, rs, 7, 'rgba(48,36,18,0.22)');
+      fillWidthStrip(ctx, rs, 9, 'rgba(36,70,32,0.4)');
+      rowPts.forEach((p,i)=>{
+        const n = atlasN2(i+ri, row);
+        ctx.fillStyle = 'rgba(18,30,14,0.28)';
+        ctx.beginPath(); ctx.ellipse(p.x, p.y+5, 11, 5, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = mixHex('#2a4e26', '#4a7a38', n);
+        ctx.beginPath(); ctx.ellipse(p.x, p.y-4, 10+n*3, 8+n*2, 0.2, 0, Math.PI*2); ctx.fill();
+      });
+    });
 
     paintRibbon(atlasPath(ATLAS_GEO.gardenRill), 'rgba(46,68,40,0.5)', 4);
     paintRibbon(atlasPath(ATLAS_GEO.orchardDrain), 'rgba(46,68,40,0.4)', 3.5);
     paintRibbon(atlasPath(ATLAS_GEO.overflow), 'rgba(58,78,48,0.42)', 3.2);
     paintRibbon(atlasPath(ATLAS_GEO.overflowSpur), 'rgba(58,78,48,0.32)', 2.6);
-    paintRibbon(atlasPath(ATLAS_GEO.lane), 'rgba(88,62,28,0.5)', 10);
-    paintRibbon(atlasPath(ATLAS_GEO.paddockSpur), 'rgba(88,62,28,0.34)', 6);
-    paintRibbon(atlasPath(ATLAS_GEO.orchardSpur), 'rgba(88,62,28,0.34)', 6);
-    paintRibbon(atlasPath(ATLAS_GEO.lane), 'rgba(176,137,72,0.78)', 5);
-    paintRibbon(atlasPath(ATLAS_GEO.paddockSpur), 'rgba(176,137,72,0.55)', 3);
-    paintRibbon(atlasPath(ATLAS_GEO.orchardSpur), 'rgba(176,137,72,0.55)', 3);
-    paintRibbon(atlasPath(ATLAS_GEO.lane), 'rgba(92,68,32,0.3)', 1.3);
+
+    function dirtLane(points, half){
+      const pts = catmullPts(atlasPath(points), 6);
+      fillWidthStrip(ctx, pts, half+2.2, 'rgba(62,44,24,0.45)');
+      fillWidthStrip(ctx, pts, half, 'rgba(122,90,52,0.8)');
+      fillWidthStrip(ctx, pts, half*0.42, 'rgba(148,112,68,0.55)');
+      fillWidthStrip(ctx, pts, 0.7, 'rgba(78,56,30,0.35)');
+    }
+    dirtLane(ATLAS_GEO.lane, 6.2);
+    dirtLane(ATLAS_GEO.paddockSpur, 3.6);
+    dirtLane(ATLAS_GEO.orchardSpur, 3.6);
 
     const br = atlasToView(22.4, 4.55);
     const br2 = atlasToView(23.6, 4.7);
@@ -13155,27 +13344,26 @@ function paintValleyAtlas(cv){
   }
 
   if(!usedSkin){
-    const yard = atlasToView(4.2, 28.4);
-    ctx.fillStyle = 'rgba(40,28,12,0.28)';
-    ctx.beginPath(); ctx.ellipse(yard.x, yard.y+10, 58, 20, 0, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = 'rgba(90,110,60,0.25)';
-    ctx.beginPath(); ctx.ellipse(yard.x+6, yard.y+2, 36, 14, 0, 0, Math.PI*2); ctx.fill();
+    const yard = atlasToView(4.4, 28.5);
+    ctx.fillStyle = 'rgba(52,40,22,0.28)';
+    ctx.beginPath(); ctx.ellipse(yard.x+18, yard.y+12, 92, 28, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = 'rgba(86,108,58,0.22)';
+    ctx.beginPath(); ctx.ellipse(yard.x+10, yard.y+2, 70, 20, 0, 0, Math.PI*2); ctx.fill();
 
-    for(let r=0;r<ATLAS_H;r++) for(let c=0;c<ATLAS_W;c++){
-      const A = atlasGet(c,r);
-      if(!A || !A.landmark) continue;
-      if(A.landmark==='barn') drawSprAt(ctx, 'barn', c+0.4, r+0.9, 70, 58);
-      if(A.landmark==='coop') drawSprAt(ctx, 'coop', c+0.3, r+0.7, 52, 44);
-      if(A.landmark==='cart') drawSprAt(ctx, 'market', c+0.3, r+0.6, 58, 50);
-      if(A.landmark==='wind') drawSprAt(ctx, 'windmill', c+0.2, r+1.0, 64, 78);
-      if(A.landmark==='compost'){
-        const p = atlasToView(c+0.5, r+0.5);
-        ctx.fillStyle = 'rgba(92,62,28,0.85)';
-        ctx.beginPath(); ctx.ellipse(p.x, p.y, 10, 7, 0, 0, Math.PI*2); ctx.fill();
-      }
-      if(A.landmark==='trough') drawSprAt(ctx, 'cow', c+0.8, r+1.2, 36, 28);
+    function placeBuilding(name, c, r, w, h, fallback){
+      const p = atlasToView(c, r);
+      if(!drawSprAt(ctx, name, c, r, w, h)) fallback(p, w/140);
     }
-    drawSprAt(ctx, 'house_t'+houseTier, 4.2, 28.6, 128, 104);
+    placeBuilding('barn', 8.15, 27.85, 148, 124, drawBarnMass);
+    placeBuilding('coop', 13.15, 19.85, 92, 78, drawCoopMass);
+    if(sprReady('market')) drawSprAt(ctx, 'market', 40.3, 15.6, 72, 62);
+    if(sprReady('windmill')) drawSprAt(ctx, 'windmill', 41.2, 3.9, 88, 108);
+    const compost = atlasToView(5.5, 27.5);
+    ctx.fillStyle = 'rgba(86,58,28,0.9)';
+    ctx.beginPath(); ctx.ellipse(compost.x, compost.y, 14, 9, 0, 0, Math.PI*2); ctx.fill();
+    if(sprReady('cow')) drawSprAt(ctx, 'cow', 4.8, 16.4, 48, 36);
+    const hp = atlasToView(4.35, 28.7);
+    if(!drawSprAt(ctx, 'house_t'+houseTier, 4.35, 28.7, 210, 176)) drawFarmhouseMass(ctx, hp, 1.15);
   }
 
   const fog = document.createElement('canvas');
@@ -13217,7 +13405,7 @@ function paintValleyAtlas(cv){
 
   ctx.fillStyle = 'rgba(8,14,8,0.14)';
   ctx.fillRect(0, V.h-10, V.w, 10);
-  return !!(sprReady('house_t'+houseTier) && hills);
+  return !!hills;
 }
 function wireValleyRegion(el, P, ms){
   const oneLiner = (P.desc && String(P.desc).trim()) ? P.desc : (P.teaser || P.name);
