@@ -1529,7 +1529,13 @@ const CLEAR_BONUS = [40, 60, 80, 100, 70, 75, 80, 90, 55, 150];
    See scripts/playtest/VALLEY_ATLAS.md
    ========================================================================== */
 const ATLAS_W = 48, ATLAS_H = 32;
-/** Later skin hook: one full-valley painting mapped 1:1 to this atlas (house SW, marsh NW, river cols 24–25). Do not reverse-fit parcels. */
+/**
+ * Optional 1:1 painted skin of THIS atlas (not a new landscape).
+ * Image space = atlas space: (0,0) NW, house SW, marsh NW, river cols 24–25, dust SE.
+ * Any resolution is fine if the aspect is 48:32. blitAtlasImageToView warps it
+ * onto the journey canvas. Set to a SPRITES key (e.g. 'valley_atlas_skin') to
+ * swap the procedural farm. Hotspots stay on VALLEY_PARCELS. Do not reverse-fit.
+ */
 const VALLEY_ATLAS_SKIN = null;
 /** Sparse atlas: key = "c,r" → {water, biome, feature?, landmark?} */
 const VALLEY_ATLAS_CELLS = Object.create(null);
@@ -1782,6 +1788,19 @@ VALLEY_PARCELS.forEach(P=>{
   const w = (P.size && P.size.w) || 0, h = (P.size && P.size.h) || 0;
   P.mapXY = {x: (P.origin.c + w/2)/ATLAS_W, y: (P.origin.r + h/2)/ATLAS_H};
 });
+/** Centerline of the live stem (cols 24–25 + the slight meander). Not the creek. */
+function atlasStemCenterline(){
+  const pts = [];
+  for(let r=0;r<=22;r++){
+    let s=0, n=0;
+    for(let c=23;c<=27;c++){
+      const A = atlasGet(c,r);
+      if(A && A.water==='main'){ s += c; n++; }
+    }
+    pts.push({c: n ? (s/n)+0.5 : 24.5, r: r+0.5});
+  }
+  return pts;
+}
 const VALLEY_CONNECTIONS = [
   ['homestead','home_garden'],['home_garden','back_paddock'],['home_garden','school_garden'],
   ['back_paddock','creek_bend'],['back_paddock','orchard_slope'],['back_paddock','dust_flats'],
@@ -3264,6 +3283,10 @@ function loadSprites(){
   registerSprite('bg_hills_1', 'sprites/bg_hills_summer.webp'+SV, 0);
   registerSprite('bg_hills_2', 'sprites/bg_hills_fall.webp'+SV, 0);
   registerSprite('bg_hills_3', 'sprites/bg_hills_winter.webp'+SV, 0);
+  // Optional painted skin of THIS atlas only. Do not register a missing file.
+  if(typeof VALLEY_ATLAS_SKIN==='string' && VALLEY_ATLAS_SKIN){
+    registerSprite(VALLEY_ATLAS_SKIN, 'sprites/'+VALLEY_ATLAS_SKIN+'.webp'+SV, 0);
+  }
   // Homestead house tiers — tracked house_t*.webp (favicon already webp)
   for(let t=0;t<=5;t++){
     registerSprite('house_t'+t, 'sprites/house_t'+t+'.webp'+BV, 2);
@@ -12857,7 +12880,6 @@ function mixRgb(a, b, t){
   ];
 }
 function rgbCss(c){ return 'rgb('+c[0]+','+c[1]+','+c[2]+')'; }
-function mixHex(a, b, t){ return rgbCss(mixRgb(hexRgb(a), hexRgb(b), t)); }
 function parcelAtView(x, y){
   const hits = [];
   VALLEY_PARCELS.forEach(P=>{
@@ -12889,22 +12911,50 @@ function drawSprAt(ctx, name, c, r, w, h){
   ctx.drawImage(img, p.x - w/2, p.y - h, w, h);
   return true;
 }
+/**
+ * Project an atlas-space image onto the journey view (1:1 with the 48×32 grid).
+ * Source (0,0) = NW. House SW, marsh NW, river cols 24–25, dust SE.
+ * A later painted skin uses this same warp — hotspots do not move.
+ */
+function blitAtlasImageToView(ctx, img){
+  if(!img || !(img.naturalWidth || img.width)) return false;
+  const srcW = img.naturalWidth || img.width;
+  const srcH = img.naturalHeight || img.height;
+  if(!srcW || !srcH) return false;
+  const V = VALLEY_VIEW;
+  const landH = V.h - V.sky - V.pad;
+  const baseW = V.w - V.pad*2;
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  if(ctx.imageSmoothingQuality) ctx.imageSmoothingQuality = 'high';
+  for(let y=0; y<landH; y++){
+    const ny = (y + 0.5) / landH;
+    const destW = baseW * (0.86 + ny*0.14);
+    const destX = V.w/2 - destW/2;
+    ctx.drawImage(img, 0, ny*srcH, srcW, 2, destX, V.sky + y, destW, 2);
+  }
+  ctx.restore();
+  return true;
+}
+function blitValleyAtlasSkin(ctx, img){
+  return blitAtlasImageToView(ctx, img);
+}
 function paintValleyAtlas(cv){
   const V = VALLEY_VIEW;
   const ctx = cv.getContext('2d');
   if(!ctx) return false;
   ctx.clearRect(0, 0, V.w, V.h);
   const hills = sprReady('bg_hills_1') || sprReady('bg_hills');
-  const sky = ctx.createLinearGradient(0, 0, 0, V.sky+48);
-  sky.addColorStop(0, '#87b0d2');
-  sky.addColorStop(0.6, '#d2c8a0');
+  const sky = ctx.createLinearGradient(0, 0, 0, V.sky+52);
+  sky.addColorStop(0, '#8eb6d6');
+  sky.addColorStop(0.42, '#f0d8b0');
   sky.addColorStop(1, '#6a8c4c');
   ctx.fillStyle = sky;
   ctx.fillRect(0, 0, V.w, V.h);
   if(hills){
     ctx.save();
-    ctx.globalAlpha = 0.95;
-    ctx.drawImage(hills, 0, 0, V.w, V.sky+42);
+    ctx.globalAlpha = 0.92;
+    ctx.drawImage(hills, 0, 0, V.w, V.sky+48);
     ctx.restore();
   }
   const BIOME = {
@@ -12919,10 +12969,18 @@ function paintValleyAtlas(cv){
     const A = atlasGet(c,r);
     return BIOME[(A && A.biome) || 'wild'] || BIOME.wild;
   }
+  function nearLiveWater(c,r){
+    const dirs = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1]];
+    for(let i=0;i<dirs.length;i++){
+      const N = atlasGet(c+dirs[i][0], r+dirs[i][1]);
+      if(N && (N.water==='main' || N.water==='creek' || N.water==='pond_site')) return N.water;
+    }
+    return null;
+  }
   function landColor(c, r){
     let R=0,G=0,B=0,wsum=0;
-    for(let dr=-4; dr<=4; dr++) for(let dc=-4; dc<=4; dc++){
-      const w = 1 / (1 + Math.hypot(dc,dr));
+    for(let dr=-5; dr<=5; dr++) for(let dc=-5; dc<=5; dc++){
+      const w = 1 / (1 + Math.hypot(dc,dr)*0.68);
       const pair = biomePair(c+dc, r+dr);
       const n = atlasN2(c+dc, r+dr);
       const rgb = mixRgb(hexRgb(pair[0]), hexRgb(pair[1]), n);
@@ -12932,53 +12990,19 @@ function paintValleyAtlas(cv){
     const A = atlasGet(c,r) || {water:'none'};
     const boost = healAt[r*ATLAS_W+c]||0;
     if(boost>0 && A.water==='none') col = mixRgb(col, hexRgb(LIVE), 0.16 + boost*0.4);
+    const bank = nearLiveWater(c,r);
+    if(bank==='main' || bank==='creek') col = mixRgb(col, hexRgb('#5a4a28'), 0.34);
+    if(bank==='pond_site') col = mixRgb(col, hexRgb('#3a4a30'), 0.26);
+    if(A.water==='main' || A.water==='creek') col = mixRgb(col, hexRgb('#3d3420'), 0.55);
+    if(A.water==='pond_site') col = mixRgb(col, hexRgb('#2a3830'), 0.5);
+    if(A.water==='wash') col = mixRgb(col, hexRgb('#c4a06a'), 0.55);
     if(A.feature==='saltflat') col = mixRgb(col, hexRgb('#d8c48a'), 0.4);
-    if(A.feature==='path') col = mixRgb(col, hexRgb('#b08948'), 0.58);
-    if(A.feature==='swale') col = mixRgb(col, hexRgb('#4a6a40'), 0.35);
-    if(A.feature==='hedgerow' || A.feature==='woodlot') col = mixRgb(col, hexRgb('#2a4a22'), 0.38);
+    if(A.feature==='path') col = mixRgb(col, hexRgb('#b08948'), 0.55);
+    if(A.feature==='swale') col = mixRgb(col, hexRgb('#4a6a40'), 0.38);
+    if(A.feature==='hedgerow' || A.feature==='woodlot') col = mixRgb(col, hexRgb('#244820'), 0.48);
+    const morning = 0.08 * Math.max(0, (c/ATLAS_W) - 0.18);
+    col = mixRgb(col, hexRgb('#f0d8a8'), morning);
     return rgbCss(col);
-  }
-
-  ctx.fillStyle = '#5a7a40';
-  ctx.beginPath();
-  ctx.moveTo(atlasToView(0,0).x, atlasToView(0,0).y);
-  ctx.lineTo(atlasToView(ATLAS_W,0).x, atlasToView(ATLAS_W,0).y);
-  ctx.lineTo(atlasToView(ATLAS_W,ATLAS_H).x, atlasToView(ATLAS_W,ATLAS_H).y);
-  ctx.lineTo(atlasToView(0,ATLAS_H).x, atlasToView(0,ATLAS_H).y);
-  ctx.closePath();
-  ctx.fill();
-
-  const healAt = new Array(ATLAS_W*ATLAS_H);
-  VALLEY_PARCELS.forEach(P=>{
-    const b = parcelAtlasBox(P);
-    if(!b) return;
-    const boost = parcelHealBoost(P);
-    for(let r=b.r;r<b.r+b.h;r++) for(let c=b.c;c<b.c+b.w;c++){
-      if(c>=0&&c<ATLAS_W&&r>=0&&r<ATLAS_H) healAt[r*ATLAS_W+c] = Math.max(healAt[r*ATLAS_W+c]||0, boost);
-    }
-  });
-
-  for(let r=0;r<ATLAS_H;r++){
-    for(let c=0;c<ATLAS_W;c++){
-      const p = atlasToView(c+0.5, r+0.5);
-      const s = atlasToView(c+1.4, r+1.4);
-      ctx.fillStyle = landColor(c,r);
-      ctx.beginPath();
-      ctx.ellipse(p.x, p.y, Math.max(10, (s.x-p.x)+12), Math.max(8, (s.y-p.y)+10), 0, 0, Math.PI*2);
-      ctx.fill();
-    }
-  }
-
-  const wq = campaignWaterQuality();
-  const murk = Math.max(0, Math.min(1, 1 - wq/100));
-  const mains = [], washes = [], ponds = [];
-  for(let r=0;r<ATLAS_H;r++) for(let c=0;c<ATLAS_W;c++){
-    const A = atlasGet(c,r);
-    if(!A || A.water==='none') continue;
-    const p = atlasToView(c+0.5, r+0.5);
-    if(A.water==='wash') washes.push(p);
-    else if(A.water==='pond_site') ponds.push(p);
-    else mains.push(p);
   }
   function paintRibbon(pts, color, width){
     if(pts.length<2) return;
@@ -12995,84 +13019,165 @@ function paintValleyAtlas(cv){
   function atlasPath(points){
     return points.map(pt=> atlasToView(pt.c+0.5, pt.r+0.5));
   }
-  const stem = [];
-  for(let r=0;r<=22;r++) stem.push({c:24.5, r});
-  const creek = ATLAS_GEO.marshRun.concat(ATLAS_GEO.creek.slice(1));
-  paintRibbon(atlasPath(stem), 'rgba(62,78,42,0.55)', 22);
-  paintRibbon(atlasPath(creek), 'rgba(62,78,42,0.5)', 16);
-  paintRibbon(atlasPath(stem), mixHex('#245a7c', '#3a7696', 0.35-murk*0.2), 12);
-  paintRibbon(atlasPath(creek), mixHex('#245a7c', '#3a7696', 0.35-murk*0.2), 8);
-  paintRibbon(atlasPath(stem), 'rgba(200,230,238,'+(0.28-murk*0.14)+')', 2.6);
-  paintRibbon(atlasPath(creek), 'rgba(200,230,238,'+(0.24-murk*0.12)+')', 2);
-  washes.forEach(p=>{
-    ctx.fillStyle = 'rgba(150,118,70,0.42)';
-    ctx.beginPath(); ctx.ellipse(p.x, p.y, 9, 6, 0, 0, Math.PI*2); ctx.fill();
-  });
-  Object.keys(ATLAS_GEO.ponds).forEach(k=>{
-    const b = ATLAS_GEO.ponds[k];
-    const p = atlasToView(b.c + b.w/2, b.r + b.h/2);
-    const rim = atlasToView(b.c + b.w, b.r + b.h);
-    const rw = Math.max(16, Math.abs(rim.x-p.x)+10);
-    const rh = Math.max(12, Math.abs(rim.y-p.y)+8);
-    ctx.fillStyle = 'rgba(58,72,40,0.45)';
-    ctx.beginPath(); ctx.ellipse(p.x, p.y+1, rw+4, rh+3, 0, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = mixHex('#1e4a4c', '#2a6a6e', 0.25-murk*0.15);
-    ctx.beginPath(); ctx.ellipse(p.x, p.y, rw, rh, 0, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = 'rgba(200,230,238,'+(0.22-murk*0.1)+')';
-    ctx.beginPath(); ctx.ellipse(p.x-rw*0.2, p.y-rh*0.25, rw*0.35, rh*0.22, 0, 0, Math.PI*2); ctx.fill();
-  });
-
-  const beds = [[3.1,23.3,1.8,1.2],[4.8,23.2,1.5,1.15],[3.3,24.4,1.7,1.1]];
-  beds.forEach(([c,r,w,h],i)=>{
-    const a = atlasToView(c, r), b = atlasToView(c+w, r+h);
-    ctx.fillStyle = mixHex('#6b4a28', '#4a7a38', 0.28 + atlasN2(i,3)*0.22);
-    ctx.beginPath();
-    if(ctx.roundRect) ctx.roundRect(a.x, a.y, Math.max(8,b.x-a.x), Math.max(6,b.y-a.y), 5);
-    else ctx.rect(a.x, a.y, Math.max(8,b.x-a.x), Math.max(6,b.y-a.y));
-    ctx.fill();
-  });
-
-  for(let r=0;r<ATLAS_H;r++) for(let c=0;c<ATLAS_W;c++){
-    const A = atlasGet(c,r);
-    if(!A || (A.feature!=='hedgerow' && A.feature!=='woodlot' && A.landmark!=='stump')) continue;
-    const p = atlasToView(c+0.5, r+0.5);
-    const n = atlasN2(c,r);
-    ctx.fillStyle = mixHex('#244820', '#3a6a30', n);
-    ctx.beginPath();
-    ctx.ellipse(p.x, p.y, A.feature==='woodlot'?11+n*5:8+n*3, A.feature==='woodlot'?9+n*3:6+n*2, 0, 0, Math.PI*2);
-    ctx.fill();
+  function atlasPathExact(points){
+    return points.map(pt=> atlasToView(pt.c, pt.r));
   }
 
-  paintRibbon(atlasPath(ATLAS_GEO.gardenRill), 'rgba(46,68,40,0.5)', 4);
-  paintRibbon(atlasPath(ATLAS_GEO.orchardDrain), 'rgba(46,68,40,0.4)', 3.5);
-  paintRibbon(atlasPath(ATLAS_GEO.overflow), 'rgba(58,78,48,0.42)', 3.2);
-  paintRibbon(atlasPath(ATLAS_GEO.overflowSpur), 'rgba(58,78,48,0.32)', 2.6);
-  paintRibbon(atlasPath(ATLAS_GEO.lane), 'rgba(120,88,42,0.55)', 7);
-  paintRibbon(atlasPath(ATLAS_GEO.paddockSpur), 'rgba(120,88,42,0.42)', 5);
-  paintRibbon(atlasPath(ATLAS_GEO.orchardSpur), 'rgba(120,88,42,0.42)', 5);
-  paintRibbon(atlasPath(ATLAS_GEO.lane), 'rgba(176,137,72,0.7)', 3.2);
+  const healAt = new Array(ATLAS_W*ATLAS_H);
+  VALLEY_PARCELS.forEach(P=>{
+    const b = parcelAtlasBox(P);
+    if(!b) return;
+    const boost = parcelHealBoost(P);
+    for(let r=b.r;r<b.r+b.h;r++) for(let c=b.c;c<b.c+b.w;c++){
+      if(c>=0&&c<ATLAS_W&&r>=0&&r<ATLAS_H) healAt[r*ATLAS_W+c] = Math.max(healAt[r*ATLAS_W+c]||0, boost);
+    }
+  });
 
+  const skin = VALLEY_ATLAS_SKIN ? sprReady(VALLEY_ATLAS_SKIN) : null;
+  const usedSkin = !!(skin && blitValleyAtlasSkin(ctx, skin));
+
+  if(!usedSkin){
+    const SCALE = 18;
+    const plate = document.createElement('canvas');
+    plate.width = ATLAS_W * SCALE;
+    plate.height = ATLAS_H * SCALE;
+    const pctx = plate.getContext('2d');
+    for(let r=0;r<ATLAS_H;r++) for(let c=0;c<ATLAS_W;c++){
+      pctx.fillStyle = landColor(c,r);
+      pctx.fillRect(c*SCALE, r*SCALE, SCALE, SCALE);
+    }
+    const land = document.createElement('canvas');
+    land.width = plate.width; land.height = plate.height;
+    const lctx = land.getContext('2d');
+    lctx.filter = 'blur(8px)';
+    lctx.drawImage(plate, 0, 0);
+    lctx.filter = 'none';
+    lctx.globalAlpha = 0.35;
+    lctx.drawImage(plate, 0, 0);
+    lctx.globalAlpha = 1;
+    blitAtlasImageToView(ctx, land);
+  }
+
+  const wq = campaignWaterQuality();
+  const murk = Math.max(0, Math.min(1, 1 - wq/100));
+  const stem = atlasStemCenterline();
+  const creek = ATLAS_GEO.marshRun.concat(ATLAS_GEO.creek.slice(1));
   const hs = camp.homestead || defaultHomestead();
   const hsOn = !!(hs && hs.unlocked);
   const houseTier = Math.max(1, Math.min(5, hsOn ? (hs.houseTier|0) : 1));
 
-  for(let r=0;r<ATLAS_H;r++) for(let c=0;c<ATLAS_W;c++){
-    const A = atlasGet(c,r);
-    if(!A || !A.landmark) continue;
-    if(A.landmark==='barn') drawSprAt(ctx, 'barn', c+0.4, r+0.9, 70, 58);
-    if(A.landmark==='coop') drawSprAt(ctx, 'coop', c+0.3, r+0.7, 52, 44);
-    if(A.landmark==='cart') drawSprAt(ctx, 'market', c+0.3, r+0.6, 58, 50);
-    if(A.landmark==='wind') drawSprAt(ctx, 'windmill', c+0.2, r+1.0, 64, 78);
-    if(A.landmark==='compost'){
-      const p = atlasToView(c+0.5, r+0.5);
-      ctx.fillStyle = 'rgba(92,62,28,0.8)';
-      ctx.beginPath(); ctx.ellipse(p.x, p.y, 10, 7, 0, 0, Math.PI*2); ctx.fill();
-    }
-    if(A.landmark==='trough') drawSprAt(ctx, 'cow', c+0.8, r+1.2, 36, 28);
-  }
-  drawSprAt(ctx, 'house_t'+houseTier, 4.2, 28.6, 128, 104);
+  if(!usedSkin){
+    // River in a bed — soil banks, then water, then a thin morning highlight
+    paintRibbon(atlasPathExact(stem), 'rgba(72,58,32,0.62)', 30);
+    paintRibbon(atlasPath(creek), 'rgba(72,58,32,0.52)', 18);
+    paintRibbon(atlasPathExact(stem), 'rgba(62,78,42,0.42)', 22);
+    paintRibbon(atlasPath(creek), 'rgba(62,78,42,0.35)', 14);
+    paintRibbon(atlasPathExact(stem), mixHex('#1f5474', '#3a7a96', 0.38-murk*0.22), 12);
+    paintRibbon(atlasPath(creek), mixHex('#1f5474', '#3a7a96', 0.38-murk*0.22), 7);
+    paintRibbon(atlasPathExact(stem), 'rgba(210,236,242,'+(0.28-murk*0.12)+')', 2.4);
+    paintRibbon(atlasPath(creek), 'rgba(210,236,242,'+(0.22-murk*0.1)+')', 1.6);
+    paintRibbon(atlasPath(ATLAS_GEO.wash), 'rgba(120,88,48,0.4)', 10);
+    paintRibbon(atlasPath(ATLAS_GEO.wash), 'rgba(176,138,78,0.42)', 5);
 
-  // One morning mist over locked land — same picture, feathered, not cell boxes
+    Object.keys(ATLAS_GEO.ponds).forEach(k=>{
+      const b = ATLAS_GEO.ponds[k];
+      const p = atlasToView(b.c + b.w/2, b.r + b.h/2);
+      const rim = atlasToView(b.c + b.w, b.r + b.h);
+      const rw = Math.max(16, Math.abs(rim.x-p.x)+11);
+      const rh = Math.max(12, Math.abs(rim.y-p.y)+9);
+      ctx.fillStyle = 'rgba(48,38,20,0.45)';
+      ctx.beginPath(); ctx.ellipse(p.x, p.y+3, rw+7, rh+5, 0, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = mixHex('#163e40', '#2a6a6e', 0.28-murk*0.15);
+      ctx.beginPath(); ctx.ellipse(p.x, p.y, rw, rh, 0, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = 'rgba(210,236,242,'+(0.24-murk*0.1)+')';
+      ctx.beginPath(); ctx.ellipse(p.x-rw*0.22, p.y-rh*0.3, rw*0.34, rh*0.2, 0, 0, Math.PI*2); ctx.fill();
+    });
+
+    const beds = [[3.1,23.3,1.8,1.2],[4.8,23.2,1.5,1.15],[3.3,24.4,1.7,1.1]];
+    beds.forEach(([c,r,w,h],i)=>{
+      const a = atlasToView(c, r), b = atlasToView(c+w, r+h);
+      ctx.fillStyle = mixHex('#6b4a28', '#4a7a38', 0.28 + atlasN2(i,3)*0.22);
+      ctx.beginPath();
+      if(ctx.roundRect) ctx.roundRect(a.x, a.y, Math.max(8,b.x-a.x), Math.max(6,b.y-a.y), 5);
+      else ctx.rect(a.x, a.y, Math.max(8,b.x-a.x), Math.max(6,b.y-a.y));
+      ctx.fill();
+    });
+
+    function beltLine(c0, c1, r0, r1){
+      const pts = [];
+      for(let r=r0;r<=r1;r++) pts.push({c:(c0+c1)*0.5, r:r+0.5});
+      paintRibbon(atlasPathExact(pts), 'rgba(22,42,18,0.55)', 18 + (c1-c0)*4);
+      paintRibbon(atlasPathExact(pts), 'rgba(40,78,34,0.7)', 11 + (c1-c0)*3);
+    }
+    beltLine(0, 1, 24, 30);
+    beltLine(11, 12, 11, 19);
+    beltLine(43, 46, 1, 5);
+    paintRibbon(atlasPath([{c:13,r:22},{c:13,r:26}]), 'rgba(32,62,28,0.55)', 8);
+    paintRibbon(atlasPath([{c:2,r:20},{c:8,r:20}]), 'rgba(32,62,28,0.5)', 8);
+    paintRibbon(atlasPath([{c:4,r:12},{c:4,r:14}]), 'rgba(32,62,28,0.5)', 7);
+    paintRibbon(atlasPath([{c:7,r:12},{c:7,r:14}]), 'rgba(32,62,28,0.5)', 7);
+
+    for(let r=0;r<ATLAS_H;r++) for(let c=0;c<ATLAS_W;c++){
+      const A = atlasGet(c,r);
+      if(!A || (A.feature!=='hedgerow' && A.feature!=='woodlot' && A.landmark!=='stump')) continue;
+      const p = atlasToView(c+0.45, r+0.55);
+      const n = atlasN2(c,r);
+      const belt = A.feature==='woodlot';
+      ctx.fillStyle = 'rgba(18,28,14,0.3)';
+      ctx.beginPath(); ctx.ellipse(p.x, p.y+5, belt?16:10, belt?7:4.5, 0, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = mixHex('#1a381c', '#3a6a30', n);
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y-3, belt?15+n*5:10+n*3, belt?12+n*4:8+n*2, 0, 0, Math.PI*2);
+      ctx.fill();
+    }
+
+    paintRibbon(atlasPath(ATLAS_GEO.gardenRill), 'rgba(46,68,40,0.5)', 4);
+    paintRibbon(atlasPath(ATLAS_GEO.orchardDrain), 'rgba(46,68,40,0.4)', 3.5);
+    paintRibbon(atlasPath(ATLAS_GEO.overflow), 'rgba(58,78,48,0.42)', 3.2);
+    paintRibbon(atlasPath(ATLAS_GEO.overflowSpur), 'rgba(58,78,48,0.32)', 2.6);
+    paintRibbon(atlasPath(ATLAS_GEO.lane), 'rgba(88,62,28,0.5)', 10);
+    paintRibbon(atlasPath(ATLAS_GEO.paddockSpur), 'rgba(88,62,28,0.34)', 6);
+    paintRibbon(atlasPath(ATLAS_GEO.orchardSpur), 'rgba(88,62,28,0.34)', 6);
+    paintRibbon(atlasPath(ATLAS_GEO.lane), 'rgba(176,137,72,0.78)', 5);
+    paintRibbon(atlasPath(ATLAS_GEO.paddockSpur), 'rgba(176,137,72,0.55)', 3);
+    paintRibbon(atlasPath(ATLAS_GEO.orchardSpur), 'rgba(176,137,72,0.55)', 3);
+    paintRibbon(atlasPath(ATLAS_GEO.lane), 'rgba(92,68,32,0.3)', 1.3);
+
+    const br = atlasToView(22.4, 4.55);
+    const br2 = atlasToView(23.6, 4.7);
+    ctx.strokeStyle = '#6a4e2c';
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(br.x, br.y); ctx.lineTo(br2.x, br2.y); ctx.stroke();
+    ctx.strokeStyle = '#8a6a3c';
+    ctx.lineWidth = 2.2;
+    ctx.beginPath(); ctx.moveTo(br.x, br.y-3); ctx.lineTo(br2.x, br2.y-3); ctx.stroke();
+  }
+
+  if(!usedSkin){
+    const yard = atlasToView(4.2, 28.4);
+    ctx.fillStyle = 'rgba(40,28,12,0.28)';
+    ctx.beginPath(); ctx.ellipse(yard.x, yard.y+10, 58, 20, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = 'rgba(90,110,60,0.25)';
+    ctx.beginPath(); ctx.ellipse(yard.x+6, yard.y+2, 36, 14, 0, 0, Math.PI*2); ctx.fill();
+
+    for(let r=0;r<ATLAS_H;r++) for(let c=0;c<ATLAS_W;c++){
+      const A = atlasGet(c,r);
+      if(!A || !A.landmark) continue;
+      if(A.landmark==='barn') drawSprAt(ctx, 'barn', c+0.4, r+0.9, 70, 58);
+      if(A.landmark==='coop') drawSprAt(ctx, 'coop', c+0.3, r+0.7, 52, 44);
+      if(A.landmark==='cart') drawSprAt(ctx, 'market', c+0.3, r+0.6, 58, 50);
+      if(A.landmark==='wind') drawSprAt(ctx, 'windmill', c+0.2, r+1.0, 64, 78);
+      if(A.landmark==='compost'){
+        const p = atlasToView(c+0.5, r+0.5);
+        ctx.fillStyle = 'rgba(92,62,28,0.85)';
+        ctx.beginPath(); ctx.ellipse(p.x, p.y, 10, 7, 0, 0, Math.PI*2); ctx.fill();
+      }
+      if(A.landmark==='trough') drawSprAt(ctx, 'cow', c+0.8, r+1.2, 36, 28);
+    }
+    drawSprAt(ctx, 'house_t'+houseTier, 4.2, 28.6, 128, 104);
+  }
+
   const fog = document.createElement('canvas');
   fog.width = V.w; fog.height = V.h;
   const fg = fog.getContext('2d');
@@ -13089,13 +13194,26 @@ function paintValleyAtlas(cv){
     fg.fill();
   });
   ctx.save();
-  ctx.filter = 'blur(28px)';
-  ctx.globalAlpha = 0.22;
+  ctx.filter = 'blur(38px)';
+  ctx.globalAlpha = 0.18;
   ctx.drawImage(fog, 0, 0);
-  ctx.filter = 'none';
-  ctx.globalAlpha = 0.10;
+  ctx.filter = 'blur(20px)';
+  ctx.globalAlpha = 0.07;
   ctx.drawImage(fog, 0, 0);
   ctx.restore();
+
+  const mist = ctx.createLinearGradient(0, V.sky, 0, V.sky + (V.h-V.sky)*0.5);
+  mist.addColorStop(0, 'rgba(255,252,246,0.2)');
+  mist.addColorStop(0.55, 'rgba(255,252,246,0.06)');
+  mist.addColorStop(1, 'rgba(255,252,246,0)');
+  ctx.fillStyle = mist;
+  ctx.beginPath();
+  ctx.moveTo(atlasToView(0,0).x, atlasToView(0,0).y);
+  ctx.lineTo(atlasToView(ATLAS_W,0).x, atlasToView(ATLAS_W,0).y);
+  ctx.lineTo(atlasToView(ATLAS_W,18).x, atlasToView(ATLAS_W,18).y);
+  ctx.lineTo(atlasToView(0,18).x, atlasToView(0,18).y);
+  ctx.closePath();
+  ctx.fill();
 
   ctx.fillStyle = 'rgba(8,14,8,0.14)';
   ctx.fillRect(0, V.h-10, V.w, 10);
