@@ -1536,7 +1536,7 @@ const ATLAS_W = 48, ATLAS_H = 32;
  * onto the journey canvas. Set to a SPRITES key (e.g. 'valley_atlas_skin') to
  * swap the procedural farm. Hotspots stay on VALLEY_PARCELS. Do not reverse-fit.
  */
-const VALLEY_ATLAS_SKIN = null;
+const VALLEY_ATLAS_SKIN = 'valley_atlas_skin';
 /** Sparse atlas: key = "c,r" → {water, biome, feature?, landmark?} */
 const VALLEY_ATLAS_CELLS = Object.create(null);
 function atlasKey(c,r){ return c+','+r; }
@@ -12837,8 +12837,19 @@ const VALLEY_VIEW = {w:1000, h:720, sky:86, pad:18};
 function atlasN2(c, r){
   return ((Math.sin(c*12.9898 + r*78.233)*43758.5453)%1 + 1)%1;
 }
+function valleySkinRect(){
+  const V = VALLEY_VIEW;
+  const aspect = ATLAS_W / ATLAS_H;
+  let w = V.w, h = w / aspect;
+  if(h > V.h){ h = V.h; w = h * aspect; }
+  return {x: (V.w-w)/2, y: (V.h-h)/2, w, h};
+}
 function atlasToView(c, r){
   const V = VALLEY_VIEW;
+  if(VALLEY_ATLAS_SKIN){
+    const R = valleySkinRect();
+    return {x: R.x + (c/ATLAS_W)*R.w, y: R.y + (r/ATLAS_H)*R.h};
+  }
   const nx = c / ATLAS_W, ny = r / ATLAS_H;
   const landW = V.w - V.pad*2, landH = V.h - V.sky - V.pad;
   const persp = 0.86 + ny*0.14;
@@ -12921,12 +12932,18 @@ function blitAtlasImageToView(ctx, img){
   const srcW = img.naturalWidth || img.width;
   const srcH = img.naturalHeight || img.height;
   if(!srcW || !srcH) return false;
-  const V = VALLEY_VIEW;
-  const landH = V.h - V.sky - V.pad;
-  const baseW = V.w - V.pad*2;
   ctx.save();
   ctx.imageSmoothingEnabled = true;
   if(ctx.imageSmoothingQuality) ctx.imageSmoothingQuality = 'high';
+  if(VALLEY_ATLAS_SKIN){
+    const R = valleySkinRect();
+    ctx.drawImage(img, R.x, R.y, R.w, R.h);
+    ctx.restore();
+    return true;
+  }
+  const V = VALLEY_VIEW;
+  const landH = V.h - V.sky - V.pad;
+  const baseW = V.w - V.pad*2;
   for(let y=0; y<landH; y++){
     const ny = (y + 0.5) / landH;
     const destW = baseW * (0.86 + ny*0.14);
@@ -13108,7 +13125,10 @@ function paintValleyAtlas(cv){
   if(!ctx) return false;
   ctx.clearRect(0, 0, V.w, V.h);
   try {
+  const skinImg = VALLEY_ATLAS_SKIN ? sprReady(VALLEY_ATLAS_SKIN) : null;
+  if(VALLEY_ATLAS_SKIN && !skinImg) return false;
   const hills = sprReady('bg_hills_1') || sprReady('bg_hills');
+  if(!skinImg){
   const sky = ctx.createLinearGradient(0, 0, 0, V.sky+52);
   sky.addColorStop(0, '#8eb6d6');
   sky.addColorStop(0.42, '#f0d8b0');
@@ -13120,6 +13140,7 @@ function paintValleyAtlas(cv){
     ctx.globalAlpha = 0.92;
     ctx.drawImage(hills, 0, 0, V.w, V.sky+48);
     ctx.restore();
+  }
   }
   const BIOME = {
     marsh:['#3a5a3c','#4a6e48'], riparian:['#4a7844','#5c8c52'],
@@ -13199,7 +13220,11 @@ function paintValleyAtlas(cv){
     }
   });
 
-  const skin = VALLEY_ATLAS_SKIN ? sprReady(VALLEY_ATLAS_SKIN) : null;
+  const skin = skinImg;
+  if(skin){
+    ctx.fillStyle = '#0e1a12';
+    ctx.fillRect(0, 0, V.w, V.h);
+  }
   const usedSkin = !!(skin && blitValleyAtlasSkin(ctx, skin));
 
   if(!usedSkin){
@@ -13441,7 +13466,7 @@ function paintValleyAtlas(cv){
   ctx.globalAlpha = 0.2;
   ctx.drawImage(fog, 0, 0);
   ctx.restore();
-  return !!hills;
+  return !!(usedSkin || hills);
   } catch (err) {
     console.warn('[Rootweave] valley paint', err);
     return false;
