@@ -13049,12 +13049,8 @@ function paintValleyAtlas(cv){
     const land = document.createElement('canvas');
     land.width = plate.width; land.height = plate.height;
     const lctx = land.getContext('2d');
-    lctx.filter = 'blur(8px)';
+    lctx.filter = 'blur(12px)';
     lctx.drawImage(plate, 0, 0);
-    lctx.filter = 'none';
-    lctx.globalAlpha = 0.35;
-    lctx.drawImage(plate, 0, 0);
-    lctx.globalAlpha = 1;
     blitAtlasImageToView(ctx, land);
   }
 
@@ -13074,8 +13070,8 @@ function paintValleyAtlas(cv){
     paintRibbon(atlasPath(creek), 'rgba(62,78,42,0.35)', 14);
     paintRibbon(atlasPathExact(stem), mixHex('#1f5474', '#3a7a96', 0.38-murk*0.22), 12);
     paintRibbon(atlasPath(creek), mixHex('#1f5474', '#3a7a96', 0.38-murk*0.22), 7);
-    paintRibbon(atlasPathExact(stem), 'rgba(210,236,242,'+(0.28-murk*0.12)+')', 2.4);
-    paintRibbon(atlasPath(creek), 'rgba(210,236,242,'+(0.22-murk*0.1)+')', 1.6);
+    paintRibbon(atlasPathExact(stem), 'rgba(210,236,242,'+(0.18-murk*0.08)+')', 2);
+    paintRibbon(atlasPath(creek), 'rgba(210,236,242,'+(0.14-murk*0.06)+')', 1.4);
     paintRibbon(atlasPath(ATLAS_GEO.wash), 'rgba(120,88,48,0.4)', 10);
     paintRibbon(atlasPath(ATLAS_GEO.wash), 'rgba(176,138,78,0.42)', 5);
 
@@ -13119,15 +13115,17 @@ function paintValleyAtlas(cv){
 
     for(let r=0;r<ATLAS_H;r++) for(let c=0;c<ATLAS_W;c++){
       const A = atlasGet(c,r);
-      if(!A || (A.feature!=='hedgerow' && A.feature!=='woodlot' && A.landmark!=='stump')) continue;
+      if(!A) continue;
+      const puff = (A.feature==='woodlot' && ((c+r)%2===0)) || A.landmark==='stump';
+      if(!puff) continue;
       const p = atlasToView(c+0.45, r+0.55);
       const n = atlasN2(c,r);
-      const belt = A.feature==='woodlot';
-      ctx.fillStyle = 'rgba(18,28,14,0.3)';
-      ctx.beginPath(); ctx.ellipse(p.x, p.y+5, belt?16:10, belt?7:4.5, 0, 0, Math.PI*2); ctx.fill();
+      const wood = A.feature==='woodlot';
+      ctx.fillStyle = 'rgba(18,28,14,0.28)';
+      ctx.beginPath(); ctx.ellipse(p.x, p.y+5, wood?18:9, wood?8:4, 0, 0, Math.PI*2); ctx.fill();
       ctx.fillStyle = mixHex('#1a381c', '#3a6a30', n);
       ctx.beginPath();
-      ctx.ellipse(p.x, p.y-3, belt?15+n*5:10+n*3, belt?12+n*4:8+n*2, 0, 0, Math.PI*2);
+      ctx.ellipse(p.x, p.y-3, wood?17+n*4:9+n*2, wood?13+n*3:7+n*2, 0, 0, Math.PI*2);
       ctx.fill();
     }
 
@@ -13194,17 +13192,17 @@ function paintValleyAtlas(cv){
     fg.fill();
   });
   ctx.save();
-  ctx.filter = 'blur(38px)';
-  ctx.globalAlpha = 0.18;
+  ctx.filter = 'blur(56px)';
+  ctx.globalAlpha = 0.14;
   ctx.drawImage(fog, 0, 0);
-  ctx.filter = 'blur(20px)';
-  ctx.globalAlpha = 0.07;
+  ctx.filter = 'blur(28px)';
+  ctx.globalAlpha = 0.06;
   ctx.drawImage(fog, 0, 0);
   ctx.restore();
 
-  const mist = ctx.createLinearGradient(0, V.sky, 0, V.sky + (V.h-V.sky)*0.5);
-  mist.addColorStop(0, 'rgba(255,252,246,0.2)');
-  mist.addColorStop(0.55, 'rgba(255,252,246,0.06)');
+  const mist = ctx.createLinearGradient(0, V.sky, 0, V.sky + (V.h-V.sky)*0.42);
+  mist.addColorStop(0, 'rgba(255,252,246,0.12)');
+  mist.addColorStop(0.55, 'rgba(255,252,246,0.04)');
   mist.addColorStop(1, 'rgba(255,252,246,0)');
   ctx.fillStyle = mist;
   ctx.beginPath();
