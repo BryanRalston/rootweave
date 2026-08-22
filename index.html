@@ -1466,7 +1466,8 @@ function tickCoopEggs(){
 function coopBeddingDailyRate(n){
   n = Math.max(0, n|0);
   if(n<=0) return 0;
-  return COOP_BEDDING_RATE * Math.sqrt(n);
+  const mul = (typeof leftoverPileCookMul==='function') ? leftoverPileCookMul() : 1;
+  return COOP_BEDDING_RATE * Math.sqrt(n) * mul;
 }
 function coopBeddingFloaterIdx(){
   if(state && state.grid){
@@ -1501,7 +1502,11 @@ function tickCoopBedding(){
     floater(fi, n>1 ? '🪣 pile ×'+n : '🪣 pile', '#d8c8a0', 16);
   }
   if(typeof toast==='function'){
-    toast('🪣 Bedding and droppings from the coop went to the compost pile. No birds, no feed.', {once:'coop_bedding_first', throttleMs:4000});
+    const yard = typeof leftoverPileYardCooksHot==='function' && leftoverPileYardCooksHot();
+    toast(yard
+      ? '🪣 Coop bedding cooked in the yard pile by the barn — hotter than a pile parked far from the manure. No birds, no feed.'
+      : '🪣 Bedding and droppings from the coop went to the compost pile. No birds, no feed.',
+      {once: yard ? 'coop_bedding_yard' : 'coop_bedding_first', throttleMs:4000});
   }
   if(typeof buildPalette==='function') buildPalette();
   if(typeof refreshNeighborStandIfOpen==='function') refreshNeighborStandIfOpen();
@@ -1795,11 +1800,15 @@ function compostUsesPile(){
 }
 /** Farm-made leftovers wake soil a touch harder than a bought bag. Light, readable on the tile. */
 const PILE_COMPOST_SOIL = {om:2, microbial:1.5, water:1.5};
+/** Yard pile next to barn manure — a stronger bed meal than a pile parked far from the yard. */
+const PILE_YARD_SOIL = {om:3.2, microbial:2.4, water:2.4};
+/** Bedding cooks faster when the homestead pile sits in the barn manure yard. */
+const PILE_YARD_COOK = 1.4;
 function applyCompostSoil(t, fromPile){
   if(!t || !t.soil) return false;
   t.compost = (state && state.unlocks && state.unlocks.upg_compost) ? 14 : 10;
   if(fromPile){
-    const b = PILE_COMPOST_SOIL;
+    const b = (typeof leftoverPileApplySoil==='function') ? leftoverPileApplySoil() : PILE_COMPOST_SOIL;
     t.soil.om = clamp((t.soil.om||0) + b.om);
     t.soil.microbial = clamp((t.soil.microbial||0) + b.microbial);
     t.soil.water = clamp((t.soil.water||0) + b.water);
@@ -1839,7 +1848,10 @@ function leftoverPileInspectLine(){
   if(typeof homePatchCleared==='function' && !homePatchCleared()) return '';
   const bits = leftoverPileFeedBits();
   const feed = bits.length ? ' · '+bits.join(' and ')+' feed'+(bits.length===1?'s':'')+' this pile' : '';
-  return n+' leftover compost — paint 🪣'+feed;
+  const yard = (typeof leftoverPileQualityHot==='function' && leftoverPileQualityHot())
+    ? ' · by the barn, manure heats this pile'
+    : ' · far from the manure yard';
+  return n+' leftover compost'+yard+' — paint 🪣'+feed;
 }
 function leftoverPileSpotOk(t){
   if(!t) return false;
@@ -1907,6 +1919,66 @@ function leftoverPileSeatOnGrid(grid, size, opts){
     if(near && near.terrain!=='coop') return near;
   }
   return null;
+}
+/** Chebyshev ≤ 1 — pile on the barn door or in the manure yard beside it. */
+function leftoverPileNearBarn(pile, barn){
+  if(!pile || !barn) return false;
+  const dc = Math.abs((pile.c|0)-(barn.c|0));
+  const dr = Math.abs((pile.r|0)-(barn.r|0));
+  return Math.max(dc, dr) <= 1;
+}
+/** Same dirs as leftoverPileSeatOnGrid, even before the first leftover lot. */
+function leftoverPileSeatGuess(grid){
+  if(!grid) return null;
+  const barn = typeof findGridBarn==='function' ? findGridBarn(grid) : null;
+  if(barn){
+    const near = leftoverPilePickNear(grid, barn, PILE_DIRS_BARN);
+    if(near && near.terrain!=='coop') return near;
+    return barn;
+  }
+  const house = grid.find(t=>t && t.terrain==='house');
+  if(house){
+    const near = leftoverPilePickNear(grid, house, PILE_DIRS_HOUSE);
+    if(near && near.terrain!=='coop') return near;
+  }
+  return null;
+}
+/** Homestead yard tiles after Home — live grid in the yard, saved tiles while walking a fold. */
+function leftoverPileYardTiles(){
+  if(typeof homePatchCleared==='function' && !homePatchCleared()) return null;
+  if(typeof homesteadMode!=='undefined' && homesteadMode && state && state.grid) return state.grid;
+  const hs = camp && camp.homestead;
+  if(hs && hs.unlocked && Array.isArray(hs.tiles) && hs.tiles.length) return hs.tiles;
+  return null;
+}
+/** Homestead barn yard cooks after Home. A leftover fold / Home Patch without a barn stays cold. */
+function leftoverPileYardCooksHot(){
+  if(typeof homePatchCleared==='function' && !homePatchCleared()) return false;
+  const grid = leftoverPileYardTiles();
+  if(grid){
+    const barn = typeof findGridBarn==='function' ? findGridBarn(grid) : null;
+    const pile = leftoverPileSeatGuess(grid);
+    if(leftoverPileNearBarn(pile, barn)) return true;
+    if(barn && !pile) return true;
+  }
+  // Locked layout: homestead after Home always seats a barn; tiles may wait until first visit.
+  return !!(camp && camp.homestead && camp.homestead.unlocked);
+}
+/** Active pile on this land — barn-adjacent is hot; Home Patch / a fold without a barn is not. */
+function leftoverPileQualityHot(){
+  if(typeof homePatchCleared==='function' && !homePatchCleared()) return false;
+  if(typeof leftoverPileWanted==='function' && leftoverPileWanted() && state && state.grid){
+    const pile = typeof leftoverPileTile==='function' ? leftoverPileTile() : leftoverPileSeatGuess(state.grid);
+    const barn = typeof findGridBarn==='function' ? findGridBarn(state.grid) : null;
+    return leftoverPileNearBarn(pile, barn);
+  }
+  return leftoverPileYardCooksHot();
+}
+function leftoverPileCookMul(){
+  return leftoverPileYardCooksHot() ? PILE_YARD_COOK : 1;
+}
+function leftoverPileApplySoil(){
+  return leftoverPileQualityHot() ? PILE_YARD_SOIL : PILE_COMPOST_SOIL;
 }
 function leftoverPileTile(){
   if(!leftoverPileWanted() || !state || !state.grid) return null;
@@ -2326,7 +2398,7 @@ function neighborStandHtml(opts){
       }).join('')
     : `<div class="nstand-note">Crate is empty. Harvest wheat, sisters, orchard fruit, hay, woodlot firewood, meadow forage, willow cuttings, hedgerow berries, or marsh reed cuttings${typeof marshDuckEggReady==='function' && marshDuckEggReady()?', or marsh duck eggs':''}, then bring it here.</div>`;
   const pileNote = pileN
-    ? `<div class="nstand-note">🪣 ${pileN} leftover compost ready — paint 🪣 Compost on the land (no coins). Crate leftovers${typeof leftoverPileFeedAnd==='function'?leftoverPileFeedAnd():''} feed this pile.</div>`
+    ? `<div class="nstand-note">🪣 ${pileN} leftover compost ready — paint 🪣 Compost on the land (no coins). ${(typeof leftoverPileQualityHot==='function' && leftoverPileQualityHot())?'Yard pile by the barn cooks hotter than one parked far from the manure. ':''}Crate leftovers${typeof leftoverPileFeedAnd==='function'?leftoverPileFeedAnd():''} feed this pile.</div>`
     : '';
   const leftoverNote = leftoverN
     ? `<div class="nstand-note">Leftovers sat a few lane days. Compost them — you skip today's lane coins for soil.</div>`
@@ -7171,7 +7243,8 @@ function paddockGrazeHeads(s){
 function paddockManureDailyRate(n){
   n = Math.max(0, n|0);
   if(n<=0) return 0;
-  return PADDOCK_MANURE_RATE * Math.sqrt(n);
+  const mul = (typeof leftoverPileCookMul==='function') ? leftoverPileCookMul() : 1;
+  return PADDOCK_MANURE_RATE * Math.sqrt(n) * mul;
 }
 function paddockManureFloaterIdx(s){
   if(state && state.grid && s && s.grid && state.grid===s.grid){
@@ -7213,7 +7286,11 @@ function tickPaddockManure(){
     floater(fi, n>1 ? '🪣 pile ×'+n : '🪣 pile', '#d8c8a0', 16);
   }
   if(typeof toast==='function'){
-    toast('🪣 Bedding and droppings from the fold went to the compost pile. Fewer animals, less manure.', {once:'paddock_manure_first', throttleMs:4000});
+    const yard = typeof leftoverPileYardCooksHot==='function' && leftoverPileYardCooksHot();
+    toast(yard
+      ? '🪣 Bedding cooked in the yard pile by the barn — hotter than a pile parked far from the manure. Fewer animals, less manure.'
+      : '🪣 Bedding and droppings from the fold went to the compost pile. Fewer animals, less manure.',
+      {once: yard ? 'paddock_manure_yard' : 'paddock_manure_first', throttleMs:4000});
   }
   if(typeof buildPalette==='function') buildPalette();
   if(typeof refreshNeighborStandIfOpen==='function') refreshNeighborStandIfOpen();
@@ -11723,7 +11800,7 @@ function applyHomesteadTool(i){
     if(t.terrain==='house'){
       toast('🏡 Catalog → Expand kits & Yard Build. Rooms are optional (Peek Inside).');
     }else     if(t.terrain==='barn'){
-      toast('🏠 The barn — leftover compost sits in the yard beside it.');
+      toast('🏠 The barn — leftover compost sits in the yard beside it. Manure heat cooks that pile hotter than one parked far away.');
     }else if(t.terrain==='coop'){
       const coopReady = typeof coopBeddingReady==='function' && coopBeddingReady();
       toast('🐔 The coop — hens scratch the grass. Eggs go to the crate by the house.'+(coopReady?' Bedding and droppings feed the compost pile.':''));
@@ -14280,9 +14357,13 @@ function applyTool(i){
     }
     applyCompostSoil(t, fromPile);
     state.stats.composts++;
-    floater(i, fromPile ? '🪣 leftover pile · richer wake' : '🪣 +compost', '#d8c8a0'); burst(i, '#9a7d54', 10); SND.place();
+    const yardHot = fromPile && typeof leftoverPileQualityHot==='function' && leftoverPileQualityHot();
+    floater(i, fromPile ? (yardHot ? '🪣 yard pile · barn heat' : '🪣 leftover pile · richer wake') : '🪣 +compost', '#d8c8a0'); burst(i, '#9a7d54', 10); SND.place();
     if(fromPile){
-      toast('🪣 Leftover pile compost feeds the soil harder than a bought bag.', {once:'leftover_compost_use', throttleMs:4000});
+      toast(yardHot
+        ? '🪣 Yard pile by the barn — manure heat feeds the bed harder than a pile parked far away.'
+        : '🪣 Leftover pile compost feeds the soil harder than a bought bag.',
+        {once: yardHot ? 'leftover_compost_yard' : 'leftover_compost_use', throttleMs:4000});
       if(typeof buildPalette==='function') buildPalette();
     }
     if(dead){
@@ -14862,7 +14943,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.lanewayfix';
+const SHIP_BUILD = '2026-08-22.compostyard';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -15012,7 +15093,7 @@ function openAboutCredits(){
   if(showNew) camp.tipsShown['whats_new_'+ver] = true;
   const whatsNew = showNew
     ? `<div class="lesson" style="text-align:left;margin-top:6px;border-color:rgba(234,181,67,.45)">
-        <b>What's new (${ver}):</b> After Home Patch the high-dry lane is working access — till, flood, or block it and the herd slogs until you 🚜 a clear dry path.
+        <b>What's new (${ver}):</b> After Home Patch the compost pile by the barn cooks hotter — leftover compost from that yard pile feeds beds harder than a pile parked far from the manure.
       </div>`
     : '';
   // CD — first About open literacy (in-modal; no toast spam)
@@ -17019,25 +17100,40 @@ function drawLeftoverCompostPile(t){
   const tier = leftoverPileTier();
   if(tier<=0) return;
   const onBarn = t.terrain==='barn';
+  const hot = typeof leftoverPileQualityHot==='function' && leftoverPileQualityHot();
   const seat = tileSeat(t, onBarn ? 0.16 : 0.48, onBarn ? 0.80 : 0.64);
   const w = tier>=3 ? 56 : tier>=2 ? 46 : 34;
   const h = spriteH('compost', w, Math.round(w * 0.82));
   if(typeof drawFootShadow==='function') drawFootShadow(seat.x, seat.y + 2, w * 0.32, w * 0.11);
   const mound = ()=>{
     const s = w / 38;
-    ctx.fillStyle = '#5c4024';
+    ctx.fillStyle = hot ? '#6a3818' : '#5c4024';
     ctx.beginPath(); ctx.ellipse(seat.x, seat.y, 10*s, 5.2*s, 0, 0, 6.29); ctx.fill();
-    ctx.fillStyle = '#7a5b36';
+    ctx.fillStyle = hot ? '#8a4e22' : '#7a5b36';
     ctx.beginPath(); ctx.ellipse(seat.x, seat.y-3.2*s, 8.4*s, 4.4*s, 0, 0, 6.29); ctx.fill();
-    ctx.fillStyle = '#93744a';
+    ctx.fillStyle = hot ? '#b06a30' : '#93744a';
     ctx.beginPath(); ctx.ellipse(seat.x-0.6*s, seat.y-6.4*s, 6.2*s, 3.4*s, 0, 0, 6.29); ctx.fill();
     if(tier>=2){
-      ctx.fillStyle = '#a88858';
+      ctx.fillStyle = hot ? '#c88840' : '#a88858';
       ctx.beginPath(); ctx.ellipse(seat.x+1.2*s, seat.y-8.6*s, 4.4*s, 2.4*s, 0, 0, 6.29); ctx.fill();
     }
     if(tier>=3){
-      ctx.fillStyle = '#6a4a28';
+      ctx.fillStyle = hot ? '#7a3c16' : '#6a4a28';
       ctx.beginPath(); ctx.ellipse(seat.x-3.4*s, seat.y-2.2*s, 4.8*s, 2.6*s, 0.2, 0, 6.29); ctx.fill();
+    }
+    if(hot){
+      const still = typeof document!=='undefined' && document.body && document.body.classList.contains('reduce-motion');
+      const tm = still ? 0 : ((typeof performance!=='undefined' ? performance.now() : Date.now())/1000);
+      for(let i=0;i<2;i++){
+        const a = still ? 0.35+i*0.2 : ((tm*0.55+i*1.25)%1);
+        ctx.save();
+        ctx.globalAlpha = 0.28*(still?1:(1-a));
+        ctx.fillStyle = '#f6ecd4';
+        ctx.beginPath();
+        ctx.ellipse(seat.x-2*s+i*4*s, seat.y-12*s-(still?6:a*9)*s, 2.4*s, 1.5*s, 0, 0, 6.29);
+        ctx.fill();
+        ctx.restore();
+      }
     }
     drawEmoji('🪣', seat.x+2*s, seat.y-10*s, 9+tier*2);
   };
@@ -19364,7 +19460,7 @@ function openInfo(refreshOnly){
          ${crateChip}
          <button type="button" class="mbtn wood" style="width:100%;margin-top:8px" id="btnGoInside">🚪 Peek Inside</button>`
       : (t.terrain==='barn'
-        ? `<div class="chiprow">The barn — leftover compost sits in the yard beside it. Crate leftovers${pileFeedAnd} feed that pile.</div>`
+        ? `<div class="chiprow">The barn — leftover compost sits in the yard beside it. Manure heat cooks that pile hotter than one parked far from the yard. Crate leftovers${pileFeedAnd} feed that pile.</div>`
         : (t.terrain==='coop'
           ? `<div class="chiprow">The coop — hens scratch the grass. Eggs trickle into the crate by the house.${coopReady?' Bedding and droppings feed the compost pile.':''}</div>
              ${crateChip}`
