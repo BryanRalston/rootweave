@@ -2906,10 +2906,13 @@ function leftoverNeighborHintNames(P){
 }
 /** Mist copy: deeds are bought, campaign neighbors are cleared. Hub neighbors stay out. */
 function leftoverNeighborHintLine(P){
-  const parts = leftoverNeighborIds(P).map(id=>valleyParcel(id)).filter(N=>N && N.kind!=='hub').map(N=>
-    N.buyable ? ('buying '+N.name) : ('clearing '+N.name)
-  );
-  if(!parts.length) return '';
+  const entries = leftoverNeighborIds(P).map(id=>valleyParcel(id)).filter(N=>N && N.kind!=='hub');
+  if(!entries.length) return '';
+  const clears = entries.filter(N=>!N.buyable).map(N=>N.name);
+  const buys = entries.filter(N=>N.buyable).map(N=>N.name);
+  const parts = [];
+  if(clears.length) parts.push('clearing '+clears.join(' or '));
+  if(buys.length) parts.push('buying '+buys.join(' or '));
   return 'Unlock by '+parts.join(' or ');
 }
 function parcelUnlockHint(P){
