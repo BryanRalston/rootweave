@@ -1037,6 +1037,8 @@ const STAND_FORAGE_SEASON = [1.14, 1.10, 0.96, 0.86]; // spring bloom; summer cu
 const MEADOW_FORAGE_LOT = 3;   // modest crate lot — like hay / eggs, well under a wheat cut
 const MEADOW_FORAGE_SET = 0.10; // cuttings / day on a bloom tile — meadow stays dressed
 const MEADOW_AUTO_PICK = 1;    // light dawn trickle — tap can pick the rest
+const PADDOCK_MANURE_RATE = 0.20; // pile lots/day at 1 head; scales with sqrt(heads), stays a trickle
+const PADDOCK_MANURE_AUTO = 1;    // at most one dawn pile unit — bedding, not a crate crop
 const WOODLOT_REGEN_DAYS = 8; // clear-cut stump returns as canopy; never an empty plant bed
 const WOODLOT_CLEAR_SOIL = {om:-3, erosion:-4, water:-2, microbial:-1}; // heavy cut nicks the fold
 const OVERGRAZE_RATES = {om:-0.45, structure:-0.35, nutrients:-0.15, water:0, microbial:-0.1, erosion:-0.5};
@@ -1154,8 +1156,9 @@ function grazeInspectLine(g){
   const yBit = grazeYieldMark(g)+' ~'+yShown+'🪙/day';
   const rest = grazeRestDays(g);
   const stay = g.stay||0;
-  if(stay >= rest) return who+' · no yield while this pad is tired — move them.';
-  return who+' · '+yBit+' · here '+stay.toFixed(0)+'d · move before '+Math.round(rest)+'d'+(g.synergy?' ✨':'');
+  const manure = typeof paddockManureReady==='function' && paddockManureReady() ? ' · bedding to the pile' : '';
+  if(stay >= rest) return who+' · no yield while this pad is tired — move them.'+manure;
+  return who+' · '+yBit+' · here '+stay.toFixed(0)+'d · move before '+Math.round(rest)+'d'+(g.synergy?' ✨':'')+manure;
 }
 function tickGrazeStay(g, dd){
   if(!g) return;
@@ -1532,7 +1535,8 @@ function leftoverPileInspectLine(){
   const n = leftoverCompostStock();
   if(n<=0) return '';
   if(typeof homePatchCleared==='function' && !homePatchCleared()) return '';
-  return n+' leftover compost — paint 🪣';
+  const manure = typeof paddockManureReady==='function' && paddockManureReady();
+  return n+' leftover compost — paint 🪣'+(manure?' · paddock bedding feeds this pile':'');
 }
 function leftoverPileSpotOk(t){
   if(!t) return false;
@@ -2002,7 +2006,7 @@ function neighborStandHtml(opts){
       }).join('')
     : `<div class="nstand-note">Crate is empty. Harvest wheat, sisters, orchard fruit, hay, woodlot firewood, or meadow forage, then bring it here.</div>`;
   const pileNote = pileN
-    ? `<div class="nstand-note">🪣 ${pileN} leftover compost ready — paint 🪣 Compost on the land (no coins). You already skipped the stand coins.</div>`
+    ? `<div class="nstand-note">🪣 ${pileN} leftover compost ready — paint 🪣 Compost on the land (no coins). Crate leftovers and paddock bedding feed this pile.</div>`
     : '';
   const leftoverNote = leftoverN
     ? `<div class="nstand-note">Leftovers sat a few lane days. Compost them — you skip today's lane coins for soil.</div>`
@@ -2032,7 +2036,7 @@ function neighborStandHtml(opts){
     </div>`;
   }).filter(Boolean).join('');
   const meatBlock = meatRows
-    ? `<div class="nstand-note">Surplus meat only. Selling a head shrinks the herd — fewer mouths, weaker graze and less soil help. Selling down toward the last breeder thins the fold. Last of a kind stays. A surplus you do not sell can return to the pile — compost, not a slaughterhouse.</div>${meatRows}`
+    ? `<div class="nstand-note">Surplus meat only. Selling a head shrinks the herd — fewer mouths, weaker graze, and less manure for the pile. Selling down toward the last breeder thins the fold. Last of a kind stays. A surplus you do not sell can return to the pile — compost, not a slaughterhouse.</div>${meatRows}`
     : `<div class="nstand-keep">No herd to sell. Grow extra heads first — keep a breeder of each kind.</div>`;
   return harvestBlock + meatBlock;
 }
@@ -2454,10 +2458,10 @@ function leftoverStampStory(feel, P){
     woodlot: 'Shade and brush. Thin a little firewood; leave the canopy. Restore the understory.',
     wet: 'Wet ground and reeds. Do not farm this like a dry garden.',
     meadow: 'Wet flowery meadow — reeds, clover, and flowers along the creek. Gather wild cuttings into the crate. Not hay, not a kitchen row.',
-    paddock: 'A grazing fold. Pasture, manure, rest, and stock water — not a kitchen garden.',
+    paddock: 'A grazing fold. Pasture, manure, rest, and stock water — bedding and droppings feed the compost pile. Not a kitchen garden.',
     orchard: 'Trees and understory. Perennials, not corn rows.',
     dust: 'Salt, dust, and a dry wash that only runs after rain. Soften it; do not pretend it is lush.',
-    dry_graze: 'Dry pasture at the quarter-section edge. Sparse graze and salt-crust, not a garden.',
+    dry_graze: 'Dry pasture at the quarter-section edge. Sparse graze and salt-crust — a little manure for the pile when the herd walks. Not a garden.',
     river: 'The live stem and the wash. Keep the banks rooted.',
     heal: 'Wake the leftover ground.'
   }[feel] || 'Wake the leftover ground.';
@@ -2855,7 +2859,7 @@ const VALLEY_PARCELS = [
   {id:'back_paddock', name:'Back Paddock', em:'🐄', kind:'plot', stampFeel:'paddock', levelId:'field', lvIndex:1,
    origin:{c:10, r:32}, size:{w:8, h:8}, teaser:'herd',
    systemsTaught:['cattle','chicken','team_graze','clover'], neighborParcels:['home_garden','north_folds','west_folds'],
-   unlockRules:{type:'parcel_cleared', parcelId:'home_garden'}, landmark:'fence_trough', desc:'One grazing fold around the stock pond.'},
+   unlockRules:{type:'parcel_cleared', parcelId:'home_garden'}, landmark:'fence_trough', desc:'One grazing fold around the stock pond. Bedding and droppings feed the compost pile.'},
   {id:'creek_bend', name:'Creek Bend', em:'🏞️', kind:'plot', levelId:'creek', lvIndex:2,
    origin:{c:28, r:6}, size:{w:9, h:9}, teaser:'water',
    systemsTaught:['buffers','pond','runoff','water_hud'], neighborParcels:['back_paddock','river_reach','marsh_finger'],
@@ -2899,12 +2903,12 @@ const VALLEY_PARCELS = [
    origin:{c:8, r:16}, size:{w:18, h:16}, teaser:'herd',
    systemsTaught:[], neighborParcels:['back_paddock','wet_meadow'],
    unlockRules:{type:'parcel_cleared', parcelId:'back_paddock'}, landmark:'fence',
-   desc:'More paddock folds north of the working herd.'},
+   desc:'More paddock folds north of the working herd. Bedding and droppings feed the compost pile.'},
   {id:'west_folds', name:'West Folds', em:'🌿', kind:'plot', leftover:true, stampFeel:'paddock', levelId:'west_folds', lvIndex:null,
    origin:{c:4, r:40}, size:{w:16, h:12}, teaser:'herd',
    systemsTaught:[], neighborParcels:['back_paddock','homestead'],
    unlockRules:{type:'parcel_cleared', parcelId:'back_paddock'}, landmark:'fence',
-   desc:'Lower paddock folds between the house and the herd.'},
+   desc:'Lower paddock folds between the house and the herd. Bedding and droppings feed the compost pile.'},
   {id:'wet_meadow', name:'Wet Meadow', em:'🦢', kind:'plot', leftover:true, stampFeel:'meadow', levelId:'wet_meadow', lvIndex:null,
    origin:{c:2, r:2}, size:{w:18, h:14}, teaser:'wetland',
    systemsTaught:[], neighborParcels:['marsh_finger'],
@@ -2950,7 +2954,7 @@ const VALLEY_PARCELS = [
    origin:{c:86, r:28}, size:{w:10, h:16}, teaser:'salt',
    systemsTaught:[], neighborParcels:['market_cross','dust_scrub'],
    unlockRules:{type:'coin_deed', cost:78, neighborParcels:['market_cross','dust_scrub']}, landmark:'cart',
-   desc:'Open pasture east of the market yard, where the quarter-section runs out.'},
+   desc:'Open pasture east of the market yard, where the quarter-section runs out. A little manure for the pile when the herd walks.'},
 ];
 VALLEY_PARCELS.forEach(P=>{
   const w = (P.size && P.size.w) || 0, h = (P.size && P.size.h) || 0;
@@ -3683,9 +3687,10 @@ function defaultCamp(){
     herd: typeof emptyHerd==='function' ? emptyHerd() : {cattle:0, chicken:0, sheep:0, goat:0, pig:0, duckT:0},
     herdV: 2,
     crate: [], // last N harvests banked for the neighbor stand
-    compostStock: 0, // leftover crate / surplus bodies returned to the pile
+    compostStock: 0, // leftover crate / surplus bodies / paddock bedding returned to the pile
     eggAcc: 0, // homestead coop → crate lots (fractional days)
     woodAcc: 0, // woodlot firewood dawn trickle (fractional days)
+    manureAcc: 0, // leftover paddock bedding → pile lots (fractional days)
   };
   ensureParcelState(c);
   return c;
@@ -4906,6 +4911,84 @@ function currentPaddockFold(s){
   if(L && (L.id==='field' || L.stampFeel==='paddock' || L.stampFeel==='dry_graze')) return true;
   const P = typeof valleyParcelByLvIndex==='function' ? valleyParcelByLvIndex(s.lv) : null;
   return leftoverIsPaddockFold(P);
+}
+/** Field under the player, or the parked paddock fold while they are in the yard. */
+function paddockManureFarm(){
+  if(typeof homesteadMode!=='undefined' && homesteadMode && typeof plotStateBackup!=='undefined'
+     && plotStateBackup && plotStateBackup.grid && !plotStateBackup.homesteadView){
+    return plotStateBackup;
+  }
+  if(state && !state.homesteadView) return state;
+  return null;
+}
+function campHerdHeads(){
+  if(typeof ensureHerd==='function') ensureHerd(camp);
+  if(!camp || !camp.herd) return 0;
+  let n = 0;
+  Object.keys(camp.herd).forEach(k=>{ n += Math.max(0, camp.herd[k]|0); });
+  return n;
+}
+/** Heads actually walking this fold — camp herd alone is not "in play". */
+function paddockGrazeHeads(s){
+  s = s || (typeof paddockManureFarm==='function' ? paddockManureFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return 0;
+  let n = 0;
+  s.grid.forEach(t=>{
+    if(t && t.graze && typeof grazeStockN==='function') n += grazeStockN(t.graze);
+  });
+  return n;
+}
+function paddockManureDailyRate(n){
+  n = Math.max(0, n|0);
+  if(n<=0) return 0;
+  return PADDOCK_MANURE_RATE * Math.sqrt(n);
+}
+function paddockManureFloaterIdx(s){
+  if(state && state.grid && s && s.grid && state.grid===s.grid){
+    for(let i=0;i<s.grid.length;i++) if(s.grid[i] && s.grid[i].graze) return i;
+  }
+  if(typeof selected==='number' && selected>=0 && state && state.grid && state.grid[selected]) return selected;
+  if(state && state.grid){
+    for(let k=0;k<state.grid.length;k++){
+      if(state.grid[k] && (state.grid[k].terrain==='nstand' || state.grid[k].terrain==='house' || state.grid[k].terrain==='barn' || state.grid[k].terrain==='coop')) return k;
+    }
+  }
+  return (typeof selected==='number' && selected>=0) ? selected : 0;
+}
+/** Leftover / campaign paddock after Home, with the herd walking. First session stays off. */
+function paddockManureReady(s){
+  if(!camp) return false;
+  if(typeof homePatchCleared==='function' && !homePatchCleared()) return false;
+  s = s || (typeof paddockManureFarm==='function' ? paddockManureFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return false;
+  if(typeof currentPaddockFold==='function' ? !currentPaddockFold(s) : true) return false;
+  if(paddockGrazeHeads(s)<=0) return false;
+  return campHerdHeads() > 0;
+}
+/** One sim dawn: modest bedding / droppings go to the leftover compost pile — not a crate lot. */
+function tickPaddockManure(){
+  if(!camp || !paddockManureReady()) return 0;
+  const s = paddockManureFarm();
+  if(!s || !s.grid) return 0;
+  const heads = campHerdHeads();
+  if(heads<=0) return 0;
+  camp.manureAcc = Math.max(0, +camp.manureAcc || 0) + paddockManureDailyRate(heads);
+  if(camp.manureAcc < 1) return 0;
+  const n = Math.min(PADDOCK_MANURE_AUTO, Math.floor(camp.manureAcc));
+  if(n<=0) return 0;
+  camp.manureAcc -= n;
+  if(typeof creditLeftoverCompost==='function') creditLeftoverCompost(n);
+  const fi = paddockManureFloaterIdx(s);
+  if(typeof floater==='function' && state && state.grid && state.grid[fi]){
+    floater(fi, n>1 ? '🪣 pile ×'+n : '🪣 pile', '#d8c8a0', 16);
+  }
+  if(typeof toast==='function'){
+    toast('🪣 Bedding and droppings from the fold went to the compost pile. Fewer animals, less manure.', {once:'paddock_manure_first', throttleMs:4000});
+  }
+  if(typeof buildPalette==='function') buildPalette();
+  if(typeof refreshNeighborStandIfOpen==='function') refreshNeighborStandIfOpen();
+  if(typeof updateHUD==='function') updateHUD();
+  return n;
 }
 /** Interior leftover land that can take clover / flowers. Leave creek, reeds, and riparian trees. */
 function leftoverMeadowSeatOk(t, g){
@@ -7479,6 +7562,7 @@ function simStep(dt){
     if(typeof tickOrchardFruit==='function') tickOrchardFruit();
     if(typeof tickWoodlotTimber==='function') tickWoodlotTimber();
     if(typeof tickMeadowForage==='function') tickMeadowForage();
+    if(typeof tickPaddockManure==='function') tickPaddockManure();
     if(typeof refreshNeighborStandIfOpen==='function') refreshNeighborStandIfOpen();
     updateQuests();
     maybeDustFlatsCoach();
@@ -11703,7 +11787,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.bloomstay';
+const SHIP_BUILD = '2026-08-22.paddockmanure';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -16164,7 +16248,7 @@ function openInfo(refreshOnly){
          ${crateChip}
          <button type="button" class="mbtn wood" style="width:100%;margin-top:8px" id="btnGoInside">🚪 Peek Inside</button>`
       : (t.terrain==='barn'
-        ? `<div class="chiprow">The barn — leftover compost sits in the yard beside it when the pile has stock.</div>`
+        ? `<div class="chiprow">The barn — leftover compost sits in the yard beside it. Crate leftovers and paddock bedding feed that pile.</div>`
         : (t.terrain==='coop'
           ? `<div class="chiprow">The coop — hens scratch the grass. Eggs trickle into the crate by the house.</div>
              ${crateChip}`
@@ -16291,10 +16375,13 @@ function openInfo(refreshOnly){
   }else if(t.terrain==='pond'){
     const high = typeof isHighPondT==='function' && isHighPondT(t);
     const marsh = typeof isMarshPondT==='function' && isMarshPondT(t);
+    const paddockDrink = typeof currentPaddockFold==='function' && currentPaddockFold();
     body = high
       ? `<div class="chiprow">A high pond on the ridge — downhill fields hold a little more water and wilt a little less. Not a plant bed.</div>`
       : marsh
         ? `<div class="chiprow">A marsh pond — runoff settles here before it reaches the main river. Reeds and wet soil feed it. Not a kitchen bed.</div>`
+      : paddockDrink
+        ? `<div class="chiprow">Stock water the herd stands beside. Bedding and droppings from this fold feed the compost pile. Not a kitchen pond.</div>`
       : `<div class="chiprow">Stores rain, waters nearby soil, and keeps the farm safe in droughts. Dragonflies love it.</div>`;
   }else if(t.terrain==='water'){
     const wq = Math.round(state.waterQuality);
@@ -16721,6 +16808,7 @@ function loadCamp(d){
     camp.compostStock = Math.max(0, (+c.compostStock||0)|0);
   }
   camp.eggAcc = Math.max(0, +c.eggAcc || 0);
+  camp.manureAcc = Math.max(0, +c.manureAcc || 0);
   if(c.laneClock && typeof c.laneClock==='object'){
     camp.laneClock = {
       season: ((c.laneClock.season|0)%4+4)%4,
@@ -18283,7 +18371,7 @@ function buildJourney(){
   mapHead.className = 'jsub';
   mapHead.style.marginBottom = '8px';
   mapHead.textContent = (typeof homePatchCleared==='function' && homePatchCleared())
-    ? 'Tap a field to walk it. Mist lifts as you heal neighbors. A coin price on the fog is a neighbor selling land.'
+    ? 'Tap a field to walk it. Mist lifts as you heal neighbors. A coin price on the fog is a neighbor selling land. Paddock bedding feeds the compost pile.'
     : 'Tap a field to walk it. Mist lifts as you heal the neighbors.';
   path.appendChild(mapHead);
   path.appendChild(buildValleyMapEl());
