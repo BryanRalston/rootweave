@@ -3597,8 +3597,10 @@ function atlasNearLiveWater(ac, ar){
 function applyAtlasBiomeLand(s, parcelId){
   const P = valleyParcel(parcelId);
   if(!P || !P.origin || !P.size || !P.size.w) return;
-  const oc = P.origin.c, or = P.origin.r;
-  for(let r=0;r<P.size.h;r++) for(let c=0;c<P.size.w;c++){
+  const box = typeof parcelStampBox==='function' ? parcelStampBox(P) : null;
+  const oc = box ? box.c : P.origin.c, or = box ? box.r : P.origin.r;
+  const bw = box ? box.w : P.size.w, bh = box ? box.h : P.size.h;
+  for(let r=0;r<bh;r++) for(let c=0;c<bw;c++){
     if(!inGrid(c,r)) continue;
     const t = s.grid[idx(c,r)];
     const A = atlasGet(oc+c, or+r) || {water:'none', biome:'wild'};
@@ -3657,9 +3659,11 @@ function applyAtlasBiomeLand(s, parcelId){
 function stampAtlasParcel(s, parcelId){
   const P = valleyParcel(parcelId);
   if(!P || !P.origin || !P.size || !P.size.w) return;
-  const oc = P.origin.c, or = P.origin.r;
+  const box = typeof parcelStampBox==='function' ? parcelStampBox(P) : null;
+  const oc = box ? box.c : P.origin.c, or = box ? box.r : P.origin.r;
+  const bw = box ? box.w : P.size.w, bh = box ? box.h : P.size.h;
   const keep = (t)=> t.terrain==='water' || t.terrain==='pond' || t.terrain==='riverbed';
-  for(let r=0;r<P.size.h;r++) for(let c=0;c<P.size.w;c++){
+  for(let r=0;r<bh;r++) for(let c=0;c<bw;c++){
     if(!inGrid(c,r)) continue;
     const t = s.grid[idx(c,r)];
     t.atlasC = oc+c; t.atlasR = or+r;
@@ -4069,8 +4073,9 @@ function atlasLaneSeatOk(t){
 function ensureAtlasLaneOnCrop(s, parcelId){
   if(!s || !s.grid) return 0;
   const P = (typeof valleyParcel==='function' && parcelId) ? valleyParcel(parcelId) : null;
-  const oc = P && P.origin ? (P.origin.c|0) : 0;
-  const or = P && P.origin ? (P.origin.r|0) : 0;
+  const box = P && typeof parcelStampBox==='function' ? parcelStampBox(P) : null;
+  const oc = box ? box.c : (P && P.origin ? (P.origin.c|0) : 0);
+  const or = box ? box.r : (P && P.origin ? (P.origin.r|0) : 0);
   let n = 0;
   s.grid.forEach(t=>{
     if(!t) return;
@@ -4531,7 +4536,22 @@ function dressLeftoverStamp(s, P){
 function leftoverPlayBox(P){
   if(!P || !P.origin || !P.size) return null;
   const g = leftoverPlayGrid(P.size.w, P.size.h);
-  return {c:P.origin.c|0, r:P.origin.r|0, w:g, h:g};
+  let c = P.origin.c|0, r = P.origin.r|0;
+  // Tall river leftover: sit the square on the south so the wash still meets the stem.
+  // The map hotspot stays the full parcel; only the play crop shifts.
+  if((P.leftover || P.buyable) && leftoverStampFeelFor(P)==='river' && (P.size.h|0)>g){
+    r = (P.origin.r|0) + (P.size.h|0) - g;
+  }
+  return {c, r, w:g, h:g};
+}
+/** Local (0,0) → atlas cell for this crop. Leftover / deed stamps use leftoverPlayBox. */
+function parcelStampBox(P){
+  if(P && (P.leftover || P.buyable) && typeof leftoverPlayBox==='function'){
+    const box = leftoverPlayBox(P);
+    if(box) return box;
+  }
+  if(!P || !P.origin || !P.size) return null;
+  return {c:P.origin.c|0, r:P.origin.r|0, w:P.size.w|0, h:P.size.h|0};
 }
 function atlasIsHedgeWood(A){
   return !!(A && (A.feature==='hedgerow' || A.feature==='woodlot'));
@@ -4635,7 +4655,9 @@ function leftoverPlayEdgeCells(g, side){
 }
 function leftoverAtlasHedgeToward(P, cell){
   if(!P || !P.origin || !cell) return false;
-  const ac = (P.origin.c|0)+cell.c, ar = (P.origin.r|0)+cell.r;
+  const box = typeof leftoverPlayBox==='function' ? leftoverPlayBox(P) : null;
+  const oc = box ? box.c : (P.origin.c|0), or = box ? box.r : (P.origin.r|0);
+  const ac = oc+cell.c, ar = or+cell.r;
   if(atlasIsHedgeWood(atlasGet(ac, ar))) return true;
   for(let k=1;k<=4;k++){
     if(atlasIsHedgeWood(atlasGet(ac+cell.dc*k, ar+cell.dr*k))) return true;
@@ -10267,7 +10289,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.marshpond';
+const SHIP_BUILD = '2026-08-22.southwash';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
