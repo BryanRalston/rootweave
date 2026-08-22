@@ -1041,6 +1041,9 @@ const PADDOCK_MANURE_RATE = 0.20; // pile lots/day at 1 head; scales with sqrt(h
 const PADDOCK_MANURE_AUTO = 1;    // at most one dawn pile unit — bedding, not a crate crop
 const PADDOCK_THIRST_SOIL = {water:-2.5, om:-0.8, erosion:-0.8}; // dawn nick when the fold is dry
 const PADDOCK_DRINK_SOIL = {water:1, om:0.25}; // tiny recover when the drink is usable
+const PADDOCK_EXPOSE_SOIL = {om:-0.6, erosion:-1.0, water:-0.5}; // dawn nick: winter graze with no windbreak in reach
+const PADDOCK_SHELTER_REACH = 2; // chebyshev tiles — herd can walk into the lee
+const PADDOCK_EXPOSE_STAY = 0.12; // modest tired-pad tick; thirst uses 0.15
 const COOP_BEDDING_RATE = 0.12; // pile lots/day at 1 hen; scales with sqrt(hens), smaller than a paddock herd
 const COOP_BEDDING_AUTO = 1;    // at most one dawn pile unit — bedding, not a crate crop
 const WOODLOT_REGEN_DAYS = 8; // clear-cut stump returns as canopy; never an empty plant bed
@@ -1162,8 +1165,9 @@ function grazeInspectLine(g){
   const stay = g.stay||0;
   const manure = typeof paddockManureReady==='function' && paddockManureReady() ? ' · bedding to the pile' : '';
   const thirst = typeof paddockStockThirstNeed==='function' && paddockStockThirstNeed() ? ' · dry — herd needs a drink' : '';
-  if(stay >= rest) return who+' · no yield while this pad is tired — move them.'+manure+thirst;
-  return who+' · '+yBit+' · here '+stay.toFixed(0)+'d · move before '+Math.round(rest)+'d'+(g.synergy?' ✨':'')+manure+thirst;
+  const wind = typeof paddockWindShelterNeed==='function' && paddockWindShelterNeed() ? ' · open to the wind — herd needs a windbreak' : '';
+  if(stay >= rest) return who+' · no yield while this pad is tired — move them.'+manure+thirst+wind;
+  return who+' · '+yBit+' · here '+stay.toFixed(0)+'d · move before '+Math.round(rest)+'d'+(g.synergy?' ✨':'')+manure+thirst+wind;
 }
 function tickGrazeStay(g, dd){
   if(!g) return;
@@ -4153,6 +4157,7 @@ function stampAtlasParcel(s, parcelId){
     } else if(A.feature==='hedgerow' || A.feature==='woodlot'){
       t.terrain = 'trees'; carveClear(t);
       if(A.feature==='woodlot') t.atlasFeature = 'woodlot';
+      if(A.feature==='hedgerow') t.atlasFeature = 'hedgerow';
     } else if(A.feature){
       t.feature = A.feature;
     }
@@ -5113,6 +5118,99 @@ function tickPaddockStockThirst(){
   }
   if(typeof toast==='function'){
     toast('💧 The fold is dry — the herd needs stock water they can stand beside.', {once:'paddock_thirst_first', throttleMs:4000});
+  }
+  return tiles.length;
+}
+/** Seated / atlas windbreak, hedgerow, or woodlot canopy — not riparian, not a stump. */
+function isWindShelterT(t){
+  if(!t) return false;
+  if(t.woodRegen!=null) return false;
+  if(t.farmEdge==='windbreak' || t.farmEdge==='hedgerow' || t.farmEdge==='woodlot') return true;
+  if(typeof isWoodlotT==='function' && isWoodlotT(t)) return true;
+  if(t.atlasFeature==='hedgerow' || t.atlasFeature==='windbreak') return true;
+  if(t.terrain==='trees' && t.atlasC!=null && typeof atlasGet==='function'){
+    const A = atlasGet(t.atlasC, t.atlasR);
+    if(A && (A.feature==='hedgerow' || A.feature==='woodlot')) return true;
+  }
+  return false;
+}
+/** Walking graze is in the lee when a windbreak / hedgerow / woodlot is in reach. */
+function paddockWindShelterNear(t, s){
+  s = s || (typeof paddockManureFarm==='function' ? paddockManureFarm() : (typeof state!=='undefined' ? state : null));
+  if(!t || !s || !s.grid) return false;
+  const reach = (typeof PADDOCK_SHELTER_REACH==='number') ? PADDOCK_SHELTER_REACH : 2;
+  const g = (s.gridSize|0) || (typeof GRID==='number' ? GRID : 0);
+  for(let dr=-reach; dr<=reach; dr++){
+    for(let dc=-reach; dc<=reach; dc++){
+      if(!(dc||dr)) continue;
+      const c = (t.c|0)+dc, r = (t.r|0)+dr;
+      if(typeof inGrid==='function'){
+        if(!inGrid(c,r)) continue;
+      }else if(c<0 || r<0 || c>=g || r>=g) continue;
+      const n = s.grid[typeof idx==='function' ? idx(c,r) : (r*g+c)];
+      if(isWindShelterT(n)) return true;
+    }
+  }
+  return false;
+}
+/** True when at least one walking graze tile can reach existing shelter. */
+function paddockWindShelterInReach(s){
+  s = s || (typeof paddockManureFarm==='function' ? paddockManureFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return false;
+  for(let i=0;i<s.grid.length;i++){
+    const t = s.grid[i];
+    if(t && t.graze && paddockWindShelterNear(t, s)) return true;
+  }
+  return false;
+}
+/** Winter, or an existing harsh / windy season flag. No new season chrome. */
+function paddockHarshWeather(s){
+  s = s || (typeof paddockManureFarm==='function' ? paddockManureFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s) return false;
+  if(s.harshWeather || s.windySeason) return true;
+  const season = (s.season|0)%4;
+  if(season===3) return true;
+  const sn = (typeof SEASONS!=='undefined') ? SEASONS[season] : null;
+  return !!(sn && (sn.harsh || sn.windy || sn.canPlant===false));
+}
+/** Same gate as manurecopy / stockthirst: Home cleared, paddock fold, herd walking. */
+function paddockWindShelterReady(s){
+  return typeof paddockManureReady==='function' && paddockManureReady(s);
+}
+/** Inspect / floater mention the need only when the walking herd is exposed in harsh weather. */
+function paddockWindShelterNeed(s){
+  if(!paddockWindShelterReady(s)) return false;
+  if(!paddockHarshWeather(s)) return false;
+  return !paddockWindShelterInReach(s);
+}
+/** One sim dawn: exposed winter graze takes a modest soil / stay nick; lee skips it. */
+function tickPaddockWindShelter(){
+  if(!camp || !paddockWindShelterNeed()) return 0;
+  const s = typeof paddockManureFarm==='function' ? paddockManureFarm() : (typeof state!=='undefined' ? state : null);
+  if(!s || !s.grid) return 0;
+  const tiles = typeof paddockStockThirstTiles==='function' ? paddockStockThirstTiles(s) : [];
+  if(!tiles.length) return 0;
+  const b = (typeof PADDOCK_EXPOSE_SOIL!=='undefined') ? PADDOCK_EXPOSE_SOIL : {om:-0.6, erosion:-1.0, water:-0.5};
+  const stayNick = (typeof PADDOCK_EXPOSE_STAY==='number') ? PADDOCK_EXPOSE_STAY : 0.12;
+  tiles.forEach(({t})=>{
+    if(!t || !t.soil) return;
+    t.soil.om = clamp((t.soil.om||0) + (b.om||0));
+    t.soil.erosion = clamp((t.soil.erosion||0) + (b.erosion||0));
+    t.soil.water = clamp((t.soil.water||0) + (b.water||0));
+    if(t.graze){
+      t.graze.stay = (t.graze.stay||0) + stayNick;
+      const rest = typeof grazeRestDays==='function' ? grazeRestDays(t.graze) : (t.graze.total||0);
+      t.graze.total = rest;
+      t.graze.days = Math.max(0, rest - (t.graze.stay||0));
+    }
+    if(typeof recalc==='function') recalc(t);
+  });
+  const fi = typeof paddockManureFloaterIdx==='function' ? paddockManureFloaterIdx(s) : 0;
+  if(typeof floater==='function' && state && state.grid && state.grid[fi]){
+    floater(fi, 'wind', '#a8b8c8');
+  }
+  if(typeof toast==='function'){
+    toast('🌬️ Winter wind finds the herd — graze in the lee of the windbreak or woodlot.', {once:'paddock_windshelter_first', throttleMs:4000});
   }
   return tiles.length;
 }
@@ -7690,6 +7788,7 @@ function simStep(dt){
     if(typeof tickMeadowForage==='function') tickMeadowForage();
     if(typeof tickPaddockManure==='function') tickPaddockManure();
     if(typeof tickPaddockStockThirst==='function') tickPaddockStockThirst();
+    if(typeof tickPaddockWindShelter==='function') tickPaddockWindShelter();
     if(typeof tickCoopBedding==='function') tickCoopBedding();
     if(typeof refreshNeighborStandIfOpen==='function') refreshNeighborStandIfOpen();
     updateQuests();
@@ -10970,6 +11069,8 @@ function soilStoryLine(t){
       return '⚠️ This pad is tired — move the herd. '+tier;
     if(typeof paddockStockThirstNeed==='function' && paddockStockThirstNeed())
       return '💧 Dry fold — the herd needs stock water they can stand beside. '+tier;
+    if(typeof paddockWindShelterNeed==='function' && paddockWindShelterNeed())
+      return '🌬️ Open fold — winter wind finds the herd. Graze in the lee of the windbreak or woodlot. '+tier;
     if(g.kind==='team' || g.synergy) return '🐄🐔 Follow the herd — hooves open the sod; chickens follow. That\'s how prairie stayed fertile. '+tier;
     if(g.kind==='cattle' || g.kind==='cow') return '🐄 Cattle remaking this pad — send 🐔 chickens next. '+tier;
     if(g.kind==='chicken') return '🐔 Chickens working the surface. '+tier;
@@ -11918,7 +12019,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.leftoverfirst';
+const SHIP_BUILD = '2026-08-22.windshelter';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -16441,7 +16542,7 @@ function openInfo(refreshOnly){
       ${washLine?`<div class="chiprow">${washLine}</div>`:''}
       ${t.compost>0?`<div class="chiprow">🪣 compost working — ${t.compost.toFixed(0)}d left</div>`:''}
       ${t.crop?`<div class="chiprow">🌿 pioneers cracking the crust — ${Math.round(Math.min(1,t.crop.growth)*100)}%</div>`:''}
-      ${t.graze?`<div class="chiprow">🐐 goats browsing the scrub${typeof paddockStockThirstNeed==='function' && paddockStockThirstNeed()?' · dry — herd needs a drink':''}</div>`:''}
+      ${t.graze?`<div class="chiprow">🐐 goats browsing the scrub${typeof paddockStockThirstNeed==='function' && paddockStockThirstNeed()?' · dry — herd needs a drink':''}${typeof paddockWindShelterNeed==='function' && paddockWindShelterNeed()?' · open to the wind — herd needs a windbreak':''}</div>`:''}
       <div class="chiprow">💡 Feed it: 🪣 compost${toolAllowed('covercrop')?', 🌿 pioneer plants':''}${toolAllowed('goat')?', or 🐐 goats':''}. Water nearby helps it all work faster.</div>`;
   }else if(t.terrain==='riverbed'){
     const pulsed = (t.washPulse||0) > 8;
