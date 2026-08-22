@@ -5365,13 +5365,14 @@ function tickMarshReed(){
 function marshDuckFarm(){
   return typeof marshReedFarm==='function' ? marshReedFarm() : (typeof state!=='undefined' && state && !state.homesteadView ? state : null);
 }
-/** Ducks actually walking this marsh fold — owned herd or water critters do not count. */
+/** Ducks actually walking this marsh fold — owned herd, water critters, and a returning reed bed do not count. */
 function marshDuckHeads(s){
   s = s || (typeof marshDuckFarm==='function' ? marshDuckFarm() : (typeof state!=='undefined' ? state : null));
   if(!s || !s.grid) return 0;
   let n = 0;
   s.grid.forEach(t=>{
     if(!t || !t.graze) return;
+    if(typeof isReedT==='function' && isReedT(t)) return;
     if(typeof grazeHasKind==='function' ? !grazeHasKind(t.graze, 'duckT') : t.graze.kind!=='duckT') return;
     n += (typeof grazeKindHeads==='function') ? grazeKindHeads(t.graze, 'duckT') : Math.max(1, t.graze.n|0);
   });
@@ -12870,7 +12871,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.duckeggs';
+const SHIP_BUILD = '2026-08-22.duckstump';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -13020,7 +13021,7 @@ function openAboutCredits(){
   if(showNew) camp.tipsShown['whats_new_'+ver] = true;
   const whatsNew = showNew
     ? `<div class="lesson" style="text-align:left;margin-top:6px;border-color:rgba(234,181,67,.45)">
-        <b>What's new (${ver}):</b> Marsh ducks trickle eggs into the crate when they walk a marsh fold after Home — sell or compost, same seasonal egg lane as coop eggs, a distinct 🦆 lot so they do not double-count. No ducks, no feed. Reed beds still refuse a returning stump. Play stays free; no pay-to-revive.
+        <b>What's new (${ver}):</b> A leftover flock on a returning reed bed no longer feeds the crate — duck eggs only trickle from ducks walking open marsh, not a stump the herd already refuses. Coop 🥚 eggs stay on their own lot. Play stays free; no pay-to-revive.
       </div>`
     : '';
   // CD — first About open literacy (in-modal; no toast spam)
