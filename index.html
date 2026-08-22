@@ -1315,7 +1315,8 @@ function herdBreederMin(/*kind*/){ return 1; } // first owned head is the keeper
 function herdSurplus(kind){
   if(!kind || !camp) return 0;
   ensureHerd(camp);
-  return Math.max(0, (camp.herd[kind]|0) - herdBreederMin(kind));
+  // Sellable heads above the healthy working floor — not above the last breeder.
+  return Math.max(0, (camp.herd[kind]|0) - herdHealthyMin(kind));
 }
 /** Working fold size. Always leave room for one surplus sale at HERD_MAX (pigs max 4). */
 function herdHealthyMin(kind){
@@ -2137,12 +2138,13 @@ function compostSurplusMeat(kind){
   creditLeftoverCompost(2);
   syncHerdAfterMeatSale(kind);
   markHerdThinAfterMeat(kind, camp.herd[kind]|0);
-  const nicked = applyMeatStripSoil(kind, camp.herd[kind]|0);
+  applyMeatStripSoil(kind, camp.herd[kind]|0);
   const skipped = meatSellPrice(kind);
   const em = HERD_MEAT_EM[kind] || '🪣';
   floater(selected>=0?selected:0, em+' 🪣 pile', '#d8c8a0', 16);
   SND.place();
-  toast(em+' Surplus returned to the pile — skipped 🪙'+skipped+' for soil. Herd is '+(camp.herd[kind]|0)+' '+(HERD_LABEL[kind]||kind)+'. '+(nicked?'Fold thins — less manure, more bare soil.':'Weaker graze now.'));
+  const thinned = typeof herdKindIsThin==='function' && herdKindIsThin(kind);
+  toast(em+' Surplus returned to the pile — skipped 🪙'+skipped+' for soil. Herd is '+(camp.herd[kind]|0)+' '+(HERD_LABEL[kind]||kind)+'. '+(thinned?'Fold thins — less manure, more bare soil.':'Fold stays healthy.'));
   afterCrateCompost();
   return true;
 }
@@ -2275,12 +2277,13 @@ function sellSurplusMeat(kind){
   camp.herd[kind] = have - 1;
   syncHerdAfterMeatSale(kind);
   markHerdThinAfterMeat(kind, camp.herd[kind]|0);
-  const nicked = applyMeatStripSoil(kind, camp.herd[kind]|0);
+  applyMeatStripSoil(kind, camp.herd[kind]|0);
   const n = creditStandCoins(meatSellPrice(kind));
   const em = HERD_MEAT_EM[kind] || '🥩';
   floater(selected>=0?selected:0, em+' +🪙'+n, '#ffd45e', 16);
   SND.coin();
-  toast(em+' Surplus sold for 🪙'+n+' — herd is '+(camp.herd[kind]|0)+' '+(HERD_LABEL[kind]||kind)+'. '+(nicked?'Fold thins — less manure, more bare soil.':'Weaker graze now.'));
+  const thinned = typeof herdKindIsThin==='function' && herdKindIsThin(kind);
+  toast(em+' Surplus sold for 🪙'+n+' — herd is '+(camp.herd[kind]|0)+' '+(HERD_LABEL[kind]||kind)+'. '+(thinned?'Fold thins — less manure, more bare soil.':'Fold stays healthy.'));
   if(typeof buildPalette==='function') buildPalette();
   if(typeof updateHUD==='function') updateHUD();
   save();
@@ -14501,7 +14504,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.meatsurplus';
+const SHIP_BUILD = '2026-08-22.meatfix';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
