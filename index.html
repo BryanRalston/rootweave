@@ -1310,39 +1310,69 @@ function findGridBarn(grid){
   for(let i=0;i<grid.length;i++) if(grid[i] && grid[i].terrain==='barn') return grid[i];
   return null;
 }
+/** Side length of this grid — never the campaign GRID. Coop / pile / walkers share it. */
+function leftoverPileGridSide(grid){
+  if(state && state.grid===grid && (state.gridSize|0)>1) return state.gridSize|0;
+  const n = (grid && grid.length)|0;
+  const side = Math.round(Math.sqrt(n));
+  if(side>1 && side*side===n) return side;
+  return (GRID|0) || 8;
+}
+function leftoverPileCell(grid, c, r){
+  if(!grid) return null;
+  const size = leftoverPileGridSide(grid);
+  if(c<0 || r<0 || c>=size || r>=size) return null;
+  return grid[r*size + c] || null;
+}
 function leftoverPilePickNear(grid, origin, dirs){
   if(!grid || !origin || !dirs) return null;
   let fallback = null;
   for(let i=0;i<dirs.length;i++){
     const c = (origin.c|0)+dirs[i][0], r = (origin.r|0)+dirs[i][1];
-    if(typeof inGrid==='function' && !inGrid(c,r)) continue;
-    const t = grid[(typeof idx==='function') ? idx(c,r) : (r*(GRID||0)+c)];
+    const t = leftoverPileCell(grid, c, r);
+    if(!t || t.terrain==='coop') continue;
     if(leftoverPileSpotOpen(t)) return t;
     if(!fallback && leftoverPileSpotOk(t)) fallback = t;
   }
   return fallback;
 }
+const PILE_DIRS_BARN = [[-1,0],[0,1],[-1,1],[0,-1],[-1,-1],[1,1],[1,0],[1,-1]];
+const PILE_DIRS_HOUSE = [[2,0],[1,0],[2,1],[1,1],[3,0],[3,1],[0,1],[2,-1]];
+/** One pile seat for draw, coop avoid, and walkers. Barn offset is allowed; coop never is. */
+function leftoverPileSeatOnGrid(grid, size, opts){
+  if(!grid) return null;
+  if(typeof leftoverCompostStock==='function' && leftoverCompostStock()<=0) return null;
+  const allowBarn = !opts || opts.allowBarn!==false;
+  const barn = findGridBarn(grid);
+  if(barn){
+    const near = leftoverPilePickNear(grid, barn, PILE_DIRS_BARN);
+    if(near && near.terrain!=='coop') return near;
+    return allowBarn ? barn : null;
+  }
+  const house = grid.find(t=>t && t.terrain==='house');
+  if(house){
+    const near = leftoverPilePickNear(grid, house, PILE_DIRS_HOUSE);
+    if(near && near.terrain!=='coop') return near;
+  }
+  return null;
+}
 function leftoverPileTile(){
   if(!leftoverPileWanted() || !state || !state.grid) return null;
   const grid = state.grid;
-  const barn = findGridBarn(grid);
-  if(barn){
-    return leftoverPilePickNear(grid, barn, [[-1,0],[0,1],[-1,1],[0,-1],[-1,-1],[1,1],[1,0],[1,-1]]) || barn;
-  }
-  if(homesteadMode){
-    const house = grid.find(t=>t && t.terrain==='house');
-    return leftoverPilePickNear(grid, house, [[2,0],[1,0],[2,1],[1,1],[3,0],[3,1],[0,1],[2,-1]]);
-  }
+  const seated = leftoverPileSeatOnGrid(grid, leftoverPileGridSide(grid), {allowBarn:true});
+  if(seated && seated.terrain!=='coop') return seated;
+  if(homesteadMode) return null;
   // Home Patch replay: north edge faces the homestead barn / compost yard
+  const size = leftoverPileGridSide(grid);
   const prefer = [];
-  for(let c=GRID-1;c>=0;c--) prefer.push({c, r:0});
-  for(let c=GRID-1;c>=0;c--) prefer.push({c, r:1});
+  for(let c=size-1;c>=0;c--) prefer.push({c, r:0});
+  for(let c=size-1;c>=0;c--) prefer.push({c, r:1});
   for(let i=0;i<prefer.length;i++){
-    const t = grid[idx(prefer[i].c, prefer[i].r)];
+    const t = leftoverPileCell(grid, prefer[i].c, prefer[i].r);
     if(leftoverPileSpotOpen(t)) return t;
   }
   for(let i=0;i<prefer.length;i++){
-    const t = grid[idx(prefer[i].c, prefer[i].r)];
+    const t = leftoverPileCell(grid, prefer[i].c, prefer[i].r);
     if(leftoverPileSpotOk(t)) return t;
   }
   return null;
@@ -5970,13 +6000,18 @@ function seatHomesteadBarn(t){
 function ensureHomesteadBarnOnTiles(tiles, size){
   if(!tiles || !size) return;
   if(tiles.some(t=>t && t.terrain==='barn')) return;
-  const prefer = [[3,1],[3,2],[4,1],[4,2],[2,2],[5,1],[3,3],[4,3],[5,2],[2,3]];
+  const prefer = [[3,1],[3,2],[4,1],[4,2],[2,2],[5,1],[3,3],[4,3],[5,2],[2,3],[5,3],[4,0],[5,0],[6,1],[6,2],[3,4],[4,4]];
+  const blocked = (t)=> !!(t && (t.terrain==='house' || t.terrain==='nstand' || t.terrain==='coop'));
   for(let i=0;i<prefer.length;i++){
     const c = prefer[i][0], r = prefer[i][1];
     if(!inHS(c,r,size)) continue;
     const t = tiles[r*size+c];
-    if(t && t.terrain==='house') continue;
-    if(t && t.terrain==='nstand') continue;
+    if(blocked(t)) continue;
+    if(homesteadBarnSpotOk(t)){ seatHomesteadBarn(t); return; }
+  }
+  for(let i=0;i<tiles.length;i++){
+    const t = tiles[i];
+    if(blocked(t) || (t && (t.c|0)<2)) continue;
     if(homesteadBarnSpotOk(t)){ seatHomesteadBarn(t); return; }
   }
 }
@@ -6003,9 +6038,10 @@ function homesteadGardenOnTiles(tiles){
   }
   return null;
 }
-/** Pile sits on grass beside the barn — size-aware so we never drop a coop on it before homesteadMode is on. */
+/** Same seat leftoverPileTile uses — barn offset allowed, house fallback when the barn is missing. Never the coop. */
 function homesteadPileSeatOnTiles(tiles, size){
   if(!tiles || !size) return null;
+  if(typeof leftoverPileSeatOnGrid==='function') return leftoverPileSeatOnGrid(tiles, size, {allowBarn:true});
   if(typeof leftoverCompostStock!=='function' || leftoverCompostStock()<=0) return null;
   const barn = (typeof findGridBarn==='function') ? findGridBarn(tiles) : null;
   if(!barn) return null;
@@ -6015,7 +6051,7 @@ function homesteadPileSeatOnTiles(tiles, size){
     const c = (barn.c|0)+dirs[i][0], r = (barn.r|0)+dirs[i][1];
     if(!inHS(c,r,size)) continue;
     const t = tiles[r*size+c];
-    if(!t) continue;
+    if(!t || t.terrain==='coop') continue;
     if(typeof leftoverPileSpotOpen==='function' && leftoverPileSpotOpen(t)) return t;
     if(!fallback && typeof leftoverPileSpotOk==='function' && leftoverPileSpotOk(t)) fallback = t;
   }
@@ -6054,7 +6090,8 @@ function ensureHomesteadCoopOnTiles(tiles, size){
   [[2,3],[3,3],[2,4],[3,4],[4,3],[1,3],[4,2],[2,2],[4,4],[5,3],[1,4],[3,2],[5,2],[2,5],[3,5]].forEach(p=>push(p[0],p[1]));
   const trySeat = (t)=>{
     if(!t || t.terrain==='house' || t.terrain==='nstand' || t.terrain==='barn') return false;
-    if(pile && (pile.c|0)===(t.c|0) && (pile.r|0)===(t.r|0)) return false;
+    if(t.terrain==='coop') return false;
+    if(pile && pile.terrain!=='barn' && (pile.c|0)===(t.c|0) && (pile.r|0)===(t.r|0)) return false;
     if(!homesteadCoopSpotOk(t)) return false;
     seatHomesteadCoop(t);
     return true;
@@ -6104,11 +6141,12 @@ function homesteadYardPlan(){
 function homesteadYardSeatsNear(grid, origin, dirs){
   const out = [];
   if(!grid || !origin || !dirs) return out;
+  const size = (typeof leftoverPileGridSide==='function') ? leftoverPileGridSide(grid) : ((GRID|0)||8);
   let fallback = [];
   for(let i=0;i<dirs.length;i++){
     const c = (origin.c|0)+dirs[i][0], r = (origin.r|0)+dirs[i][1];
-    if(typeof inGrid==='function' && !inGrid(c,r)) continue;
-    const t = grid[(typeof idx==='function') ? idx(c,r) : (r*(GRID||0)+c)];
+    if(c<0 || r<0 || c>=size || r>=size) continue;
+    const t = grid[r*size + c];
     if(homesteadYardSeatOpen(t)) out.push(t);
     else if(homesteadYardSeatOk(t)) fallback.push(t);
   }
@@ -6159,7 +6197,8 @@ function spawnHomesteadYardWalkers(){
   const place = (kind, pool)=>{
     const t = homesteadYardTakeSeat(pool, used);
     if(!t || typeof spawnAnimals!=='function') return;
-    spawnAnimals(idx(t.c, t.r), kind, 1);
+    const size = (state.gridSize|0) || leftoverPileGridSide(grid) || GRID || 8;
+    spawnAnimals((t.r|0)*size + (t.c|0), kind, 1);
     const a = agents[agents.length-1];
     if(a) a.yard = true;
   };
@@ -6200,16 +6239,14 @@ function hydrateHomesteadState(){
     recalc(t);
     return t;
   });
-  // re-seat house if missing
+  // re-seat house if missing — barn is a yard building now, not the house
   {
-    const hasHouse = grid.some(t=>t.terrain==='house' || t.terrain==='barn');
+    const hasHouse = grid.some(t=>t && t.terrain==='house');
     if(!hasHouse) placeHouseOnTiles(grid, size, hs.houseTier|0);
-    // migrate old barn house cells → house
-    grid.forEach(t=>{ if(t.terrain==='barn' && homesteadMode) {/* keep */} });
-    // If legacy save used barn as house at (1,1), convert
+    // migrate old barn house cells → house (only if the house seat is still a barn)
     if(size>1){
       const ht = grid[1*size+1];
-      if(ht && ht.terrain==='barn') ht.terrain = 'house';
+      if(ht && ht.terrain==='barn' && !grid.some(t=>t && t.terrain==='house' && t!==ht)) ht.terrain = 'house';
     }
     if(typeof ensureNeighborStandOnTiles==='function') ensureNeighborStandOnTiles(grid, size);
     if(typeof ensureHomesteadBarnOnTiles==='function') ensureHomesteadBarnOnTiles(grid, size);
@@ -9373,7 +9410,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.yard-coop';
+const SHIP_BUILD = '2026-08-22.yard-seat';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
