@@ -1000,6 +1000,12 @@ const HERD_LABEL = {cattle:'cattle', chicken:'chickens', sheep:'sheep', goat:'go
 const HERD_MEAT = {cattle:34, chicken:16, sheep:24, goat:22, pig:28, duckT:18};
 const HERD_MEAT_EM = {cattle:'🐄', chicken:'🐔', sheep:'🐑', goat:'🐐', pig:'🐖', duckT:'🦆'};
 const CRATE_MAX = 12;
+// Lane rates by season — grain cheap at harvest glut, dear when stores thin.
+// Meat wanted at the winter table; slower while the herd is the season's work.
+// Modest bands so Home Patch and the +3/day market trickle stay intact.
+const STAND_GRAIN_SEASON = [1.06, 0.86, 0.92, 1.16]; // spring, summer, fall, winter
+const STAND_MEAT_SEASON  = [0.86, 0.90, 1.12, 1.16];
+const STAND_MULT_MIN = 0.80, STAND_MULT_MAX = 1.22;
 const OVERGRAZE_RATES = {om:-0.45, structure:-0.35, nutrients:-0.15, water:0, microbial:-0.1, erosion:-0.5};
 function emptyHerd(){ return {cattle:0, chicken:0, sheep:0, goat:0, pig:0, duckT:0}; }
 function ensureHerd(c){
@@ -1215,6 +1221,76 @@ function ensureCrate(c){
   return dest.crate;
 }
 function crateLotCount(){ return ensureCrate().length; }
+/** Remember the live field calendar so homestead (frozen spring) still pays today's lane. */
+function rememberLaneClock(src){
+  if(!camp) return;
+  const st = src || ((!homesteadMode && state && !state.homesteadView) ? state
+    : (typeof plotStateBackup!=='undefined' && plotStateBackup && !plotStateBackup.homesteadView ? plotStateBackup : null));
+  if(!st) return;
+  camp.laneClock = {
+    season: st.season|0,
+    day: Math.max(1, st.day|0),
+    year: Math.max(1, st.year|0),
+  };
+}
+function standClock(){
+  if(state && !homesteadMode && !state.homesteadView){
+    return {season:((state.season|0)%4+4)%4, day:Math.max(1, state.day|0), year:Math.max(1, state.year|0)};
+  }
+  const parked = (typeof plotStateBackup!=='undefined' && plotStateBackup && !plotStateBackup.homesteadView) ? plotStateBackup : null;
+  const mem = camp && camp.laneClock;
+  const src = parked || mem || {season:0, day:1, year:1};
+  return {season:((src.season|0)%4+4)%4, day:Math.max(1, src.day|0), year:Math.max(1, src.year|0)};
+}
+/** One shared daily wobble — a quiet market-day mood, not a ticker. Deterministic so reloads don't reroll. */
+function standLaneWobble(){
+  const clk = standClock();
+  const n = ((clk.year|0)*366 + (clk.season|0)*40 + (clk.day|0)) | 0;
+  const u = ((n * 1103515245 + 12345) >>> 0) / 4294967296;
+  return 0.97 + u * 0.06; // ±3%
+}
+function standPriceMult(kind){
+  const clk = standClock();
+  const table = kind==='meat' ? STAND_MEAT_SEASON : STAND_GRAIN_SEASON;
+  const base = table[clk.season] || 1;
+  const m = base * standLaneWobble();
+  return Math.max(STAND_MULT_MIN, Math.min(STAND_MULT_MAX, m));
+}
+function crateLotBase(lot){ return Math.max(1, (lot && lot.coins)|0); }
+function crateLotSellPrice(lot){ return Math.max(1, Math.round(crateLotBase(lot) * standPriceMult('grain'))); }
+function meatSellPrice(kind){ return Math.max(1, Math.round((HERD_MEAT[kind]||0) * standPriceMult('meat'))); }
+function crateCurrentWorth(){
+  return ensureCrate().reduce((a,l)=>a+crateLotSellPrice(l), 0);
+}
+function standPctLabel(mult){
+  const pct = Math.round((mult - 1) * 100);
+  if(pct===0) return 'fair';
+  return (pct>0?('+'+pct):String(pct))+'%';
+}
+function standMoodWord(kind, mult){
+  if(kind==='meat'){
+    if(mult>=1.08) return 'wanted';
+    if(mult<=0.94) return 'slow';
+    return 'fair';
+  }
+  if(mult>=1.08) return 'dear';
+  if(mult<=0.94) return 'cheap';
+  return 'fair';
+}
+/** One line on the stand — current lane, not a stock ticker. */
+function standPriceLine(){
+  const clk = standClock();
+  const sn = SEASONS[clk.season] || SEASONS[0];
+  const g = standPriceMult('grain');
+  const m = standPriceMult('meat');
+  return sn.emoji+' '+sn.name+': grain '+standMoodWord('grain', g)+' '+standPctLabel(g)+' · meat '+standMoodWord('meat', m)+' '+standPctLabel(m);
+}
+function refreshNeighborStandIfOpen(){
+  const panel = document.getElementById('infoPanel');
+  if(!panel || !panel.classList.contains('show')) return;
+  if(!panel.querySelector('[data-nstandpanel]')) return;
+  if(typeof openNeighborStand==='function') openNeighborStand(true);
+}
 function creditStandCoins(n){
   n = Math.max(0, n|0);
   if(n<=0) return 0;
@@ -1249,7 +1325,7 @@ function sellCrateLot(idx){
   const i = idx|0;
   if(i<0 || i>=crate.length) return false;
   const lot = crate.splice(i, 1)[0];
-  const n = creditStandCoins(lot && lot.coins);
+  const n = creditStandCoins(crateLotSellPrice(lot));
   floater(selected>=0?selected:0, '+🪙'+n, '#ffd45e', 16);
   SND.coin();
   toast((lot.em||'🧺')+' Neighbors paid 🪙'+n+' for '+(lot.name||'harvest')+'.');
@@ -1263,7 +1339,7 @@ function sellAllCrateLots(){
   const crate = ensureCrate();
   if(!crate.length){ toast('🧺 Crate is empty — harvest first.'); SND.uhoh(); return false; }
   let n = 0, lots = crate.length;
-  while(crate.length) n += creditStandCoins(crate.shift().coins);
+  while(crate.length) n += creditStandCoins(crateLotSellPrice(crate.shift()));
   floater(selected>=0?selected:0, '+🪙'+n, '#ffd45e', 16);
   SND.coin();
   toast('🧺 Sold '+lots+' harvest'+(lots===1?'':'s')+' for 🪙'+n+'.');
@@ -1319,7 +1395,7 @@ function sellSurplusMeat(kind){
   }
   camp.herd[kind] = have - 1;
   syncHerdAfterMeatSale(kind);
-  const n = creditStandCoins(HERD_MEAT[kind]);
+  const n = creditStandCoins(meatSellPrice(kind));
   const em = HERD_MEAT_EM[kind] || '🥩';
   floater(selected>=0?selected:0, em+' +🪙'+n, '#ffd45e', 16);
   SND.coin();
@@ -1336,13 +1412,13 @@ function neighborStandHtml(opts){
   const harvestRows = crate.length
     ? crate.map((lot,i)=>`<div class="nstand-row">
         <span class="ns-em">${lot.em||'🌾'}</span>
-        <span>${lot.name||'Harvest'} · 🪙${lot.coins|0}</span>
+        <span>${lot.name||'Harvest'} · 🪙${crateLotSellPrice(lot)}</span>
         <button type="button" class="ns-go" data-nstandsell="${i}">Sell</button>
       </div>`).join('')
     : `<div class="nstand-note">Crate is empty. Harvest wheat or sisters, then bring it here.</div>`;
-  const harvestBlock = `<div class="nstand-note">🧺 Last ${CRATE_MAX} harvests sit in this crate. Neighbors pay a fair price — better than letting wheat rot.</div>
+  const harvestBlock = `<div class="nstand-note">🧺 Last ${CRATE_MAX} harvests sit in this crate. Neighbors pay today's lane — hold if grain is cheap.</div>
     ${harvestRows}
-    ${crate.length>1?`<button type="button" class="mbtn wood" style="width:100%;margin-top:6px" data-nstandall>Sell all harvest · 🪙${crate.reduce((a,l)=>a+(l.coins|0),0)}</button>`:''}`;
+    ${crate.length>1?`<button type="button" class="mbtn wood" style="width:100%;margin-top:6px" data-nstandall>Sell all harvest · 🪙${crateCurrentWorth()}</button>`:''}`;
   if(o.harvestOnly) return harvestBlock;
   const kinds = Object.keys(HERD_MEAT);
   const meatRows = kinds.map(kind=>{
@@ -1351,7 +1427,7 @@ function neighborStandHtml(opts){
     if(have<=0) return '';
     const disabled = extra<=0;
     const label = extra>0
-      ? `Surplus ${HERD_LABEL[kind]} · 🪙${HERD_MEAT[kind]} · ${extra} extra`
+      ? `Surplus ${HERD_LABEL[kind]} · 🪙${meatSellPrice(kind)} · ${extra} extra`
       : `Last ${(HERD_LABEL[kind]||kind)} — breeder stays`;
     return `<div class="nstand-row">
       <span class="ns-em">${HERD_MEAT_EM[kind]||''}</span>
@@ -1373,22 +1449,24 @@ function openNeighborStand(refreshOnly, opts){
     return;
   }
   const harvestOnly = (opts && opts.harvestOnly!=null) ? !!opts.harvestOnly : !homesteadMode;
-  panel.innerHTML = `<div class="ititle">🧺 Neighbor stand</div>
-    <div class="chiprow">${harvestOnly
-      ? 'Harvest in hand — neighbors pay a fair coin for what’s in the crate.'
-      : 'A table by the house. Neighbors buy harvest and surplus meat — not a shop, just the lane trade.'}</div>
+  if(typeof rememberLaneClock==='function') rememberLaneClock();
+  panel.innerHTML = `<div class="ititle" data-nstandpanel>🧺 Neighbor stand</div>
+    <div class="chiprow">${standPriceLine()}</div>
     ${neighborStandHtml({harvestOnly})}
     <button type="button" class="closex" id="infoClose" style="position:absolute;right:8px;top:8px">✕</button>`;
   panel.classList.add('show');
   const x = document.getElementById('infoClose');
   if(x) x.onclick = ()=>{ selected = -1; closeInfo(); };
-  if(!refreshOnly) SND.pop();
+  if(!refreshOnly){
+    SND.pop();
+    toast('Neighbors pay by the season. Winter grain is dear; summer harvest is cheap.', {once:'lane_season_tip', throttleMs:4000});
+  }
 }
 function harvestCrateChipHtml(){
   if(!neighborStandUnlocked() || crateLotCount()<=0) return '';
   const n = crateLotCount();
-  const worth = ensureCrate().reduce((a,l)=>a+(l.coins|0),0);
-  return `<div class="nstand-note">🧺 ${n} harvest${n===1?'':'s'} in the crate · 🪙${worth}</div>
+  const worth = crateCurrentWorth();
+  return `<div class="nstand-note">🧺 ${n} harvest${n===1?'':'s'} in the crate · 🪙${worth} today</div>
     <button type="button" class="mbtn wood" style="width:100%;margin-top:4px" data-act="nstand">Sell at the stand</button>`;
 }
 // tools with a shopId appear in the palette only after that shop unlock is bought
@@ -4410,6 +4488,8 @@ function simStep(dt){
     }
     if(typeof tutSyncSim==='function') tutSyncSim();
     dailyIncome();
+    if(typeof rememberLaneClock==='function') rememberLaneClock();
+    if(typeof refreshNeighborStandIfOpen==='function') refreshNeighborStandIfOpen();
     updateQuests();
     maybeDustFlatsCoach();
     maybeDustFlatsCoinMercy();
@@ -4449,7 +4529,7 @@ function harvestCrop(t, i){
       SND.place();
       if(camp){
         if(!camp.tipsShown) camp.tipsShown = {};
-        toast('🧺 Harvest in the crate by the house. Tap the neighbor stand to sell — fair coin, not a jackpot.', {once:'crate_first_bank', throttleMs:4000});
+        toast('🧺 Harvest in the crate by the house. Neighbors pay by the season — hold if the lane is cheap.', {once:'crate_first_bank', throttleMs:4000});
       }
     }else{
       state.coins += coins;
@@ -4547,6 +4627,8 @@ function advanceSeason(){
     setTimeout(()=>showEvent(ev), 1400);
   }
   checkBadges();
+  if(typeof rememberLaneClock==='function') rememberLaneClock();
+  if(typeof refreshNeighborStandIfOpen==='function') refreshNeighborStandIfOpen();
   save();
 }
 
@@ -5109,6 +5191,7 @@ function enterHomestead(){
   // park the active plot (if any)
   if(state && !state.homesteadView){
     plotStateBackup = state;
+    if(typeof rememberLaneClock==='function') rememberLaneClock(state);
   }
   ensureHomesteadTiles();
   migrateHomesteadGrassCanvas(camp.homestead);
@@ -12918,6 +13001,7 @@ function save(){
   let err = null;
   try{
     if(homesteadMode) serializeHomesteadFromState();
+    if(typeof rememberLaneClock==='function') rememberLaneClock();
     camp.sound = soundOn;
     if(state && !state.homesteadView) state.sound = soundOn;
     // Never persist homestead view as the active plot
@@ -13039,6 +13123,13 @@ function loadCamp(d){
       name: x.name || 'Harvest',
       coins: Math.max(1, (+x.coins||0)|0),
     })).slice(-CRATE_MAX);
+  }
+  if(c.laneClock && typeof c.laneClock==='object'){
+    camp.laneClock = {
+      season: ((c.laneClock.season|0)%4+4)%4,
+      day: Math.max(1, c.laneClock.day|0),
+      year: Math.max(1, c.laneClock.year|0),
+    };
   }
   if(c.designGoals && typeof c.designGoals==='object') camp.designGoals = c.designGoals;
   // valley parcels (Pack 0) — merge save then migrate from done/stars
