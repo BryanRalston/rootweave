@@ -1405,6 +1405,12 @@ function homesteadHasCoop(){
   if(typeof homesteadMode!=='undefined' && homesteadMode && has(state && state.grid)) return true;
   return has(camp && camp.homestead && camp.homestead.tiles);
 }
+/** Yard table by the house — seated after Home. Atlas kitchen beds do not count. */
+function homesteadHasStand(){
+  const has = (g)=> !!(g && g.some(t=>t && t.terrain==='nstand'));
+  if(typeof homesteadMode!=='undefined' && homesteadMode && has(state && state.grid)) return true;
+  return has(camp && camp.homestead && camp.homestead.tiles);
+}
 /** Seat the yard coop once hens exist after Home — same helper the homestead already uses. */
 function seatCoopIfHens(){
   if(campChickenCount()<=0) return;
@@ -2082,11 +2088,13 @@ function bankHarvestLot(lot){
     if(!camp.tipsShown) camp.tipsShown = {};
     toast('🧺 Crate is full — compost leftovers at the stand, or sell. Nothing is thrown away.', {once:'crate_soft_cap', throttleMs:4000});
   }
+  if(typeof noteStandMapChanged==='function') noteStandMapChanged();
 }
 function afterCrateCompost(){
   if(typeof buildPalette==='function') buildPalette();
   if(typeof updateHUD==='function') updateHUD();
   save();
+  if(typeof noteStandMapChanged==='function') noteStandMapChanged();
   if(typeof openNeighborStand==='function') openNeighborStand(true);
 }
 function compostCrateLot(idx){
@@ -2163,6 +2171,7 @@ function sellCrateLot(idx){
   toast((lot.em||'🧺')+' Neighbors paid 🪙'+n+' for '+(lot.name||'harvest')+'.');
   if(typeof updateHUD==='function') updateHUD();
   save();
+  if(typeof noteStandMapChanged==='function') noteStandMapChanged();
   openNeighborStand(true);
   return true;
 }
@@ -2177,6 +2186,7 @@ function sellAllCrateLots(){
   toast('🧺 Sold '+lots+' harvest'+(lots===1?'':'s')+' for 🪙'+n+'.');
   if(typeof updateHUD==='function') updateHUD();
   save();
+  if(typeof noteStandMapChanged==='function') noteStandMapChanged();
   openNeighborStand(true);
   return true;
 }
@@ -2291,6 +2301,7 @@ function sellSurplusMeat(kind){
   if(typeof buildPalette==='function') buildPalette();
   if(typeof updateHUD==='function') updateHUD();
   save();
+  if(typeof noteStandMapChanged==='function') noteStandMapChanged();
   openNeighborStand(true);
   return true;
 }
@@ -14576,7 +14587,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.mappile';
+const SHIP_BUILD = '2026-08-22.mapstand';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -20770,6 +20781,11 @@ function parcelShowsPile(P, c){
   if(!P || P.id!=='homestead') return false;
   return parcelShowsHerd(P, c);
 }
+/** Neighbor stand sits on the homestead crop you own — never Home kitchen beds or mist. */
+function parcelShowsStand(P, c){
+  if(!P || P.id!=='homestead') return false;
+  return parcelShowsHerd(P, c);
+}
 /** Stamp-driven homes: cattle on paddocks, goats/sheep on paddock/dry-graze/hay,
  *  pigs at the yard or paddock (same family as homestead walkers), hens at the
  *  coop, ducks on marsh. Home Patch kitchen beds stay off. */
@@ -20999,13 +21015,40 @@ function drawMapPileMark(hctx){
   hctx.fillText('🪣', p.x+1, p.y-s*1.15);
   hctx.restore();
 }
-/** Overlay neighbor stand — same spirit as the map pile. First session stays bare. */
-function mapStandOverlayOn(){
+/** Crate lots neighbors will buy, or a surplus head above the healthy fold. */
+function mapStandHasSellable(){
+  const lots = (typeof crateLotCount==='function') ? crateLotCount() : 0;
+  if(lots>0) return true;
+  if(typeof herdCanSellMeat!=='function' || typeof HERD_MEAT!=='object' || !HERD_MEAT) return false;
+  return Object.keys(HERD_MEAT).some(k=>herdCanSellMeat(k));
+}
+/** Yard table is seated after Home. Unlocked with no tiles yet still counts — stand will seat. */
+function mapStandExists(){
   if(typeof neighborStandUnlocked==='function' && !neighborStandUnlocked()) return false;
-  if(typeof homePatchCleared==='function' && !homePatchCleared()) return false;
+  const tiles = camp && camp.homestead && camp.homestead.tiles;
+  if(Array.isArray(tiles) && tiles.length){
+    return typeof homesteadHasStand==='function' ? homesteadHasStand() : tiles.some(t=>t && t.terrain==='nstand');
+  }
   return true;
 }
-/** Atlas cell for the map stand: house (10,56), lane-side path if the homestead box holds it. */
+/** Overlay neighbor stand when neighbors are buying. First session and empty crate stay bare. */
+function mapStandOverlayOn(){
+  if(typeof neighborStandUnlocked==='function' && !neighborStandUnlocked()) return false;
+  const P = (typeof valleyParcel==='function') ? valleyParcel('homestead') : null;
+  if(typeof parcelShowsStand==='function'){
+    if(!parcelShowsStand(P)) return false;
+  }else if(typeof homePatchCleared==='function' && !homePatchCleared()){
+    return false;
+  }
+  if(typeof mapStandExists==='function' && !mapStandExists()) return false;
+  return typeof mapStandHasSellable==='function' ? mapStandHasSellable() : false;
+}
+function mapStandCellIsKitchen(c, r){
+  const G = (typeof valleyParcel==='function') ? valleyParcel('home_garden') : null;
+  if(G && typeof atlasInParcel==='function' && atlasInParcel(c, r, G)) return true;
+  return false;
+}
+/** Atlas cell for the map stand: house (10,56), lane-side path on the homestead crop. Never kitchen beds. */
 function mapStandAtlasCell(){
   if(!mapStandOverlayOn()) return null;
   const P = (typeof valleyParcel==='function') ? valleyParcel('homestead') : null;
@@ -21013,18 +21056,24 @@ function mapStandAtlasCell(){
   const b = (typeof parcelAtlasBox==='function') ? parcelAtlasBox(P) : null;
   if(!b) return null;
   const inBox = (c,r)=> c>=b.c && c<b.c+b.w && r>=b.r && r<b.r+b.h;
-  // Lane walks east from the house toward market. Prefer that path, never the house cell.
+  // Lane walks east from the house toward market. Prefer that path, never the house or kitchen beds.
   const prefs = [[11,56],[12,56],[11,55],[10,57],[12,55],[9,56],[11,57]];
+  const ok = (c,r)=>{
+    if(!inBox(c,r)) return false;
+    if(typeof mapStandCellIsKitchen==='function' && mapStandCellIsKitchen(c,r)) return false;
+    const A = typeof atlasGet==='function' ? atlasGet(c,r) : null;
+    if(A && A.landmark==='house') return false;
+    return true;
+  };
   for(let i=0;i<prefs.length;i++){
     const c = prefs[i][0], r = prefs[i][1];
-    if(!inBox(c,r)) continue;
+    if(!ok(c,r)) continue;
     const A = typeof atlasGet==='function' ? atlasGet(c,r) : null;
-    if(A && A.landmark==='house') continue;
     if(A && A.feature==='path') return {c, r};
   }
   for(let i=0;i<prefs.length;i++){
     const c = prefs[i][0], r = prefs[i][1];
-    if(inBox(c,r)) return {c, r};
+    if(ok(c,r)) return {c, r};
   }
   return null;
 }
@@ -21041,11 +21090,16 @@ function mapStandPoint(){
 function drawMapStandMark(hctx){
   const p = mapStandPoint();
   if(!p || !hctx) return;
-  const s = 3.4;
+  const s = 5.2;
   hctx.save();
-  hctx.fillStyle = 'rgba(22,14,8,.28)';
+  hctx.fillStyle = 'rgba(22,14,8,.30)';
   hctx.beginPath();
-  hctx.ellipse(p.x, p.y+0.8, s*1.35, Math.max(1.6, s*0.42), 0, 0, 6.29);
+  hctx.ellipse(p.x, p.y+0.8, s*1.45, Math.max(2.2, s*0.42), 0, 0, 6.29);
+  hctx.fill();
+  // Soft read halo so the yard table does not vanish into the painted garden.
+  hctx.fillStyle = 'rgba(255,246,210,.34)';
+  hctx.beginPath();
+  hctx.ellipse(p.x, p.y - s*0.55, s*1.35, Math.max(4, s*0.85), 0, 0, 6.29);
   hctx.fill();
   hctx.fillStyle = '#6b4424';
   hctx.beginPath();
@@ -21055,10 +21109,10 @@ function drawMapStandMark(hctx){
   hctx.beginPath();
   hctx.ellipse(p.x, p.y-s*0.45, s*1.15, s*0.38, 0, 0, 6.29);
   hctx.fill();
-  hctx.font = '10px "Segoe UI Emoji",sans-serif';
+  hctx.font = '13px "Segoe UI Emoji","Apple Color Emoji",sans-serif';
   hctx.textAlign = 'center';
   hctx.textBaseline = 'middle';
-  hctx.fillText('🧺', p.x+1, p.y-s*1.2);
+  hctx.fillText('🧺', p.x+1, p.y-s*1.15);
   hctx.restore();
 }
 function paintMapHerd(cv, agents){
@@ -21205,6 +21259,10 @@ function noteHerdMapChanged(){
 }
 /** Manure / bedding / crate compost change leftover stock — same overlay canvas as the herd. */
 function notePileMapChanged(){
+  if(typeof noteHerdMapChanged==='function') noteHerdMapChanged();
+}
+/** Crate lots or surplus meat change whether neighbors are buying — same remount as the pile. */
+function noteStandMapChanged(){
   if(typeof noteHerdMapChanged==='function') noteHerdMapChanged();
 }
 function wireValleyRegion(el, P, ms){
