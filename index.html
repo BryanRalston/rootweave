@@ -1676,17 +1676,26 @@ function meatStripSoilTiles(kind){
     if(t.graze && grazeHasKind(t.graze, kind)) grazed.push({t, i});
   });
   if(grazed.length) return grazed;
-  const s = (typeof state!=='undefined') ? state : null;
-  if(!s || !s.grid) return open;
-  if(typeof currentPaddockFold==='function' && !currentPaddockFold(s)) return open;
-  s.grid.forEach((t, i)=>{
-    if(!t || !t.soil || t.terrain!=='soil') return;
-    if(t.crop || t.graze) return;
-    if(t.feature==='path' || t.feature==='swale') return;
-    if(typeof isStockDrinkT==='function' && isStockDrinkT(t)) return;
-    if(typeof leftoverStampOpen==='function' && !leftoverStampOpen(t)) return;
-    open.push({t, i});
-  });
+  // Stand sales happen at the house. Homestead is not a paddock fold — use the parked field.
+  const farms = [];
+  if(typeof state!=='undefined' && state && state.grid) farms.push(state);
+  if(homesteadMode && typeof plotStateBackup!=='undefined' && plotStateBackup && plotStateBackup.grid
+     && plotStateBackup.grid!==state.grid){
+    farms.push(plotStateBackup);
+  }
+  for(let fi=0; fi<farms.length; fi++){
+    const s = farms[fi];
+    if(typeof currentPaddockFold==='function' && !currentPaddockFold(s)) continue;
+    s.grid.forEach((t, i)=>{
+      if(!t || !t.soil || t.terrain!=='soil') return;
+      if(t.crop || t.graze) return;
+      if(t.feature==='path' || t.feature==='swale') return;
+      if(typeof isStockDrinkT==='function' && isStockDrinkT(t)) return;
+      if(typeof leftoverStampOpen==='function' && !leftoverStampOpen(t)) return;
+      open.push({t, i});
+    });
+    if(open.length) break;
+  }
   return open.slice(0, 6);
 }
 /** Light OM / cover nick when a sale leaves the herd thin. Healthy surplus is a no-op. */
@@ -10969,7 +10978,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.herdstrip';
+const SHIP_BUILD = '2026-08-22.standstrip';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
