@@ -14574,7 +14574,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.mapherdfix';
+const SHIP_BUILD = '2026-08-22.mapstock';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -20736,13 +20736,13 @@ function paintValleyAtlas(cv){
   }
 }
 /** Overlay herd on the journey map — seated on painted parcels, never drawn into VALLEY_ATLAS_SKIN. */
-/** Atlas cells on the painted trough / yard / marsh so markers sit on land, not on labels. */
+/** Atlas cells on the painted trough / yard / hay / marsh so markers sit on land, not on labels. */
 const HERD_MAP_SEATS = {
   cattle: [[14,36],[12,38],[16,34],[10,42],[12,22],[8,44],[18,18]],
-  sheep:  [[12,36],[16,38],[10,20],[8,44],[76,22],[74,24]],
+  sheep:  [[12,36],[16,38],[10,20],[8,44],[76,22],[74,24],[88,34]],
   chicken:[[14,55],[13,55],[12,54],[12,56],[11,54],[8,57]],
-  pig:    [[76,22],[74,24],[58,26],[60,14]],
-  goat:   [[12,42],[8,44],[16,36],[56,44]],
+  pig:    [[15,55],[14,54],[9,55],[13,35],[16,38],[11,39],[10,46],[90,34]],
+  goat:   [[12,42],[8,44],[16,36],[56,44],[72,20],[78,24],[88,32]],
   duckT:  [[22,6],[8,8],[24,8],[6,6]],
 };
 const MAP_HERD_W = {cow:28, chicken:16, sheep:26, goat:20, pig:22, duckT:18};
@@ -20763,7 +20763,9 @@ function parcelShowsHerd(P, c){
   if(!(c && c.done && c.done[0])) return false;
   return parcelMapState(P, c) !== 'locked';
 }
-/** Stamp-driven homes: cattle on paddocks, hens at the yard coop, ducks on marsh. Home Patch stays off. */
+/** Stamp-driven homes: cattle on paddocks, goats/sheep on paddock/dry-graze/hay,
+ *  pigs at the yard or paddock (same family as homestead walkers), hens at the
+ *  coop, ducks on marsh. Home Patch kitchen beds stay off. */
 function mapHerdKindFitsParcel(kind, P){
   if(!P || P.id==='home_garden' || P.lvIndex===0) return false;
   if(kind==='chicken') return P.id==='homestead' || P.kind==='hub';
@@ -20774,11 +20776,12 @@ function mapHerdKindFitsParcel(kind, P){
   }
   if(kind==='goat'){
     return (typeof leftoverIsPaddockFold==='function' && leftoverIsPaddockFold(P))
+      || (typeof leftoverIsHayFold==='function' && leftoverIsHayFold(P))
       || (typeof leftoverIsDustFold==='function' && leftoverIsDustFold(P));
   }
   if(kind==='pig'){
-    return (typeof leftoverIsHayFold==='function' && leftoverIsHayFold(P))
-      || (typeof leftoverIsOrchardFold==='function' && leftoverIsOrchardFold(P));
+    if(P.id==='homestead' || P.kind==='hub') return true;
+    return typeof leftoverIsPaddockFold==='function' && leftoverIsPaddockFold(P);
   }
   if(kind==='duckT'){
     if(P.id==='marsh_finger' || P.levelId==='marsh' || P.id==='wet_meadow') return true;
@@ -20821,7 +20824,8 @@ function mapHerdScanSeat(kind, P, used){
     let ok = false;
     if(kind==='duckT') ok = A.biome==='marsh' || A.biome==='riparian' || A.water==='pond_site';
     else if(kind==='chicken') ok = A.landmark==='barn' || A.landmark==='coop' || A.biome==='garden';
-    else ok = A.biome==='pasture' || A.biome==='heartland' || A.biome==='orchard' || A.biome==='dust';
+    else if(kind==='pig') ok = A.landmark==='barn' || A.biome==='pasture' || A.biome==='heartland';
+    else ok = A.biome==='pasture' || A.biome==='heartland' || A.biome==='orchard' || A.biome==='dust' || A.biome==='hay';
     if(!ok) continue;
     return [c, r];
   }
@@ -20831,9 +20835,8 @@ function buildMapHerdAgents(){
   if(!camp) return [];
   if(typeof ensureHerd==='function') ensureHerd(camp);
   const agents = [];
-  const kinds = (camp.herd && typeof camp.herd==='object')
-    ? Object.keys(camp.herd)
-    : ['cattle','chicken','sheep','goat','pig','duckT'];
+  // Same living kinds as camp.herd / GRAZE_TOOLS — not a second animal list.
+  const kinds = ['cattle','chicken','sheep','goat','pig','duckT'];
   kinds.forEach(kind=>{
     const n = herdMapVisibleN(kind);
     if(!n) return;
