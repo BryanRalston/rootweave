@@ -9053,6 +9053,21 @@ function loadSprites(){
   });
   registerSprite('cow_graze', 'sprites/anim_cow_graze.webp'+ANIM_V, 4);
   registerSprite('chicken_peck', 'sprites/anim_chicken_peck.webp'+ANIM_V, 4);
+  // Wildlife 12-frame packs — same keys as wildWalkCount (bee_w0 ← anim_bee_w00.webp)
+  const WILD_V = '?v=wildPack1';
+  ['bee','bird','butterfly','frog','rabbit','heron','dragonfly'].forEach(kind=>{
+    for(let i=0;i<12;i++){
+      registerSprite(kind+'_w'+i, 'sprites/anim_'+kind+'_w'+String(i).padStart(2,'0')+'.webp'+WILD_V, 4);
+    }
+  });
+  [
+    ['bee_wing_up','anim_bee_wing_up'],['bee_wing_down','anim_bee_wing_down'],
+    ['bird_wing_up','anim_bird_wing_up'],['bird_wing_down','anim_bird_wing_down'],
+    ['butterfly_wing_open','anim_butterfly_wing_open'],['butterfly_wing_closed','anim_butterfly_wing_closed'],
+    ['dragonfly_wing_up','anim_dragonfly_wing_up'],['dragonfly_wing_down','anim_dragonfly_wing_down'],
+  ].forEach(([key,file])=>{
+    registerSprite(key, 'sprites/'+file+'.webp'+WILD_V, 4);
+  });
   // Critters + wing frames (webp Pages-safe)
   [
     ['bee','critter_bee'],['butterfly','critter_butterfly'],['bird','critter_bird'],
@@ -17496,9 +17511,8 @@ const WILD_ART = {
 };
 /** Wildlife multi-frame packs allowed only after consistency review. */
 const WILD_PACK_OK = {
-  // Same rule as livestock: 2-frame wing flips feel cheap. Drift + shadow instead.
-  bee: false, butterfly: false, dragonfly: false, bird: false,
-  rabbit: false, frog: false, duck: false, heron: false,
+  bee: true, butterfly: true, dragonfly: true, bird: true,
+  rabbit: true, frog: true, duck: false, heron: true,
   fish: false, ladybug: false,
 };
 /** Wing / hop / walk frame keys for wildlife multi-frame packs. */
@@ -17511,7 +17525,9 @@ function wildFrameKey(w){
   const k = w.kind;
   const wn = wildWalkCount(k);
   if(wn >= 4){
-    const ph = (w.flap != null ? w.flap : w.ph || 0);
+    const hop = (k==='frog' || k==='rabbit');
+    const fly = (k==='bee' || k==='butterfly' || k==='dragonfly');
+    const ph = hop ? (w.hopPhase||0) : (fly ? (w.flap||0) : (w.ph||0));
     return k+'_w'+(Math.floor(((ph%1)+1)%1 * wn) % wn);
   }
   if(!WILD_PACK_OK[k]) return k; // base still — no costume-flip packs
