@@ -4635,6 +4635,10 @@ function hayFoldReady(s){
 function hayBaleReady(t, s){
   return !!(t && t.deco==='deco_haybales' && hayFoldReady(s));
 }
+/** Hay-fold wheat is standing forage, not a kitchen lonely-wheat till. */
+function hayFoldForageWheat(t, s){
+  return !!(t && t.crop && t.crop.type==='wheat' && typeof currentHayFold==='function' && currentHayFold(s));
+}
 /** Tap leftover / bought-edge hay bales into the crate. Homestead seating stays seating. */
 function harvestHayBale(t, i){
   if(!t || t.deco!=='deco_haybales') return false;
@@ -7070,7 +7074,8 @@ function simStep(dt){
     if(t.crop){
       const c = CROPS[t.crop.type];
       t.crop.days = (t.crop.days||0) + dd;
-      if(t.crop.type==='wheat' && t.crop.days>=2 && typeof earnNote==='function') earnNote('lonely');
+      if(t.crop.type==='wheat' && t.crop.days>=2 && typeof earnNote==='function'
+         && !(typeof hayFoldForageWheat==='function' && hayFoldForageWheat(t))) earnNote('lonely');
       let gm = sn.growMult;
       if(buildNear(t,'greenhouse',2)) gm = Math.max(gm, 0.75) * 1.15;   // warmth all year
       if(state.unlocks.upg_growth) gm *= 1.2;
@@ -7205,12 +7210,13 @@ function harvestCrop(t, i){
     t.soil.nutrients = clamp(t.soil.nutrients+4);
   }
   if(c.cover) t.flowers = Math.min(1, t.flowers+0.35);
-  if(!c.diverse && Math.random()<0.35){
+  if(!hayCut && !c.diverse && Math.random()<0.35){
     toast(typeof neighborStandUnlocked==='function' && neighborStandUnlocked()
       ? '🌾 Quick Wheat filled the crate… but that soil feels tired.'
       : '🌾 Quick Wheat paid fast… but that soil feels tired.');
   }
-  if(t.crop && t.crop.type==='wheat' && typeof earnNote==='function') earnNote('lonely');
+  if(t.crop && t.crop.type==='wheat' && typeof earnNote==='function'
+     && !hayCut && !(typeof hayFoldForageWheat==='function' && hayFoldForageWheat(t))) earnNote('lonely');
   t.crop = null;
   recalc(t);
   checkBadges();
@@ -10398,6 +10404,8 @@ function soilStoryLine(t){
     const c = CROPS[t.crop.type];
     if(t.crop.type==='sisters')
       return '🌽 The guild — corn is the pole, beans feed nitrogen, squash shades weeds. A team feeds the soil. '+tier;
+    if(typeof hayFoldForageWheat==='function' && hayFoldForageWheat(t))
+      return '🌾 Standing hay — a forage cut for the crate, not a kitchen till. Neighbors pay more in winter feed season. '+tier;
     if(t.crop.type==='wheat' || (!c.diverse && !c.cover)){
       const days = t.crop.days||0;
       if(days >= 1)
@@ -11312,7 +11320,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.haycrate';
+const SHIP_BUILD = '2026-08-22.hayforage';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -11462,7 +11470,7 @@ function openAboutCredits(){
   if(showNew) camp.tipsShown['whats_new_'+ver] = true;
   const whatsNew = showNew
     ? `<div class="lesson" style="text-align:left;margin-top:6px;border-color:rgba(234,181,67,.45)">
-        <b>What's new (${ver}):</b> Hay Field bales and a light forage cut now fill the harvest crate — sell at the stand (dearer in winter feed season) or let leftover hay go to the pile. Home Patch stays a dead garden with no hay lots. Play stays free; no pay-to-revive.
+        <b>What's new (${ver}):</b> Standing wheat on a hay fold is forage, not lonely kitchen wheat — inspect and cut no longer lecture Fast coins. Bales and a light forage cut still fill the crate (dearer in winter). Home Patch stays a dead garden with no hay lots. Play stays free; no pay-to-revive.
       </div>`
     : '';
   // CD — first About open literacy (in-modal; no toast spam)
@@ -15858,7 +15866,8 @@ function openInfo(refreshOnly){
     const chips = [];
     if(t.crop){
       const c = CROPS[t.crop.type];
-      chips.push(`${c.em} ${c.name} — ${Math.round(Math.min(1,t.crop.growth)*100)}% grown`);
+      const hayLabel = (typeof hayFoldForageWheat==='function' && hayFoldForageWheat(t)) ? 'Hay' : c.name;
+      chips.push(`${c.em} ${hayLabel} — ${Math.round(Math.min(1,t.crop.growth)*100)}% grown`);
     }
     if(t.deco==='deco_haybales' && typeof hayBaleReady==='function' && hayBaleReady(t))
       chips.push('🌾 cut hay — tap to pick into the crate');
