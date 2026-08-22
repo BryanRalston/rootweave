@@ -1816,14 +1816,18 @@ function applyCompostSoil(t, fromPile){
   if(typeof recalc==='function') recalc(t);
   return true;
 }
-/** Yard pile is leftover stock you can see — not a saved tile, not a fresh Home Patch. */
-function leftoverPileWanted(){
-  if(leftoverCompostStock()<=0) return false;
-  if(homesteadMode) return true;
+/** Lands that seat a leftover pile — homestead yard or Home Patch replay. Stock-independent so the last bag keeps this land's quality. */
+function leftoverPileLandShows(){
+  if(typeof homesteadMode!=='undefined' && homesteadMode) return true;
   if(!state || state.homesteadView) return false;
   const L = (typeof LV==='function') ? LV() : null;
   if(!L || L.id!=='home') return false;
   return !!(typeof homePatchCleared==='function' && homePatchCleared());
+}
+/** Yard pile is leftover stock you can see — not a saved tile, not a fresh Home Patch. */
+function leftoverPileWanted(){
+  if(leftoverCompostStock()<=0) return false;
+  return leftoverPileLandShows();
 }
 function leftoverPileTier(){
   const n = leftoverCompostStock();
@@ -1964,11 +1968,11 @@ function leftoverPileYardCooksHot(){
   // Locked layout: homestead after Home always seats a barn; tiles may wait until first visit.
   return !!(camp && camp.homestead && camp.homestead.unlocked);
 }
-/** Active pile on this land — barn-adjacent is hot; Home Patch / a fold without a barn is not. */
+/** Active pile on this land — barn-adjacent is hot; Home Patch / a fold without a barn is not. Stock-independent so spend-then-apply keeps this land's meal. */
 function leftoverPileQualityHot(){
   if(typeof homePatchCleared==='function' && !homePatchCleared()) return false;
-  if(typeof leftoverPileWanted==='function' && leftoverPileWanted() && state && state.grid){
-    const pile = typeof leftoverPileTile==='function' ? leftoverPileTile() : leftoverPileSeatGuess(state.grid);
+  if(typeof leftoverPileLandShows==='function' && leftoverPileLandShows() && state && state.grid){
+    const pile = leftoverPileSeatGuess(state.grid);
     const barn = typeof findGridBarn==='function' ? findGridBarn(state.grid) : null;
     return leftoverPileNearBarn(pile, barn);
   }
@@ -14943,7 +14947,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.compostyard';
+const SHIP_BUILD = '2026-08-22.compostyardfix';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
