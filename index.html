@@ -4313,7 +4313,8 @@ function stockDrinkOrtho(s, t){
   return out;
 }
 function stockStandOk(t){
-  return !!(t && t.terrain==='soil' && leftoverStampOpen(t));
+  // Herd cannot stand on growing cover — same gate as graze placement.
+  return !!(t && t.terrain==='soil' && leftoverStampOpen(t) && !t.crop);
 }
 /** Ortho neighbor of a working stock pond. Home Patch stays off this tradeoff. */
 function stockDrinkAdj(t, s){
@@ -4350,6 +4351,8 @@ function openStockDrinkBank(s, drink){
     if(n.terrain==='dead' || n.terrain==='soil'){
       if(n.feature==='path' || n.feature==='swale') continue;
       seedSoil(n, 40, 8);
+      n.crop = null;
+      n.graze = null;
       return n;
     }
   }
@@ -4727,6 +4730,7 @@ function dressLeftoverStamp(s, P){
     };
     tiles.filter(t=>leftoverPaddockSeatOk(t, g) && t.terrain==='soil').slice().sort((a,b)=>scorePad(b)-scorePad(a)).forEach(t=>{
       if(pasture>=wantCover) return;
+      if(typeof farmCoverWouldBreakStock==='function' && farmCoverWouldBreakStock(s, t)) return;
       const atDrink = typeof stockDrinkAdj==='function' && stockDrinkAdj(t, s);
       if(!(atDrink || pasture < Math.round(wantCover*0.55) || roll(t,3)<0.38)) return;
       const type = roll(t,4)<0.62 ? 'clover' : 'covercrop';
@@ -4738,6 +4742,7 @@ function dressLeftoverStamp(s, P){
       const soil = tiles.filter(t=>leftoverPaddockSeatOk(t, g) && t.terrain==='soil' && !t.crop)[0];
       if(soil) soil.deco = 'deco_rock';
     }
+    ensureReachableStockWater(s);
     return;
   }
   if(feel==='orchard'){
@@ -4850,11 +4855,13 @@ function dressLeftoverStamp(s, P){
     };
     tiles.filter(t=>leftoverPaddockSeatOk(t, g) && t.terrain==='soil').slice().sort((a,b)=>scoreDry(b)-scoreDry(a)).forEach(t=>{
       if(pasture>=wantCover) return;
+      if(typeof farmCoverWouldBreakStock==='function' && farmCoverWouldBreakStock(s, t)) return;
       const type = roll(t,3)<0.55 ? 'clover' : 'covercrop';
       t.crop = {type, growth:0.24 + roll(t,4)*0.16, days:2};
       t.deco = null;
       pasture++;
     });
+    ensureReachableStockWater(s);
     return;
   }
   if(feel==='river'){
@@ -4937,6 +4944,16 @@ function farmEdgeWouldBreakStock(s, t){
   t.terrain = 'trees';
   const ok = stockDrinkReachable(s);
   t.terrain = old;
+  return !ok;
+}
+/** Cover by the drink may hold the bank — not the last stand the herd can use. */
+function farmCoverWouldBreakStock(s, t){
+  if(!s || !t || typeof stockDrinkReachable!=='function' || typeof stockStandOk!=='function') return false;
+  if(!stockStandOk(t) || !stockDrinkReachable(s)) return false;
+  const old = t.crop;
+  t.crop = {type:'covercrop', growth:0.3, days:2};
+  const ok = stockDrinkReachable(s);
+  t.crop = old;
   return !ok;
 }
 function seatFarmEdgeTile(s, t, kind){
@@ -10706,7 +10723,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.paddockfeel';
+const SHIP_BUILD = '2026-08-22.drinkstand';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
