@@ -1,7 +1,7 @@
 /* Rootweave — service worker
    Paths are relative to this script so GitHub project pages (/rootweave/) work.
    Precache the play shell only. Do not precache the sprite library. */
-const CACHE = 'rootweave-2026-08-22.marshreed';
+const CACHE = 'rootweave-2026-08-22.reedstump';
 const PRECACHE = [
   './',
   './index.html',

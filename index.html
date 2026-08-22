@@ -5315,6 +5315,7 @@ function tickMarshReedGrow(s){
         t.terrain = 'wetland';
         t.deco = null;
         t.crop = null;
+        t.graze = null;
         t.farmEdge = null;
         t.reedRegen = null;
         t.reedReady = false;
@@ -12078,6 +12079,10 @@ function applyTool(i){
       toast('🫐 The herd walks around the hedge — leave the shelter standing.');
       ringAt(i, '#6fae5f'); SND.uhoh(); return false;
     }
+    if(typeof isReedT==='function' && isReedT(t)){
+      toast('🌾 The herd walks around the returning reeds — leave the marsh wet.');
+      ringAt(i, '#6fae5f'); SND.uhoh(); return false;
+    }
     // L5 — graze branch only for animal tools (never bleed into orchard/build wording)
     if(dead && tool!=='goat'){
       toast(toolAllowed('goat') ? '💀 Nothing to eat on dead ground… only 🐐 goats can browse this scrub!'
@@ -12782,7 +12787,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.marshreed';
+const SHIP_BUILD = '2026-08-22.reedstump';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -12932,7 +12937,7 @@ function openAboutCredits(){
   if(showNew) camp.tipsShown['whats_new_'+ver] = true;
   const whatsNew = showNew
     ? `<div class="lesson" style="text-align:left;margin-top:6px;border-color:rgba(234,181,67,.45)">
-        <b>What's new (${ver}):</b> Marsh Finger reeds go into the harvest crate. A careful tap leaves the stand wet and filtering; a heavy strip nicks soil and filtration until the reeds return. Filter ponds stay. Home, meadow, and willow stay clean. Play stays free; no pay-to-revive.
+        <b>What's new (${ver}):</b> A stripped reed bed stays a returning wetland — ducks and the herd no longer sit on that soil as if it were a pad. Regen no longer grows the stand through a parked flock. Pioneers / leftover wet tools already refused. Play stays free; no pay-to-revive.
       </div>`
     : '';
   // CD — first About open literacy (in-modal; no toast spam)
