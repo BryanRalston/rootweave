@@ -1299,6 +1299,7 @@ function leftoverPileInspectLine(){
 function leftoverPileSpotOk(t){
   if(!t) return false;
   if(t.terrain==='house' || t.terrain==='nstand' || t.terrain==='barn' || t.terrain==='coop') return false;
+  if(typeof isFarmEdgeT==='function' && isFarmEdgeT(t)) return false;
   if(t.terrain!=='soil' && t.terrain!=='dead') return false;
   return true;
 }
@@ -2109,6 +2110,13 @@ function leftoverStampFeelFor(spec){
   if(id==='east_pasture') return 'dry_graze';
   if(id==='south_reach') return 'river';
   return 'heal';
+}
+/** Hay / paddock / orchard / dry graze / meadow — open leftover fields that take a weather-side windbreak. */
+function leftoverOpenFieldFeel(spec){
+  const feel = leftoverStampFeelFor(spec);
+  if(feel==='hay' || feel==='paddock' || feel==='orchard' || feel==='dry_graze' || feel==='meadow') return true;
+  const id = (spec && spec.id) || '';
+  return id==='wet_meadow';
 }
 function leftoverStampStory(feel, P){
   const name = (P && P.name) || 'This fold';
@@ -3772,11 +3780,15 @@ function genMarketCross(s){
 function genSchoolGarden(s){
   sowAtlasCrop(s, 'school_garden');
 }
+function isFarmEdgeT(t){
+  return !!(t && (t.farmEdge==='windbreak' || t.farmEdge==='hedgerow'));
+}
 function leftoverStampOpen(t){
   if(!t) return false;
   if(t.terrain==='water' || t.terrain==='pond' || t.terrain==='riverbed') return false;
   if(t.terrain==='barn' || t.terrain==='coop' || t.terrain==='house') return false;
   if(t.feature==='path' || t.feature==='swale') return false;
+  if(isFarmEdgeT(t)) return false; // windbreak / hedgerow: herd walks around, not through
   return true;
 }
 function leftoverStampLand(t){
@@ -3832,6 +3844,7 @@ function openStockDrinkBank(s, drink){
     const n = nbs[i];
     if(!n) continue;
     if(n.terrain!=='trees' && n.terrain!=='orchard') continue;
+    if(isFarmEdgeT(n)) continue;
     seedSoil(n, 40, 8);
     return n;
   }
@@ -4053,12 +4066,148 @@ function dressLeftoverStamp(s, P){
     });
   }
 }
-/** Leftover / bought-edge land: atlas crop, then a thin land-tied dress. */
+function leftoverPlayBox(P){
+  if(!P || !P.origin || !P.size) return null;
+  const g = leftoverPlayGrid(P.size.w, P.size.h);
+  return {c:P.origin.c|0, r:P.origin.r|0, w:g, h:g};
+}
+function atlasIsHedgeWood(A){
+  return !!(A && (A.feature==='hedgerow' || A.feature==='woodlot'));
+}
+/** Atlas trees / brush already painted just outside (or on) a play-grid edge. */
+function leftoverEdgeAtlasTrees(box, side){
+  if(!box) return 0;
+  let n = 0;
+  if(side==='n'){
+    for(let c=box.c;c<box.c+box.w;c++){
+      if(atlasIsHedgeWood(atlasGet(c, box.r-1)) || atlasIsHedgeWood(atlasGet(c, box.r))) n++;
+    }
+  }else if(side==='w'){
+    for(let r=box.r;r<box.r+box.h;r++){
+      if(atlasIsHedgeWood(atlasGet(box.c-1, r)) || atlasIsHedgeWood(atlasGet(box.c, r))) n++;
+    }
+  }
+  return n;
+}
+/** Prefer N or NW when the painting already has trees there; else the ridge-facing (north) edge. */
+function leftoverWeatherSide(P){
+  const box = leftoverPlayBox(P);
+  const n = leftoverEdgeAtlasTrees(box, 'n');
+  const w = leftoverEdgeAtlasTrees(box, 'w');
+  if(n>0 && w>0) return 'nw';
+  if(w>0) return 'nw';
+  return 'n';
+}
+function leftoverWantsWindbreak(P){
+  if(!P || P.kind!=='plot') return false;
+  if(!P.leftover && !P.buyable) return false;
+  if(P.id==='home_garden' || P.lvIndex===0) return false;
+  return leftoverOpenFieldFeel(P);
+}
+function farmEdgeSeatOk(t){
+  if(!t || !leftoverStampLand(t)) return false;
+  if(t.terrain==='barn' || t.terrain==='coop' || t.terrain==='house' || t.terrain==='nstand') return false;
+  if(t.feature==='path' || t.feature==='swale' || t.feature==='saltflat') return false;
+  if(t.atlasLandmark) return false;
+  return true;
+}
+function farmEdgeWouldBreakStock(s, t){
+  if(!s || !t || typeof stockDrinkReachable!=='function' || typeof stockStandOk!=='function') return false;
+  if(!stockStandOk(t) || !stockDrinkReachable(s)) return false;
+  const old = t.terrain;
+  t.terrain = 'trees';
+  const ok = stockDrinkReachable(s);
+  t.terrain = old;
+  return !ok;
+}
+function seatFarmEdgeTile(s, t, kind){
+  if(!t) return false;
+  if(t.terrain==='trees'){
+    t.farmEdge = t.farmEdge || kind;
+    return true;
+  }
+  if(!farmEdgeSeatOk(t)) return false;
+  if(farmEdgeWouldBreakStock(s, t)) return false;
+  t.terrain = 'trees';
+  if(typeof carveClear==='function') carveClear(t);
+  t.farmEdge = kind;
+  return true;
+}
+function leftoverMarkPlayEdge(s, c, r, kind){
+  if(!inGrid(c,r) || !s || !s.grid) return;
+  seatFarmEdgeTile(s, s.grid[idx(c,r)], kind);
+}
+/** Thin weather-side tree strip on leftover open fields. Existing atlas trees stay. */
+function seatLeftoverWindbreak(s, P){
+  if(!s || !s.grid || !leftoverWantsWindbreak(P)) return;
+  const g = leftoverPlayGrid(P.size && P.size.w, P.size && P.size.h);
+  const side = leftoverWeatherSide(P);
+  if(side==='n' || side==='nw'){
+    for(let c=0;c<g;c++) leftoverMarkPlayEdge(s, c, 0, 'windbreak');
+  }
+  if(side==='nw'){
+    const tongue = Math.max(2, Math.min(3, (g/4)|0 || 2));
+    for(let r=1;r<tongue;r++) leftoverMarkPlayEdge(s, 0, r, 'windbreak');
+  }
+}
+/** Shared atlas edge direction from A toward B, or null if they do not touch. */
+function parcelsShareDir(A, B){
+  const a = typeof parcelAtlasBox==='function' ? parcelAtlasBox(A) : null;
+  const b = typeof parcelAtlasBox==='function' ? parcelAtlasBox(B) : null;
+  if(!a || !b) return null;
+  const overlapX = Math.min(a.c+a.w, b.c+b.w) - Math.max(a.c, b.c);
+  const overlapY = Math.min(a.r+a.h, b.r+b.h) - Math.max(a.r, b.r);
+  if(b.r+b.h === a.r && overlapX>0) return 'n';
+  if(a.r+a.h === b.r && overlapX>0) return 's';
+  if(b.c+b.w === a.c && overlapY>0) return 'w';
+  if(a.c+a.w === b.c && overlapY>0) return 'e';
+  return null;
+}
+function leftoverPlayEdgeCells(g, side){
+  const out = [];
+  if(side==='n'){ for(let c=0;c<g;c++) out.push({c, r:0, dc:0, dr:-1}); }
+  else if(side==='s'){ for(let c=0;c<g;c++) out.push({c, r:g-1, dc:0, dr:1}); }
+  else if(side==='w'){ for(let r=0;r<g;r++) out.push({c:0, r, dc:-1, dr:0}); }
+  else if(side==='e'){ for(let r=0;r<g;r++) out.push({c:g-1, r, dc:1, dr:0}); }
+  return out;
+}
+function leftoverAtlasHedgeToward(P, cell){
+  if(!P || !P.origin || !cell) return false;
+  const ac = (P.origin.c|0)+cell.c, ar = (P.origin.r|0)+cell.r;
+  if(atlasIsHedgeWood(atlasGet(ac, ar))) return true;
+  for(let k=1;k<=4;k++){
+    if(atlasIsHedgeWood(atlasGet(ac+cell.dc*k, ar+cell.dr*k))) return true;
+  }
+  return false;
+}
+/** 1-tile hedgerow on shared field edges only where the atlas already paints hedge / woodlot. */
+function seatLeftoverHedgerowSeams(s, P){
+  if(!s || !s.grid || !P || P.kind!=='plot') return;
+  if(!P.leftover && !P.buyable) return;
+  if(P.id==='home_garden' || P.lvIndex===0) return;
+  const g = leftoverPlayGrid(P.size && P.size.w, P.size && P.size.h);
+  if(typeof VALLEY_PARCELS==='undefined') return;
+  VALLEY_PARCELS.forEach(N=>{
+    if(!N || N.id===P.id || N.kind!=='plot') return;
+    const side = parcelsShareDir(P, N);
+    if(!side) return;
+    leftoverPlayEdgeCells(g, side).forEach(cell=>{
+      if(!leftoverAtlasHedgeToward(P, cell)) return;
+      leftoverMarkPlayEdge(s, cell.c, cell.r, 'hedgerow');
+    });
+  });
+}
+function seatLeftoverFarmEdges(s, P){
+  seatLeftoverHedgerowSeams(s, P);
+  seatLeftoverWindbreak(s, P);
+}
+/** Leftover / bought-edge land: atlas crop, then a thin land-tied dress, then farm edges. */
 function genLeftoverStamp(s){
   const P = valleyParcelByLvIndex(s.lv);
   if(P){
     sowAtlasCrop(s, P.id);
     dressLeftoverStamp(s, P);
+    seatLeftoverFarmEdges(s, P);
   }
 }
 function soilTiles(){ return state.grid.filter(t=>t.terrain==='soil'); }
@@ -4222,6 +4371,17 @@ function waterTileIdx(){
 function treeAdj(t){
   for(let dr=-1; dr<=1; dr++) for(let dc=-1; dc<=1; dc++){
     if((dc||dr) && inGrid(t.c+dc,t.r+dr) && state.grid[idx(t.c+dc,t.r+dr)].terrain==='trees') return true;
+  }
+  return false;
+}
+/** Ortho neighbor of a seated windbreak / hedgerow — small lee, no new meter. */
+function farmEdgeAdj(t){
+  if(!t || !state || !state.grid) return false;
+  const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+  for(let i=0;i<dirs.length;i++){
+    const c = t.c+dirs[i][0], r = t.r+dirs[i][1];
+    if(!inGrid(c,r)) continue;
+    if(isFarmEdgeT(state.grid[idx(c,r)])) return true;
   }
   return false;
 }
@@ -5370,6 +5530,10 @@ function simStep(dt){
       if(k==='water' && pondNear(t)) d += 0.09;      // ponds, wells & tanks keep ground moist
       if(k==='erosion' && treeAdj(t)) d += 0.08;     // hedgerows shelter the soil
       if(k==='microbial' && treeAdj(t)) d += 0.03;
+      if(typeof farmEdgeAdj==='function' && farmEdgeAdj(t)){
+        if(k==='erosion') d += 0.04;                 // windbreak / seam: a little more soil hold
+        if(k==='water') d += 0.02;                   // less wilt in the lee
+      }
       if(k==='microbial' && nearWorm) d += 0.12;     // the worm army
       if((k==='om'||k==='microbial') && nearMush) d += 0.07;  // fungal threads
       t.soil[k] = clamp(t.soil[k] + d*dd);
@@ -6084,6 +6248,7 @@ function ensureNeighborStandOnTiles(tiles, size){
 function homesteadBarnSpotOk(t){
   if(!t) return false;
   if(t.terrain==='barn') return true;
+  if(typeof isFarmEdgeT==='function' && isFarmEdgeT(t)) return false;
   if(t.terrain!=='soil') return false;
   if(t.deco || t.crop || t.graze) return false;
   if(typeof hasFence==='function' && hasFence(t)) return false;
@@ -6118,6 +6283,7 @@ function ensureHomesteadBarnOnTiles(tiles, size){
 function homesteadCoopSpotOk(t){
   if(!t) return false;
   if(t.terrain==='coop') return true;
+  if(typeof isFarmEdgeT==='function' && isFarmEdgeT(t)) return false;
   if(t.terrain!=='soil') return false;
   if(t.deco || t.crop || t.graze) return false;
   if(typeof hasFence==='function' && hasFence(t)) return false;
@@ -6214,6 +6380,7 @@ function ensureHomesteadCoopOnTiles(tiles, size){
 function homesteadYardSeatOk(t){
   if(!t) return false;
   if(t.terrain==='house' || t.terrain==='nstand' || t.terrain==='barn' || t.terrain==='coop') return false;
+  if(typeof isFarmEdgeT==='function' && isFarmEdgeT(t)) return false;
   if(t.terrain!=='soil') return false;
   if(typeof isLeftoverPileTile==='function' && isLeftoverPileTile(t)) return false;
   return true;
@@ -9216,7 +9383,7 @@ function showEvent(id){
     bad=true; em='🌵'; title='Drought!'; kid='The sun blazed for weeks and the land got thirsty!';
     let prot=0;
     soils.forEach(t=>{
-      const p = Math.min(0.85, t.soil.om/100*0.55 + (pondNear(t)?0.3:0) + ((t.crop&&CROPS[t.crop.type].diverse)?0.12:0) + t.flowers*0.05);
+      const p = Math.min(0.85, t.soil.om/100*0.55 + (pondNear(t)?0.3:0) + ((t.crop&&CROPS[t.crop.type].diverse)?0.12:0) + t.flowers*0.05 + ((typeof farmEdgeAdj==='function' && farmEdgeAdj(t))?0.08:0));
       t.soil.water = clamp(t.soil.water - 13*(1-p));
       if(t.crop) t.crop.growth = Math.max(0.05, t.crop.growth - 0.06*(1-p));
       if(p>0.4) prot++;
@@ -9513,7 +9680,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.home-first';
+const SHIP_BUILD = '2026-08-22.windbreak';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -9663,7 +9830,7 @@ function openAboutCredits(){
   if(showNew) camp.tipsShown['whats_new_'+ver] = true;
   const whatsNew = showNew
     ? `<div class="lesson" style="text-align:left;margin-top:6px;border-color:rgba(234,181,67,.45)">
-        <b>What's new (${ver}):</b> Bought leftover folds play a crop that fits the atlas parcel — Willow Bottom no longer invents two extra rows. Home Patch stays free. Play stays free; no pay-to-revive.
+        <b>What's new (${ver}):</b> Leftover hay, paddock, orchard, and dry folds now carry a weather-side windbreak and atlas hedgerow seams — the herd walks around them. Home Patch stays free. Play stays free; no pay-to-revive.
       </div>`
     : '';
   // CD — first About open literacy (in-modal; no toast spam)
@@ -14030,7 +14197,12 @@ function openInfo(refreshOnly){
       <div class="chiprow">💡 Plant 🌳 trees on the banks — riparian buffer roots filter the runoff. Keep bare soil and grazing away from the water.</div>`;
   }else if(t.terrain==='trees'){
     const story = soilStoryLine(t);
-    body = `<div class="istory">${story}</div><div class="chiprow">A living hedgerow — shelter from wind and rain for neighbors, and a home for bees, butterflies and songbirds.</div>`;
+    const edgeLine = t.farmEdge==='windbreak'
+      ? 'A thin windbreak on the weather side — neighbors hold soil a little better, and the herd walks around it.'
+      : t.farmEdge==='hedgerow'
+        ? 'A hedgerow seam from the painting — shelter for the next fold, and the herd walks around it.'
+        : 'A living hedgerow — shelter from wind and rain for neighbors, and a home for bees, butterflies and songbirds.';
+    body = `<div class="istory">${story}</div><div class="chiprow">${edgeLine}</div>`;
   }else{
     body = `<div class="chiprow">${t.terrain==='barn'?'Home sweet home. The heart of the farm.':'Cozy quarters for the cluck crew.'}</div>`;
   }
@@ -15569,6 +15741,18 @@ function paintMapHerd(cv, agents){
   }
   if(typeof drawMapPileMark==='function') drawMapPileMark(hctx);
 }
+function mapHerdAtlasCell(ag, u, v){
+  const P = typeof valleyParcel==='function' ? valleyParcel(ag && ag.parcelId) : null;
+  const b = typeof parcelAtlasBox==='function' ? parcelAtlasBox(P) : null;
+  if(!b) return null;
+  const uu = u==null ? ag.u : u, vv = v==null ? ag.v : v;
+  return {c: b.c + uu*b.w, r: b.r + vv*b.h};
+}
+function mapHerdCellBlocked(ag, u, v){
+  const p = mapHerdAtlasCell(ag, u, v);
+  if(!p) return false;
+  return atlasIsHedgeWood(atlasGet(p.c|0, p.r|0));
+}
 function tickMapHerdAgents(agents, dt){
   if(!agents || !agents.length || prefersQuietMotion()) return;
   agents.forEach(a=>{
@@ -15580,14 +15764,22 @@ function tickMapHerdAgents(agents, dt){
       if(a.idleT > 1.8 + ((a.phase||0)%1)*2.2){
         const ang = (a.phase||0) + a.idleT;
         const rad = 0.05 + (a.walkPhase||0)*0.04;
-        a.tu = clampUV(a.u + Math.cos(ang)*rad, 0.18, 0.82);
-        a.tv = clampUV(a.v + Math.sin(ang)*rad*0.65, 0.22, 0.82);
-        a.idleT = 0;
+        const tu = clampUV(a.u + Math.cos(ang)*rad, 0.18, 0.82);
+        const tv = clampUV(a.v + Math.sin(ang)*rad*0.65, 0.22, 0.82);
+        if(mapHerdCellBlocked(a, tu, tv)){
+          a.idleT = 0;
+        }else{
+          a.tu = tu; a.tv = tv; a.idleT = 0;
+        }
       }
     }else{
+      if(mapHerdCellBlocked(a, a.tu, a.tv)){
+        a.tu = a.u; a.tv = a.v; a.moving = false; return;
+      }
       a.moving = true;
       if(Math.abs(du) > 0.002) a.facing = du>=0 ? 1 : -1;
-      const step = (a.speed||0.012) * dt;
+      let step = (a.speed||0.012) * dt;
+      if(mapHerdCellBlocked(a, a.u, a.v)) step *= 0.35;
       a.u += (du/d)*step;
       a.v += (dv/d)*step;
       const mot = (typeof AGENT_MOTION!=='undefined' && AGENT_MOTION[a.kind]) || {walkHz:0.7};
