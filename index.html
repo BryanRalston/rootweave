@@ -1772,11 +1772,13 @@ function creditLeftoverCompost(n){
   n = Math.max(0, n|0);
   if(!camp || n<=0) return 0;
   camp.compostStock = leftoverCompostStock() + n;
+  if(typeof notePileMapChanged==='function') notePileMapChanged();
   return n;
 }
 function spendLeftoverCompost(){
   if(leftoverCompostStock()<=0) return false;
   camp.compostStock = leftoverCompostStock() - 1;
+  if(typeof notePileMapChanged==='function') notePileMapChanged();
   return true;
 }
 /** Paint compost from leftover pile stock only after Home Patch — first session stays paid/wake. */
@@ -14574,7 +14576,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.mapstock';
+const SHIP_BUILD = '2026-08-22.mappile';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -20763,6 +20765,11 @@ function parcelShowsHerd(P, c){
   if(!(c && c.done && c.done[0])) return false;
   return parcelMapState(P, c) !== 'locked';
 }
+/** Leftover pile sits on the homestead crop you own — same Home/mist gate as herd marks. */
+function parcelShowsPile(P, c){
+  if(!P || P.id!=='homestead') return false;
+  return parcelShowsHerd(P, c);
+}
 /** Stamp-driven homes: cattle on paddocks, goats/sheep on paddock/dry-graze/hay,
  *  pigs at the yard or paddock (same family as homestead walkers), hens at the
  *  coop, ducks on marsh. Home Patch kitchen beds stay off. */
@@ -20927,9 +20934,24 @@ function drawMapHerdAt(hctx, ag, p, time){
   }
   hctx.restore();
 }
+function mapPileHasReadyFeed(){
+  const bits = (typeof leftoverPileFeedBits==='function') ? leftoverPileFeedBits() : [];
+  return !!(bits && bits.length);
+}
+/** Overlay leftover pile on the homestead crop. After Home, when stock or a ready feed exists. Mist / first session stay bare. */
+function mapPileOverlayOn(){
+  const P = (typeof valleyParcel==='function') ? valleyParcel('homestead') : null;
+  if(typeof parcelShowsPile==='function'){
+    if(!parcelShowsPile(P)) return false;
+  }else if(typeof homePatchCleared==='function' && !homePatchCleared()){
+    return false;
+  }
+  const stock = (typeof leftoverCompostStock==='function') ? leftoverCompostStock() : 0;
+  if(stock>0) return true;
+  return typeof mapPileHasReadyFeed==='function' ? mapPileHasReadyFeed() : false;
+}
 function mapPilePoint(){
-  if(typeof leftoverCompostStock!=='function' || leftoverCompostStock()<=0) return null;
-  if(typeof homePatchCleared==='function' && !homePatchCleared()) return null;
+  if(typeof mapPileOverlayOn==='function' ? !mapPileOverlayOn() : true) return null;
   const P = (typeof valleyParcel==='function') ? valleyParcel('homestead') : null;
   if(!P) return null;
   const b = (typeof parcelAtlasBox==='function') ? parcelAtlasBox(P) : null;
@@ -20942,12 +20964,20 @@ function mapPilePoint(){
 function drawMapPileMark(hctx){
   const p = mapPilePoint();
   if(!p || !hctx) return;
-  const tier = leftoverPileTier();
-  const s = 3.2 + tier * 1.1;
+  const stockTier = (typeof leftoverPileTier==='function') ? leftoverPileTier() : 0;
+  // Feed-only (no stock yet) still a small readable mound — not a HUD chip.
+  const tier = Math.max(1, stockTier|0);
+  const s = 5.6 + (tier-1) * 1.7;
+  const em = 13 + (tier-1) * 2;
   hctx.save();
-  hctx.fillStyle = 'rgba(22,14,8,.28)';
+  hctx.fillStyle = 'rgba(22,14,8,.30)';
   hctx.beginPath();
-  hctx.ellipse(p.x, p.y+0.8, s*1.35, Math.max(1.6, s*0.42), 0, 0, 6.29);
+  hctx.ellipse(p.x, p.y+0.8, s*1.45, Math.max(2.2, s*0.42), 0, 0, 6.29);
+  hctx.fill();
+  // Soft read halo so the yard pile does not vanish into the painted garden.
+  hctx.fillStyle = 'rgba(255,246,210,.34)';
+  hctx.beginPath();
+  hctx.ellipse(p.x, p.y - s*0.55, s*1.35, Math.max(4, s*0.85), 0, 0, 6.29);
   hctx.fill();
   hctx.fillStyle = '#6a4a28';
   hctx.beginPath();
@@ -20957,16 +20987,17 @@ function drawMapPileMark(hctx){
   hctx.beginPath();
   hctx.ellipse(p.x, p.y-s*0.55, s*0.85, s*0.42, 0, 0, 6.29);
   hctx.fill();
-  hctx.font = Math.round(8+tier)+'px "Segoe UI Emoji",sans-serif';
+  if(tier>=2){
+    hctx.fillStyle = '#a88858';
+    hctx.beginPath();
+    hctx.ellipse(p.x+0.6, p.y-s*0.95, s*0.55, s*0.28, 0, 0, 6.29);
+    hctx.fill();
+  }
+  hctx.font = Math.round(em)+'px "Segoe UI Emoji","Apple Color Emoji",sans-serif';
   hctx.textAlign = 'center';
   hctx.textBaseline = 'middle';
   hctx.fillText('🪣', p.x+1, p.y-s*1.15);
   hctx.restore();
-}
-function mapPileOverlayOn(){
-  return typeof compostUsesPile==='function' ? compostUsesPile()
-    : (typeof leftoverCompostStock==='function' && leftoverCompostStock()>0
-      && (typeof homePatchCleared!=='function' || homePatchCleared()));
 }
 /** Overlay neighbor stand — same spirit as the map pile. First session stays bare. */
 function mapStandOverlayOn(){
@@ -21171,6 +21202,10 @@ function refreshMapHerdOverlay(){
 }
 function noteHerdMapChanged(){
   if(typeof journeyOpen!=='undefined' && journeyOpen) refreshMapHerdOverlay();
+}
+/** Manure / bedding / crate compost change leftover stock — same overlay canvas as the herd. */
+function notePileMapChanged(){
+  if(typeof noteHerdMapChanged==='function') noteHerdMapChanged();
 }
 function wireValleyRegion(el, P, ms){
   const oneLiner = (P.desc && String(P.desc).trim()) ? P.desc : (P.teaser || P.name);
