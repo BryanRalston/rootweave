@@ -4725,6 +4725,16 @@ function highPondNeed(s){
 function isHighPondFillT(t){
   return !!(t && typeof isHighPondMarkedT==='function' && isHighPondMarkedT(t) && !isHighPondOpenT(t));
 }
+/** A plug on the painted basin. Tractoring an open pond is the fill — only a fill reopens. */
+function highPondShouldReopen(t){
+  return !!(t && typeof isHighPondFillT==='function' && isHighPondFillT(t));
+}
+/** After 🚜: reopen a high-pond plug, else a wash plug, else bare soil. */
+function terrainAfterClearPlug(t){
+  if(typeof highPondShouldReopen==='function' && highPondShouldReopen(t)) return 'pond';
+  if(typeof dustWashShouldReopen==='function' && dustWashShouldReopen(t)) return 'riverbed';
+  return 'soil';
+}
 /** Tile sits downhill of a painted ridge pond site — even when the basin was filled. */
 function highPondDownhillOfMarked(t, s){
   s = s || (typeof state!=='undefined' ? state : null);
@@ -12460,16 +12470,19 @@ function applyTool(i){
     else if(isLandT(t) && hasFence(t)) did = ()=>{ t.fence = false; };
     else if(isLandT(t) && t.feature==='path') did = ()=>{ t.feature = null; };
     else if(t.terrain==='trees' && typeof woodlotFoldReady==='function' && woodlotFoldReady()
-            && typeof clearCutWoodlotTree==='function'){
+            && typeof clearCutWoodlotTree==='function'
+            && !(typeof isHighPondFillT==='function' && isHighPondFillT(t))){
       did = ()=>{ clearCutWoodlotTree(t, i); };
     }
     else if(t.terrain==='trees' && typeof willowFoldReady==='function' && willowFoldReady()
-            && typeof stripWillowTree==='function'){
+            && typeof stripWillowTree==='function'
+            && !(typeof isHighPondFillT==='function' && isHighPondFillT(t))){
       did = ()=>{ stripWillowTree(t, i); };
     }
     else if(t.terrain==='trees' && typeof hedgeBerryFoldReady==='function' && hedgeBerryFoldReady()
             && typeof isHedgerowT==='function' && isHedgerowT(t)
-            && typeof stripHedgeTree==='function'){
+            && typeof stripHedgeTree==='function'
+            && !(typeof isHighPondFillT==='function' && isHighPondFillT(t))){
       did = ()=>{ stripHedgeTree(t, i); };
     }
     else if(t.terrain==='pond' && typeof isMarshPondT==='function' && isMarshPondT(t)){
@@ -12477,14 +12490,26 @@ function applyTool(i){
       SND.uhoh(); return false;
     }
     else if(t.terrain==='wetland' && typeof marshFoldReady==='function' && marshFoldReady()
-            && typeof stripMarshReed==='function'){
+            && typeof stripMarshReed==='function'
+            && !(typeof isHighPondFillT==='function' && isHighPondFillT(t))){
       did = ()=>{ stripMarshReed(t, i); };
     }
     else if(t.terrain==='pond' || t.terrain==='trees') did = ()=>{
       if(typeof rememberHighPondMark==='function') rememberHighPondMark(t);
-      t.terrain = (typeof dustWashShouldReopen==='function' && dustWashShouldReopen(t)) ? 'riverbed' : 'soil';
+      t.terrain = (typeof terrainAfterClearPlug==='function') ? terrainAfterClearPlug(t) : 'soil';
+      if(t.terrain==='pond' && typeof carveClear==='function') carveClear(t);
     };
-    else if(BUILD_SET.has(t.terrain)) did = ()=>{ t.terrain = (typeof dustWashShouldReopen==='function' && dustWashShouldReopen(t)) ? 'riverbed' : 'soil'; agents = agents.filter(a=>a.tile!==i); };
+    else if(BUILD_SET.has(t.terrain)) did = ()=>{
+      if(typeof rememberHighPondMark==='function') rememberHighPondMark(t);
+      t.terrain = (typeof terrainAfterClearPlug==='function') ? terrainAfterClearPlug(t) : 'soil';
+      if(t.terrain==='pond' && typeof carveClear==='function') carveClear(t);
+      agents = agents.filter(a=>a.tile!==i);
+    };
+    else if(isLandT(t) && typeof highPondShouldReopen==='function' && highPondShouldReopen(t)) did = ()=>{
+      if(typeof rememberHighPondMark==='function') rememberHighPondMark(t);
+      t.terrain = 'pond';
+      if(typeof carveClear==='function') carveClear(t);
+    };
     if(!did){ toast('Nothing to clear here.'); return false; }
     if(!spend(td.cost)) return false;
     did();
@@ -13323,7 +13348,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.highpond';
+const SHIP_BUILD = '2026-08-22.pondreopen';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
