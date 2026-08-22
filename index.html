@@ -11512,6 +11512,10 @@ function applyTool(i){
       toast('🌲 That woodlot is canopy — tend the understory beside it, not a hay row.');
       ringAt(i, '#6fae5f'); SND.uhoh(); return false;
     }
+    if(typeof isWillowT==='function' && isWillowT(t)){
+      toast('🌿 That willow is returning — not a plant bed. Tend the bank beside it.');
+      ringAt(i, '#6fae5f'); SND.uhoh(); return false;
+    }
     if(typeof isHighPondT==='function' && isHighPondT(t)){
       toast('💧 The high pond is not a plant bed — tend the downhill fields.');
       ringAt(i, '#7fc4ee'); SND.uhoh(); return false;
@@ -12254,7 +12258,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.willowcut';
+const SHIP_BUILD = '2026-08-22.withystump';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -13976,6 +13980,7 @@ function plantGhostOk(t, toolId){
   if(typeof swaleBlocksCrop==='function' && swaleBlocksCrop(t)) return false;
   if(typeof pathBlocksCrop==='function' && pathBlocksCrop(t)) return false;
   if(typeof isWoodlotT==='function' && isWoodlotT(t)) return false;
+  if(typeof isWillowT==='function' && isWillowT(t)) return false;
   if(typeof isRiparianT==='function' && isRiparianT(t)) return false;
   if(typeof isHighPondT==='function' && isHighPondT(t)) return false;
   if(t.terrain!=='soil' && t.terrain!=='dead') return false;
