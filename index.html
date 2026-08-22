@@ -1054,6 +1054,8 @@ const HIGH_POND_FILTER_SOIL = {erosion:0.5, water:0.4, om:0.15}; // modest filte
 const HOME_WATER_NICK_SOIL = {water:-1.2, om:-0.25}; // dawn nick: wet pulse, garden pond / swale filled — milder than ridge / dust
 const HOME_WATER_HOLD_SOIL = {water:0.4, om:0.1}; // modest hold when kitchen pond + swale stay open in a wet pulse
 const HOME_WATER_SETTLE_DAYS = 4; // inspect teaches day 1; nick waits so first-session Home stays fair
+const RIPARIAN_NICK_SOIL = {erosion:-0.8, water:-0.4, om:-0.3}; // dawn nick: wet season, bank buffer stripped
+const RIPARIAN_FILTER_SOIL = {erosion:0.5, water:0.4, om:0.15}; // modest filter when living bank trees stay in a wet season
 const COOP_BEDDING_RATE = 0.12; // pile lots/day at 1 hen; scales with sqrt(hens), smaller than a paddock herd
 const COOP_BEDDING_AUTO = 1;    // at most one dawn pile unit — bedding, not a crate crop
 const WOODLOT_REGEN_DAYS = 8; // clear-cut stump returns as canopy; never an empty plant bed
@@ -4728,7 +4730,24 @@ function isFarmEdgeT(t){
 function isRiparianT(t){
   return !!(t && t.farmEdge==='riparian');
 }
-/** Ortho neighbor of a seated bank buffer — roots filter a little runoff, no new meter. */
+/** Painted / seated bank mark — survives a tractor strip. Not a wash plug, not a pond site. */
+function isRiparianMarkedT(t){
+  if(!t || t.farmEdge!=='riparian') return false;
+  if(typeof isDustWashMarkedT==='function' && isDustWashMarkedT(t)) return false;
+  if(typeof isDustWashFillT==='function' && isDustWashFillT(t)) return false;
+  if(typeof isHighPondMarkedT==='function' && isHighPondMarkedT(t)) return false;
+  if(typeof isGardenPondMarkedT==='function' && isGardenPondMarkedT(t)) return false;
+  return true;
+}
+/** Living bank trees still standing on the mark. Credit only while these stay. */
+function isRiparianLiveT(t){
+  return !!(isRiparianMarkedT(t) && t.terrain==='trees');
+}
+/** Tractor / clear-cut left the mark but took the trees. */
+function isRiparianStrippedT(t){
+  return !!(isRiparianMarkedT(t) && t.terrain!=='trees');
+}
+/** Ortho neighbor of a living bank buffer — roots filter a little runoff, no new meter. */
 function riparianAdj(t, s){
   s = s || (typeof state!=='undefined' ? state : null);
   if(!t || !s || !s.grid) return false;
@@ -4737,7 +4756,20 @@ function riparianAdj(t, s){
     const c = (t.c|0)+dirs[i][0], r = (t.r|0)+dirs[i][1];
     if(typeof inGrid==='function' && !inGrid(c,r)) continue;
     const n = s.grid[typeof idx==='function' ? idx(c,r) : (r*(s.gridSize||GRID||0)+c)];
-    if(typeof isRiparianT==='function' ? isRiparianT(n) : (n && n.farmEdge==='riparian')) return true;
+    if(typeof isRiparianLiveT==='function' ? isRiparianLiveT(n) : (n && n.farmEdge==='riparian' && n.terrain==='trees')) return true;
+  }
+  return false;
+}
+/** Ortho neighbor of a stripped bank mark — runoff reaches the beds. */
+function riparianStrippedAdj(t, s){
+  s = s || (typeof state!=='undefined' ? state : null);
+  if(!t || !s || !s.grid) return false;
+  const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+  for(let i=0;i<dirs.length;i++){
+    const c = (t.c|0)+dirs[i][0], r = (t.r|0)+dirs[i][1];
+    if(typeof inGrid==='function' && !inGrid(c,r)) continue;
+    const n = s.grid[typeof idx==='function' ? idx(c,r) : (r*(s.gridSize||GRID||0)+c)];
+    if(typeof isRiparianStrippedT==='function' ? isRiparianStrippedT(n) : false) return true;
   }
   return false;
 }
@@ -4787,6 +4819,181 @@ function seatRiparianBuffers(s, P){
     if(typeof seatFarmEdgeTile==='function') seatFarmEdgeTile(s, cands[i], 'riparian');
   }
   markBankTrees();
+}
+/** Field under the player, or the parked river fold while they are in the yard. */
+function riparianBufferFarm(){
+  if(typeof homesteadMode!=='undefined' && homesteadMode && typeof plotStateBackup!=='undefined'
+     && plotStateBackup && plotStateBackup.grid && !plotStateBackup.homesteadView){
+    return plotStateBackup;
+  }
+  if(state && !state.homesteadView) return state;
+  return null;
+}
+/** Creek Bend, River Reach, leftover South Reach. Home, dust, ridge, woodlot/willow/hedge/reed stay off. */
+function leftoverIsRiparianFold(P){
+  if(!P) return false;
+  if(P.id==='home_garden' || P.lvIndex===0) return false;
+  if(P.id==='creek_bend' || P.levelId==='creek') return true;
+  if(P.id==='river_reach' || P.levelId==='valley') return true;
+  if(P.id==='south_reach') return true;
+  const feel = typeof leftoverStampFeelFor==='function' ? leftoverStampFeelFor(P) : (P.stampFeel||'');
+  return feel==='river';
+}
+function currentRiparianFold(s){
+  s = s || (typeof riparianBufferFarm==='function' ? riparianBufferFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s) return false;
+  if(s.homesteadView) return false;
+  const L = (typeof LEVELS!=='undefined' && LEVELS[s.lv]) ? LEVELS[s.lv] : null;
+  if(L && L.id==='home') return false;
+  if(L && (L.id==='creek' || L.id==='valley')) return true;
+  const P = typeof valleyParcelByLvIndex==='function' ? valleyParcelByLvIndex(s.lv) : null;
+  return leftoverIsRiparianFold(P);
+}
+function rememberRiparianMark(t){
+  if(!t) return;
+  if(t.farmEdge==='riparian') return;
+  if(t.atlasC!=null && typeof atlasGet==='function' && typeof atlasWaterAdjLocal==='function' && typeof state!=='undefined' && state && state.grid){
+    if(atlasWaterAdjLocal(state, t.c, t.r)) t.farmEdge = t.farmEdge || 'riparian';
+  }
+  if(t.terrain==='trees' && t.farmEdge==='riparian') return;
+}
+function riparianBufferHasMarkers(s){
+  return !!(s && s.grid && s.grid.some(t=>isRiparianMarkedT(t)));
+}
+/** Same gate as dustwash / high pond: Home cleared, this river fold in play, bank marks exist. */
+function riparianBufferReady(s){
+  if(!camp) return false;
+  if(typeof homePatchCleared==='function' && !homePatchCleared()) return false;
+  s = s || (typeof riparianBufferFarm==='function' ? riparianBufferFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return false;
+  if(!currentRiparianFold(s)) return false;
+  return riparianBufferHasMarkers(s);
+}
+/** Line is usable when every painted / seated bank mark still has living trees. */
+function riparianBufferUsable(s){
+  s = s || (typeof riparianBufferFarm==='function' ? riparianBufferFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return false;
+  let marked = 0, live = 0;
+  for(let i=0;i<s.grid.length;i++){
+    const t = s.grid[i];
+    if(!isRiparianMarkedT(t)) continue;
+    marked++;
+    if(isRiparianLiveT(t)) live++;
+  }
+  return marked>0 && live===marked;
+}
+/** Spring / fall, or an existing wet / flood flag. Same seasons as the ridge filter — no new chrome. */
+function riparianBufferWetSeason(s){
+  s = s || (typeof riparianBufferFarm==='function' ? riparianBufferFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s) return false;
+  if(s.wetSeason || s.flood || s.runoffSeason) return true;
+  const season = (s.season|0)%4;
+  if(season===0 || season===2) return true;
+  const sn = (typeof SEASONS!=='undefined') ? SEASONS[season] : null;
+  return !!(sn && (sn.wet || sn.flood || sn.runoff));
+}
+/** Inspect / floater mention the nick only when the river fold is in play, it is wet, and a buffer was stripped. */
+function riparianBufferNeed(s){
+  if(!riparianBufferReady(s)) return false;
+  if(!riparianBufferWetSeason(s)) return false;
+  return !riparianBufferUsable(s);
+}
+function riparianNearMarked(t, s){
+  s = s || (typeof state!=='undefined' ? state : null);
+  if(!t || !s || !s.grid) return false;
+  if(typeof isRiparianMarkedT==='function' && isRiparianMarkedT(t)) return false;
+  const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+  for(let i=0;i<dirs.length;i++){
+    const c = (t.c|0)+dirs[i][0], r = (t.r|0)+dirs[i][1];
+    if(typeof inGrid==='function' && !inGrid(c,r)) continue;
+    const n = s.grid[typeof idx==='function' ? idx(c,r) : (r*(s.gridSize||GRID||0)+c)];
+    if(typeof isRiparianMarkedT==='function' && isRiparianMarkedT(n)) return true;
+  }
+  return false;
+}
+function riparianBufferSoilTiles(s){
+  const tiles = [];
+  if(!s || !s.grid) return tiles;
+  s.grid.forEach((t, i)=>{
+    if(!t || !t.soil) return;
+    if(t.terrain!=='soil' && t.terrain!=='dead') return;
+    if(typeof riparianNearMarked==='function' ? !riparianNearMarked(t, s) : true) return;
+    tiles.push({t, i});
+  });
+  return tiles;
+}
+function riparianBufferFloaterIdx(s){
+  if(state && state.grid && s && s.grid && state.grid===s.grid){
+    for(let i=0;i<s.grid.length;i++) if(isRiparianStrippedT(s.grid[i])) return i;
+    for(let i=0;i<s.grid.length;i++) if(isRiparianMarkedT(s.grid[i])) return i;
+    for(let i=0;i<s.grid.length;i++){
+      const t = s.grid[i];
+      if(t && riparianNearMarked(t, s)) return i;
+    }
+  }
+  if(typeof selected==='number' && selected>=0 && state && state.grid && state.grid[selected]) return selected;
+  return (typeof selected==='number' && selected>=0) ? selected : 0;
+}
+function riparianBufferStory(t, opts){
+  opts = opts || {};
+  const ready = typeof riparianBufferReady==='function' && riparianBufferReady();
+  const need = typeof riparianBufferNeed==='function' && riparianBufferNeed();
+  const live = typeof isRiparianLiveT==='function' && isRiparianLiveT(t);
+  const stripped = typeof isRiparianStrippedT==='function' && isRiparianStrippedT(t);
+  const nearLive = typeof riparianAdj==='function' && riparianAdj(t);
+  const nearStrip = typeof riparianStrippedAdj==='function' && riparianStrippedAdj(t);
+  const nearMark = typeof riparianNearMarked==='function' && riparianNearMarked(t);
+  if(!ready && !live && !stripped) return '';
+  if(stripped)
+    return need
+      ? '🌳 Bank buffer stripped — runoff nicks nearby beds. Plant trees to keep the bank.'
+      : '🌳 A stripped bank buffer — roots no longer filter. Plant trees to keep the bank.';
+  if(live)
+    return need
+      ? '🌳 Some bank trees were stripped — runoff nicks the beds. Keep the living buffer.'
+      : 'A riparian buffer — roots filter runoff before it reaches the river. Keep the trees. Strip them and wet-season runoff nicks the beds. The herd walks around the bank.';
+  if(need && (nearStrip || nearMark))
+    return '🌳 Bank buffer stripped — runoff nicks these beds. Keep trees on the bank.';
+  if(ready && nearLive && !opts.needOnly)
+    return '🌳 Bank buffer nearby — roots filter a little runoff. Keep the trees.';
+  return '';
+}
+/** One sim dawn: stripped bank trees nick adjacent beds in a wet season; living trees filter instead. */
+function tickRiparianBufferWork(){
+  if(!camp || !riparianBufferReady()) return 0;
+  const s = typeof riparianBufferFarm==='function' ? riparianBufferFarm() : (typeof state!=='undefined' ? state : null);
+  if(!s || !s.grid) return 0;
+  const tiles = riparianBufferSoilTiles(s);
+  if(!tiles.length) return 0;
+  if(!riparianBufferWetSeason(s)) return 0;
+  const open = riparianBufferUsable(s);
+  if(open){
+    const b = (typeof RIPARIAN_FILTER_SOIL!=='undefined') ? RIPARIAN_FILTER_SOIL : {erosion:0.5, water:0.4, om:0.15};
+    tiles.forEach(({t})=>{
+      if(!t || !t.soil) return;
+      if((t.soil.erosion||0) < 80) t.soil.erosion = clamp((t.soil.erosion||0) + (b.erosion||0));
+      if((t.soil.water||0) < 70) t.soil.water = clamp((t.soil.water||0) + (b.water||0));
+      if((t.soil.om||0) < 70) t.soil.om = clamp((t.soil.om||0) + (b.om||0));
+      if(typeof recalc==='function') recalc(t);
+    });
+    return 0;
+  }
+  const b = (typeof RIPARIAN_NICK_SOIL!=='undefined') ? RIPARIAN_NICK_SOIL : {erosion:-0.8, water:-0.4, om:-0.3};
+  tiles.forEach(({t})=>{
+    if(!t || !t.soil) return;
+    t.soil.erosion = clamp((t.soil.erosion||0) + (b.erosion||0));
+    t.soil.water = clamp((t.soil.water||0) + (b.water||0));
+    t.soil.om = clamp((t.soil.om||0) + (b.om||0));
+    if(typeof recalc==='function') recalc(t);
+  });
+  const fi = riparianBufferFloaterIdx(s);
+  if(typeof floater==='function' && state && state.grid && state.grid[fi]){
+    floater(fi, 'runoff', '#c9a070');
+  }
+  if(typeof toast==='function'){
+    toast('🌳 The bank buffer is stripped — runoff nicks the beds. Keep trees on the bank so roots can filter.', {once:'riparian_buffer_work_first', throttleMs:4000});
+  }
+  return tiles.length;
 }
 function isWoodlotT(t){
   return !!(t && (t.farmEdge==='woodlot' || t.atlasFeature==='woodlot'));
@@ -9173,6 +9380,11 @@ function simStep(dt){
       if(typeof riparianAdj==='function' && riparianAdj(t)){
         if(k==='erosion') d += 0.05;                 // bank buffer: less soil into the river
       }
+      if(typeof riparianBufferNeed==='function' && riparianBufferNeed()
+         && typeof riparianNearMarked==='function' && riparianNearMarked(t)){
+        if(k==='erosion') d -= 0.05;                 // stripped bank: runoff nicks nearby beds
+        if(k==='water') d -= 0.03;
+      }
       if(typeof swaleDownhillAdj==='function' && swaleDownhillAdj(t)){
         if(k==='water') d += 0.05;                   // contour holds a little water for the beds
       }
@@ -9271,6 +9483,7 @@ function simStep(dt){
     if(typeof tickDustWashWork==='function') tickDustWashWork();
     if(typeof tickHighPondWork==='function') tickHighPondWork();
     if(typeof tickHomeWaterWork==='function') tickHomeWaterWork();
+    if(typeof tickRiparianBufferWork==='function') tickRiparianBufferWork();
     if(typeof tickCoopBedding==='function') tickCoopBedding();
     if(typeof refreshNeighborStandIfOpen==='function') refreshNeighborStandIfOpen();
     updateQuests();
@@ -12839,6 +13052,7 @@ function applyTool(i){
     };
     else if(t.terrain==='trees' && typeof woodlotFoldReady==='function' && woodlotFoldReady()
             && typeof clearCutWoodlotTree==='function'
+            && !(typeof isRiparianMarkedT==='function' && isRiparianMarkedT(t))
             && !(typeof isHighPondFillT==='function' && isHighPondFillT(t))
             && !(typeof isGardenPondFillT==='function' && isGardenPondFillT(t))
             && !(typeof isHomeSwaleFillT==='function' && isHomeSwaleFillT(t))){
@@ -12846,6 +13060,7 @@ function applyTool(i){
     }
     else if(t.terrain==='trees' && typeof willowFoldReady==='function' && willowFoldReady()
             && typeof stripWillowTree==='function'
+            && !(typeof isRiparianMarkedT==='function' && isRiparianMarkedT(t))
             && !(typeof isHighPondFillT==='function' && isHighPondFillT(t))
             && !(typeof isGardenPondFillT==='function' && isGardenPondFillT(t))
             && !(typeof isHomeSwaleFillT==='function' && isHomeSwaleFillT(t))){
@@ -12854,6 +13069,7 @@ function applyTool(i){
     else if(t.terrain==='trees' && typeof hedgeBerryFoldReady==='function' && hedgeBerryFoldReady()
             && typeof isHedgerowT==='function' && isHedgerowT(t)
             && typeof stripHedgeTree==='function'
+            && !(typeof isRiparianMarkedT==='function' && isRiparianMarkedT(t))
             && !(typeof isHighPondFillT==='function' && isHighPondFillT(t))
             && !(typeof isGardenPondFillT==='function' && isGardenPondFillT(t))
             && !(typeof isHomeSwaleFillT==='function' && isHomeSwaleFillT(t))){
@@ -12865,12 +13081,14 @@ function applyTool(i){
     }
     else if(t.terrain==='wetland' && typeof marshFoldReady==='function' && marshFoldReady()
             && typeof stripMarshReed==='function'
+            && !(typeof isRiparianMarkedT==='function' && isRiparianMarkedT(t))
             && !(typeof isHighPondFillT==='function' && isHighPondFillT(t))
             && !(typeof isGardenPondFillT==='function' && isGardenPondFillT(t))
             && !(typeof isHomeSwaleFillT==='function' && isHomeSwaleFillT(t))){
       did = ()=>{ stripMarshReed(t, i); };
     }
     else if(t.terrain==='pond' || t.terrain==='trees') did = ()=>{
+      if(typeof rememberRiparianMark==='function') rememberRiparianMark(t);
       if(typeof rememberHomeWaterMarks==='function') rememberHomeWaterMarks(t);
       if(typeof rememberHighPondMark==='function') rememberHighPondMark(t);
       t.terrain = (typeof terrainAfterClearPlug==='function') ? terrainAfterClearPlug(t) : 'soil';
@@ -13761,7 +13979,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.hydrosmoke';
+const SHIP_BUILD = '2026-08-22.riparian';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -14374,7 +14592,9 @@ function tileRunoffScore(t){
   if(t.crop){ const c = CROPS[t.crop.type]; v += c.cover ? 25 : c.diverse ? 12 : -14; }
   else if(!t.graze && t.health<40) v -= 12;
   if(t.graze && waterAdj(t)) v -= 22;
-  if(typeof riparianAdj==='function' && riparianAdj(t)) v += 12;  // buffer neighbors filter a little
+  if(typeof riparianBufferNeed==='function' && riparianBufferNeed()
+     && typeof riparianNearMarked==='function' && riparianNearMarked(t)) v -= 8; // stripped bank sheds
+  else if(typeof riparianAdj==='function' && riparianAdj(t)) v += 12;  // buffer neighbors filter a little
   if(typeof marshPondFeedAdj==='function' && marshPondFeedAdj(t)) v += 16; // pond bank filters
   else if(typeof shedsTowardMarshPond==='function' && shedsTowardMarshPond(t)) v += 12;
   if(state && typeof atlasWaterAdjLocal==='function' && atlasWaterAdjLocal(state, t.c, t.r)
@@ -18303,6 +18523,7 @@ function openInfo(refreshOnly){
       ${feat?`<div class="chiprow">${feat}</div>`:''}
       ${highLine?`<div class="chiprow">${highLine}</div>`:''}
       ${homeNeedLine && homeNeedLine!==feat?`<div class="chiprow">${homeNeedLine}</div>`:''}
+      ${(typeof riparianBufferStory==='function' && riparianBufferStory(t))?`<div class="chiprow">${riparianBufferStory(t)}</div>`:''}
       ${washLine?`<div class="chiprow">${washLine}</div>`:''}
       ${t.compost>0?`<div class="chiprow">🪣 compost working — ${t.compost.toFixed(0)}d left</div>`:''}
       ${t.crop?`<div class="chiprow">🌿 pioneers cracking the crust — ${Math.round(Math.min(1,t.crop.growth)*100)}%</div>`:''}
@@ -18400,9 +18621,13 @@ function openInfo(refreshOnly){
       chips.push('💧 downhill of the high pond — water filters before it runs downhill');
     if(typeof marshPondFeedAdj==='function' && marshPondFeedAdj(t)) chips.push('🌾 feeds a marsh pond — runoff filters before the river');
     else if(typeof shedsTowardMarshPond==='function' && shedsTowardMarshPond(t)) chips.push('🌾 sheds toward a marsh pond — cleaner than a bare drain');
-    if(typeof riparianAdj==='function' && riparianAdj(t)) chips.push('🌳 bank buffer nearby — roots filter a little runoff');
-    else if(state && typeof atlasWaterAdjLocal==='function' && atlasWaterAdjLocal(state, t.c, t.r))
-      chips.push('🟤 bare bank — mud slides into the water');
+    {
+      const ripLine = (typeof riparianBufferStory==='function') ? riparianBufferStory(t) : '';
+      if(ripLine) chips.push(ripLine);
+      else if(typeof riparianAdj==='function' && riparianAdj(t)) chips.push('🌳 bank buffer nearby — roots filter a little runoff');
+      else if(state && typeof atlasWaterAdjLocal==='function' && atlasWaterAdjLocal(state, t.c, t.r))
+        chips.push('🟤 bare bank — mud slides into the water');
+    }
     if(typeof dustWashNeed==='function' && dustWashNeed())
       chips.push('🏜️ dry wash blocked — drought nicks the flats');
     else if(typeof washAdj==='function' && washAdj(t))
@@ -18460,7 +18685,7 @@ function openInfo(refreshOnly){
       <div class="hbarw"><div class="hbar" style="width:${wq}%; background:linear-gradient(90deg,#9a8340,#4a9fd0)"></div></div>
       <div style="font-weight:800; font-size:13px">Water Quality <b>${wq}</b>/100</div>
       <div class="chiprow">${mood}</div>
-      <div class="chiprow">💡 Plant 🌳 trees on the banks — riparian buffer roots filter the runoff. Keep bare soil and grazing away from the water.</div>`;
+      <div class="chiprow">💡 Plant 🌳 trees on the banks — riparian buffer roots filter the runoff. Keep the living buffer; strip it and wet-season runoff nicks the beds.</div>`;
   }else if(t.terrain==='trees'){
     const story = soilStoryLine(t);
     const edgeLine = t.farmEdge==='windbreak'
@@ -18488,7 +18713,8 @@ function openInfo(refreshOnly){
                 : 'Ridge woodlot — tap when a limb is ready, or wait for a dawn trickle. Neighbors hold soil. The herd walks around the canopy. Not an open plant bed.')
               : 'Ridge woodlot — neighbors hold soil and shrug dust. The herd walks around the canopy. Not an open plant bed.'))
         : t.farmEdge==='riparian' || (typeof isRiparianT==='function' && isRiparianT(t))
-          ? 'A riparian buffer — roots filter runoff before it reaches the river. The herd walks around the bank. Keep bare soil off the water.'
+          ? ((typeof riparianBufferStory==='function' && riparianBufferStory(t))
+            || 'A riparian buffer — roots filter runoff before it reaches the river. Keep the trees. Strip them and wet-season runoff nicks the beds. The herd walks around the bank.')
         : (typeof isHighPondFillT==='function' && isHighPondFillT(t) && typeof highPondReady==='function' && highPondReady())
           ? ((typeof highPondNeed==='function' && highPondNeed())
             ? 'This tree filled the high pond — runoff nicks the downhill fields. Clear it to open the basin again. Not a plant bed.'
