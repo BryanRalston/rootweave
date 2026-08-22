@@ -4402,7 +4402,8 @@ function dressLeftoverStamp(s, P){
         }
       });
     }
-    const wantReed = Math.max(4, Math.round(GRID*0.4));
+    const campaignMarsh = P && (P.id==='marsh_finger' || P.levelId==='marsh') && !P.leftover && !P.buyable;
+    const wantReed = campaignMarsh ? 0 : ((atlasPonds || liveWater) ? Math.max(4, Math.round(GRID*0.4)) : 0);
     let reeds = tiles.filter(t=>t.terrain==='wetland').length;
     const scoreReed = (t)=>{
       let n = 0;
@@ -4421,26 +4422,30 @@ function dressLeftoverStamp(s, P){
       carveClear(t);
       reeds++;
     });
-    tiles.forEach(t=>{
-      if(!t || t.terrain!=='soil') return;
-      const marshy = t.atlasBiome==='marsh' || t.atlasBiome==='riparian';
-      const bank = typeof leftoverWetNear==='function' && leftoverWetNear(s, t);
-      const feed = typeof marshPondFeedAdj==='function' && marshPondFeedAdj(t, s);
-      if(!(marshy || bank || feed)) return;
-      t.soil.water = Math.min(100, (t.soil.water||30)+(feed?28:22));
-      t.soil.om = Math.min(100, (t.soil.om||30)+4);
-      recalc(t);
-    });
-    tiles.forEach(t=>{
-      if(!t || t.terrain!=='dead' || !leftoverStampLand(t)) return;
-      const marshy = t.atlasBiome==='marsh' || t.atlasBiome==='riparian';
-      if(!(leftoverWetNear(s,t) || marshy)) return;
-      if(roll(t,6)<0.42){
-        seedSoil(t, 20, 8);
-        t.soil.water = Math.min(100, (t.soil.water||30)+26);
+    if(!campaignMarsh){
+      tiles.forEach(t=>{
+        if(!t || t.terrain!=='soil') return;
+        const marshy = t.atlasBiome==='marsh' || t.atlasBiome==='riparian';
+        const bank = typeof leftoverWetNear==='function' && leftoverWetNear(s, t);
+        const feed = typeof marshPondFeedAdj==='function' && marshPondFeedAdj(t, s);
+        if(!(marshy || bank || feed)) return;
+        t.soil.water = Math.min(100, (t.soil.water||30)+(feed?28:22));
+        t.soil.om = Math.min(100, (t.soil.om||30)+4);
         recalc(t);
-      }
-    });
+      });
+    }
+    if(!campaignMarsh){
+      tiles.forEach(t=>{
+        if(!t || t.terrain!=='dead' || !leftoverStampLand(t)) return;
+        const marshy = t.atlasBiome==='marsh' || t.atlasBiome==='riparian';
+        if(!(leftoverWetNear(s,t) || marshy)) return;
+        if(roll(t,6)<0.42){
+          seedSoil(t, 20, 8);
+          t.soil.water = Math.min(100, (t.soil.water||30)+26);
+          recalc(t);
+        }
+      });
+    }
     if(P.id==='willow_bottom'){
       let willows = 0;
       tiles.forEach(t=>{
@@ -5802,7 +5807,7 @@ function computeWaterTarget(){
   state.grid.forEach(t=>{
     if(t.terrain==='trees' || t.terrain==='orchard'){ if(waterAdj(t)) buffers++; return; }
     if(t.terrain==='pond'){
-      score += (typeof isMarshPondT==='function' && isMarshPondT(t)) ? 4 : 2; // marsh ponds filter before the stem
+      score += (typeof isMarshPondT==='function' && isMarshPondT(t)) ? 3 : 2; // marsh ponds filter a little before the stem
       return;
     }
     if(t.terrain==='wetland'){ score += waterAdj(t) ? 8 : 4; return; }   // nature's kidney
@@ -5822,19 +5827,15 @@ function computeWaterTarget(){
     if(typeof riparianAdj==='function' && riparianAdj(t)) score += 0.4; // beds behind the buffer filter a little
     const marshFeed = typeof marshPondFeedAdj==='function' && marshPondFeedAdj(t);
     const marshShed = typeof shedsTowardMarshPond==='function' && shedsTowardMarshPond(t);
-    if(marshFeed || marshShed) score += marshFeed ? 0.65 : 0.4; // catchment settles in the pond first
+    if(marshFeed || marshShed) score += marshFeed ? 0.22 : 0.10; // catchment settles in the pond first
     if(waterAdj(t)){                                        // the riparian zone matters most
       const liveBank = typeof atlasWaterAdjLocal==='function' && atlasWaterAdjLocal(state, t.c, t.r);
-      if(marshFeed && !liveBank){
-        if(t.graze && t.graze.kind==='duckT') score += 1;
-      }else{
-        if(t.graze && t.graze.kind!=='duckT') risk += 1;      // hooves on the bank (ducks belong)
-        if(t.graze && t.graze.kind==='duckT') score += 1;
-        if(t.crop && !CROPS[t.crop.type].diverse) risk += 0.5;
-        if(!t.crop && !t.graze && t.health<40) risk += marshFeed ? 0.2 : 0.6;   // mud sliding straight in
-        if(liveBank && !t.crop && !t.graze){
-          risk += marshFeed ? 0.08 : 0.22;                 // bare soil right on the live bank
-        }
+      if(t.graze && t.graze.kind!=='duckT') risk += marshFeed ? 0.45 : 1;      // hooves on the bank (ducks belong)
+      if(t.graze && t.graze.kind==='duckT') score += 1;
+      if(t.crop && !CROPS[t.crop.type].diverse) risk += marshFeed ? 0.25 : 0.5;
+      if(!t.crop && !t.graze && t.health<40) risk += marshFeed ? 0.28 : 0.6;   // mud sliding straight in
+      if(liveBank && !t.crop && !t.graze){
+        risk += marshFeed ? 0.10 : 0.22;                 // bare soil right on the live bank
       }
     }
   });
