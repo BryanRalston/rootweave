@@ -2111,7 +2111,7 @@ function leftoverStampFeelFor(spec){
   if(id==='wet_meadow' || id==='willow_bottom' || id==='marsh_finger') return 'wet';
   if(id==='north_folds' || id==='west_folds') return 'paddock';
   if(id==='orchard_block') return 'orchard';
-  if(id==='dust_scrub') return 'dust';
+  if(id==='dust_scrub' || id==='dust_flats') return 'dust';
   if(id==='east_pasture') return 'dry_graze';
   if(id==='south_reach') return 'river';
   return 'heal';
@@ -2131,8 +2131,8 @@ function leftoverStampStory(feel, P){
     wet: 'Wet ground and reeds. Do not farm this like a dry garden.',
     paddock: 'A grazing fold. Manure, rest, and stock water — not a kitchen garden.',
     orchard: 'Trees and understory. Perennials, not corn rows.',
-    dust: 'Salt, dust, and sparse scrub. Soften it; do not pretend it is lush.',
-    dry_graze: 'Dry pasture at the quarter-section edge. Sparse graze, not a garden.',
+    dust: 'Salt, dust, and a dry wash that only runs after rain. Soften it; do not pretend it is lush.',
+    dry_graze: 'Dry pasture at the quarter-section edge. Sparse graze and salt-crust, not a garden.',
     river: 'The live stem and the wash. Keep the banks rooted.',
     heal: 'Wake the leftover ground.'
   }[feel] || 'Wake the leftover ground.';
@@ -2518,7 +2518,7 @@ const VALLEY_PARCELS = [
    origin:{c:28, r:6}, size:{w:9, h:9}, teaser:'water',
    systemsTaught:['buffers','pond','runoff','water_hud'], neighborParcels:['back_paddock','river_reach','marsh_finger'],
    unlockRules:{type:'parcel_cleared', parcelId:'back_paddock'}, landmark:'bridge_post', desc:'Creek flows east into the same main river.'},
-  {id:'dust_flats', name:'Dust Flats', em:'🏜️', kind:'plot', levelId:'flats', lvIndex:3,
+  {id:'dust_flats', name:'Dust Flats', em:'🏜️', kind:'plot', stampFeel:'dust', levelId:'flats', lvIndex:3,
    origin:{c:53, r:40}, size:{w:11, h:11}, teaser:'salt',
    systemsTaught:['goats','salt','hard_land'], neighborParcels:['south_reach','wind_ridge','market_cross'],
    unlockRules:{type:'parcel_cleared', parcelId:'back_paddock'}, landmark:'ruin_windmill',
@@ -3841,6 +3841,11 @@ function genCreek(s){
 // LEVEL 4 — Dust Flats: dry wash from the atlas, no invented river
 function genDustFlats(s){
   sowAtlasCrop(s, 'dust_flats');
+  const P = typeof valleyParcel==='function' ? valleyParcel('dust_flats') : null;
+  if(P && typeof dressLeftoverStamp==='function') dressLeftoverStamp(s, P);
+  if(typeof ensureDryWashKeep==='function') ensureDryWashKeep(s, P);
+  if(typeof ensureNoInventedRiverOnDust==='function') ensureNoInventedRiverOnDust(s, P);
+  if(typeof ensureAtlasLaneOnCrop==='function') ensureAtlasLaneOnCrop(s, 'dust_flats');
 }
 // LEVEL 5 — River Reach: main stem + wash confluence. House stays on the SW garden.
 function genValley(s){
@@ -4341,6 +4346,108 @@ function leftoverCanopyNear(s, t){
   }
   return false;
 }
+function isRiverbedT(t){
+  return !!(t && t.terrain==='riverbed');
+}
+/** Campaign Dust Flats + leftover dust / dry-graze. Home Patch stays off. */
+function leftoverIsDustFold(P){
+  if(!P) return false;
+  if(P.id==='home_garden' || P.lvIndex===0) return false;
+  const feel = typeof leftoverStampFeelFor==='function' ? leftoverStampFeelFor(P) : '';
+  return feel==='dust' || feel==='dry_graze' || P.id==='dust_flats' || P.levelId==='flats';
+}
+function currentDustFold(s){
+  s = s || (typeof state!=='undefined' ? state : null);
+  if(!s) return false;
+  const L = (typeof LEVELS!=='undefined' && LEVELS[s.lv]) ? LEVELS[s.lv] : null;
+  if(L && L.id==='home') return false;
+  if(L && L.id==='flats') return true;
+  const P = typeof valleyParcelByLvIndex==='function' ? valleyParcelByLvIndex(s.lv) : null;
+  return leftoverIsDustFold(P);
+}
+/** Ortho neighbor of the painted dry wash — not live river. */
+function washAdj(t, s){
+  s = s || (typeof state!=='undefined' ? state : null);
+  if(!t || !s || !s.grid) return false;
+  const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+  for(let i=0;i<dirs.length;i++){
+    const c = (t.c|0)+dirs[i][0], r = (t.r|0)+dirs[i][1];
+    if(typeof inGrid==='function' && !inGrid(c,r)) continue;
+    const n = s.grid[typeof idx==='function' ? idx(c,r) : (r*(s.gridSize||GRID||0)+c)];
+    if(isRiverbedT(n)) return true;
+  }
+  return false;
+}
+function dustAwayFromWash(t, s){
+  s = s || (typeof state!=='undefined' ? state : null);
+  if(!t || !s) return false;
+  if(!currentDustFold(s)) return false;
+  if(!(t.terrain==='soil' || t.terrain==='dead')) return false;
+  if(t.feature==='path' || t.feature==='swale') return false;
+  if(isRiverbedT(t) || washAdj(t, s)) return false;
+  return true;
+}
+function washPulseAmt(t){
+  return Math.max(0, (t && t.washPulse) || 0);
+}
+/** After rain / flood: wash bed + banks hold a pulse. Never turns the bed into water. */
+function pulseDryWash(s, amount){
+  if(!s || !s.grid || !(amount>0)) return;
+  s.grid.forEach(t=>{
+    if(!t) return;
+    if(isRiverbedT(t)){
+      t.washPulse = Math.min(100, (t.washPulse||0) + amount);
+      t.soil.water = Math.min(100, (t.soil.water||8) + amount*0.55);
+    }else if((t.terrain==='soil' || t.terrain==='dead') && washAdj(t, s)){
+      t.washBankPulse = Math.min(100, (t.washBankPulse||0) + amount*0.75);
+      t.soil.water = Math.min(100, (t.soil.water||0) + amount*0.40);
+      if(typeof recalc==='function') recalc(t);
+    }
+  });
+}
+function decayWashMoisture(t, dd){
+  if(!t || !(dd>0)) return;
+  if(t.washPulse) t.washPulse = Math.max(0, t.washPulse - 14*dd);
+  if(t.washBankPulse) t.washBankPulse = Math.max(0, t.washBankPulse - 10*dd);
+  if(isRiverbedT(t)){
+    const wet = (t.washPulse||0) > 8;
+    t.soil.water = clamp((t.soil.water||0) + (wet ? -5 : -11)*dd);
+  }
+}
+/** Re-seat painted wash as riverbed. Never invent a live stem. Home Patch stays off. */
+function ensureDryWashKeep(s, P){
+  if(!s || !s.grid) return;
+  if(P && (P.id==='home_garden' || P.lvIndex===0)) return;
+  s.grid.forEach(t=>{
+    if(!t) return;
+    const A = (typeof atlasGet==='function' && t.atlasC!=null) ? atlasGet(t.atlasC, t.atlasR) : null;
+    if(!A || A.water!=='wash') return;
+    if(t.terrain!=='riverbed'){
+      t.terrain = 'riverbed';
+      if(typeof carveClear==='function') carveClear(t);
+    }
+    t.atlasWater = 'wash';
+    if(A.biome) t.atlasBiome = A.biome;
+  });
+}
+/** Dust / dry-graze folds: no invented blue river. Atlas stem/creek and ponds stay. */
+function ensureNoInventedRiverOnDust(s, P){
+  if(!s || !s.grid || !leftoverIsDustFold(P)) return;
+  s.grid.forEach(t=>{
+    if(!t || t.terrain!=='water') return;
+    const A = (typeof atlasGet==='function' && t.atlasC!=null) ? atlasGet(t.atlasC, t.atlasR) : null;
+    if(A && (A.water==='main' || A.water==='creek')) return;
+    if(A && A.water==='pond_site'){
+      t.terrain = 'pond';
+      if(typeof carveClear==='function') carveClear(t);
+      t.atlasWater = 'pond_site';
+      return;
+    }
+    t.terrain = (A && A.water==='wash') ? 'riverbed' : 'dead';
+    if(typeof carveClear==='function') carveClear(t);
+    if(t.terrain==='riverbed') t.atlasWater = 'wash';
+  });
+}
 /** Thin land-tied starting mix on top of the atlas crop. Does not invent a new river. */
 function dressLeftoverStamp(s, P){
   if(!s || !s.grid || !P) return;
@@ -4561,19 +4668,44 @@ function dressLeftoverStamp(s, P){
   }
   if(feel==='dust'){
     tiles.forEach(t=>{
+      if(typeof isRiverbedT==='function' && isRiverbedT(t)) return;
       if(!leftoverStampLand(t)) return;
+      const bank = typeof washAdj==='function' && washAdj(t, s);
       if(t.terrain==='soil' && roll(t,1)<0.74) makeDead(t);
-      if(t.terrain==='dead' && roll(t,2)<0.3) t.feature = 'saltflat';
-      else if(t.terrain==='dead' && roll(t,2)>0.88) t.feature = 'gully';
+      if(t.terrain==='dead'){
+        if(bank){
+          if(t.feature==='saltflat') t.feature = null;
+          t.soil.water = Math.min(t.soil.water||0, 18);
+          t.soil.erosion = Math.min(t.soil.erosion||0, 16);
+          if(!t.deco && roll(t,3)>0.88) t.deco = 'deco_rock';
+        }else{
+          if(roll(t,2)<0.3) t.feature = 'saltflat';
+          else if(roll(t,2)>0.88) t.feature = 'gully';
+          t.soil.erosion = Math.min(t.soil.erosion||0, 12);
+          t.soil.water = Math.min(t.soil.water||0, 10);
+        }
+        if(typeof recalc==='function') recalc(t);
+      }
     });
     return;
   }
   if(feel==='dry_graze'){
     tiles.forEach(t=>{
+      if(typeof isRiverbedT==='function' && isRiverbedT(t)) return;
       if(!leftoverStampLand(t)) return;
+      const bank = typeof washAdj==='function' && washAdj(t, s);
       if(t.terrain==='soil' && roll(t,1)<0.52) makeDead(t);
       else if(t.terrain==='dead' && roll(t,1)>0.78) seedSoil(t, 28, 8);
-      if(t.terrain==='dead' && roll(t,2)<0.16) t.feature = 'saltflat';
+      if(t.terrain==='dead' && !bank && roll(t,2)<0.16) t.feature = 'saltflat';
+      if(t.terrain==='dead' || t.terrain==='soil'){
+        if(bank){
+          t.soil.water = Math.min(t.soil.water||0, 20);
+        }else{
+          t.soil.erosion = Math.min(t.soil.erosion||30, 16);
+          t.soil.water = Math.min(t.soil.water||30, 16);
+        }
+        if(typeof recalc==='function') recalc(t);
+      }
     });
     ensureReachableStockWater(s);
     return;
@@ -4795,6 +4927,8 @@ function genLeftoverStamp(s){
     if(typeof ensureMarshPondKeep==='function') ensureMarshPondKeep(s, P);
     seatLeftoverFarmEdges(s, P);
     if(typeof ensureAtlasLaneOnCrop==='function') ensureAtlasLaneOnCrop(s, P.id);
+    if(typeof ensureDryWashKeep==='function') ensureDryWashKeep(s, P);
+    if(typeof ensureNoInventedRiverOnDust==='function') ensureNoInventedRiverOnDust(s, P);
   }
 }
 function soilTiles(){ return state.grid.filter(t=>t.terrain==='soil'); }
@@ -6050,6 +6184,10 @@ function simStep(dt){
     // ---- DEAD GROUND never heals itself — only the player's care wakes it.
     // Remediation succession: compost / pioneer cover crops / goats (+ nearby
     // water helps the medicine work) raise it until it crosses into workable soil.
+    if(t.terrain==='riverbed'){
+      if(typeof decayWashMoisture==='function') decayWashMoisture(t, dd);
+      return;
+    }
     if(t.terrain==='dead'){
       let feed = 0;
       const homeWake = !!(LV() && LV().id==='home');
@@ -6077,6 +6215,13 @@ function simStep(dt){
           if(t.crop && (k==='om'||k==='microbial'||k==='erosion')) d *= 1.4;
           t.soil[k] = clamp(t.soil[k] + d*dd);
         });
+      }
+      if(typeof decayWashMoisture==='function') decayWashMoisture(t, dd);
+      if(typeof dustAwayFromWash==='function' && dustAwayFromWash(t)){
+        t.soil.erosion = clamp((t.soil.erosion||0) - 0.08*dd);
+        t.soil.water = clamp((t.soil.water||0) - 0.10*dd);
+      }else if(typeof washAdj==='function' && washAdj(t) && (t.washBankPulse||0)>6){
+        t.soil.water = clamp((t.soil.water||0) + 0.07*dd);
       }
       recalc(t);
       maybeWakeDeadTile(t, i);
@@ -6146,10 +6291,18 @@ function simStep(dt){
       if(typeof marshPondFeedAdj==='function' && marshPondFeedAdj(t)){
         if(k==='erosion') d += 0.04;                 // pond bank holds a little dirt out of the river
       }
+      if(k==='water' && typeof washAdj==='function' && washAdj(t) && (t.washBankPulse||0)>6){
+        d += 0.06;                                   // wash bank holds last rain a little longer
+      }
+      if(typeof dustAwayFromWash==='function' && dustAwayFromWash(t)){
+        if(k==='erosion') d -= 0.06;                 // bare dust away from the wash will not hold
+        if(k==='water') d -= 0.04;
+      }
       if(k==='microbial' && nearWorm) d += 0.12;     // the worm army
       if((k==='om'||k==='microbial') && nearMush) d += 0.07;  // fungal threads
       t.soil[k] = clamp(t.soil[k] + d*dd);
     });
+    if(typeof decayWashMoisture==='function') decayWashMoisture(t, dd);
     // ---- crops grow live
     if(t.crop){
       const c = CROPS[t.crop.type];
@@ -10052,7 +10205,7 @@ function showEvent(id){
     bad=true; em='🌵'; title='Drought!'; kid='The sun blazed for weeks and the land got thirsty!';
     let prot=0;
     soils.forEach(t=>{
-      const p = Math.min(0.85, t.soil.om/100*0.55 + (pondNear(t)?0.3:0) + ((t.crop&&CROPS[t.crop.type].diverse)?0.12:0) + t.flowers*0.05 + ((typeof farmEdgeAdj==='function' && farmEdgeAdj(t))?0.08:0) + ((typeof swaleDownhillAdj==='function' && swaleDownhillAdj(t))?0.12:0) + ((typeof highPondDownhillAdj==='function' && highPondDownhillAdj(t))?0.12:0));
+      const p = Math.min(0.85, t.soil.om/100*0.55 + (pondNear(t)?0.3:0) + ((t.crop&&CROPS[t.crop.type].diverse)?0.12:0) + t.flowers*0.05 + ((typeof farmEdgeAdj==='function' && farmEdgeAdj(t))?0.08:0) + ((typeof swaleDownhillAdj==='function' && swaleDownhillAdj(t))?0.12:0) + ((typeof highPondDownhillAdj==='function' && highPondDownhillAdj(t))?0.12:0) + ((typeof washAdj==='function' && washAdj(t) && (t.washBankPulse||0)>6)?0.10:0) + ((typeof dustAwayFromWash==='function' && dustAwayFromWash(t))?-0.08:0));
       t.soil.water = clamp(t.soil.water - 13*(1-p));
       if(t.crop) t.crop.growth = Math.max(0.05, t.crop.growth - 0.06*(1-p));
       if(p>0.4) prot++;
@@ -10071,10 +10224,25 @@ function showEvent(id){
         t.soil.structure = clamp(t.soil.structure-5);
         t.soil.nutrients = clamp(t.soil.nutrients-4);
         t.soil.erosion   = clamp(t.soil.erosion-4);
+        if(typeof dustAwayFromWash==='function' && dustAwayFromWash(t)){
+          t.soil.erosion = clamp(t.soil.erosion-6);
+          t.soil.structure = clamp(t.soil.structure-6);
+        }
         bare++;
       }
       recalc(t);
     });
+    state.grid.forEach(t=>{
+      if(!t || t.terrain!=='dead') return;
+      if(typeof washAdj==='function' && washAdj(t)){
+        t.soil.water = clamp((t.soil.water||0)+8);
+        recalc(t);
+      }else if(typeof dustAwayFromWash==='function' && dustAwayFromWash(t)){
+        t.soil.erosion = clamp((t.soil.erosion||0)-5);
+        recalc(t);
+      }
+    });
+    if(typeof pulseDryWash==='function') pulseDryWash(state, 36);
     if(safe>0) lines.push(`🌿 ${safe} covered or tree-sheltered tile${safe>1?'s':''} drank the rain safely!`);
     if(bare>0) lines.push(`😟 ${bare} bare tile${bare>1?'s':''} lost some soil to the storm.`);
     // storms flush whatever the land can't hold straight into the river
@@ -10124,6 +10292,7 @@ function showEvent(id){
     state.grid.forEach(t=>{   // rain even kisses the dead ground (it helps amendments work)
       if(t.terrain==='dead' && (t.compost>0 || t.crop)){ t.soil.water = clamp(t.soil.water+6); recalc(t); }
     });
+    if(typeof pulseDryWash==='function') pulseDryWash(state, 22);
     lines.push('💧 Every tile got a lovely drink.');
     lesson='Slow, gentle water is exactly what living soil loves best.';
   }else if(id==='sunny'){
@@ -10145,6 +10314,7 @@ function showEvent(id){
   }else if(id==='snow'){
     em='☃️'; title='Snow Blanket'; kid='Thick fluffy snow tucked the whole farm in!';
     soils.forEach(t=>{ t.soil.water = clamp(t.soil.water+6); recalc(t); });
+    if(typeof pulseDryWash==='function') pulseDryWash(state, 14);
     lines.push('❄️ Melting snow means spring water for everyone.');
     lesson='Winter is not empty time — the soil rests and stores up for spring.';
   }else return;
@@ -10349,7 +10519,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.orchgrove';
+const SHIP_BUILD = '2026-08-22.dustwash';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -10956,7 +11126,7 @@ function tileRunoffScore(t){
   }
   if(isWaterT(t)) return state.waterQuality;
   if(t.terrain==='dead') return 18;
-  if(t.terrain==='riverbed') return 25;
+  if(t.terrain==='riverbed') return (t.washPulse||0)>12 ? 42 : 25;
   if(t.terrain!=='soil') return 70;
   let v = 15 + t.health*0.42 + t.soil.erosion*0.18;
   if(t.crop){ const c = CROPS[t.crop.type]; v += c.cover ? 25 : c.diverse ? 12 : -14; }
@@ -10970,6 +11140,8 @@ function tileRunoffScore(t){
      && !(typeof marshPondFeedAdj==='function' && marshPondFeedAdj(t))){
     v -= 14;                                                 // bare bank sheds more than a rooted bank
   }
+  if(typeof washAdj==='function' && washAdj(t) && (t.washBankPulse||0)>6) v += 6;
+  else if(typeof dustAwayFromWash==='function' && dustAwayFromWash(t)) v -= 8;
   return clamp(v);
 }
 function runoffColor(v){
@@ -10981,7 +11153,7 @@ function runoffColor(v){
 }
 function overlayColor(t){
   if(overlay==='health') return heatColor(isLandT(t)? t.health : isWaterT(t)?85 : t.terrain==='riverbed'?12 : 80);
-  if(overlay==='water')  return waterColor(isWetT(t)? 100 : isLandT(t)? t.soil.water : t.terrain==='riverbed'?8 : 60);
+  if(overlay==='water')  return waterColor(isWetT(t)? 100 : isLandT(t)? t.soil.water : t.terrain==='riverbed'? Math.max(8, (typeof washPulseAmt==='function' ? washPulseAmt(t) : (t.washPulse||0))*0.7) : 60);
   if(overlay==='bio')    return heatColor(tileBioScore(t));
   if(overlay==='om')     return heatColor(isLandT(t)? t.soil.om : t.terrain==='riverbed'?10 : 60);
   if(overlay==='runoff') return runoffColor(tileRunoffScore(t));
@@ -11856,6 +12028,12 @@ function drawGround(t, time){
     const img = SPRITES[sk];
     if(img) drawRiverSpriteTile(o, img, 0.3, true, time);
     else drawAlignedChannel(t, o, 'bed', 0.3, time, seed);
+    if((t.washPulse||0)>10){
+      ctx.globalAlpha = Math.min(0.26, t.washPulse/220);
+      ctx.fillStyle = '#7a6a52';
+      diamondPath(o.x,o.y); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
     if(state.season===3){ ctx.globalAlpha = 0.3; ctx.fillStyle = '#eef4fb'; diamondPath(o.x,o.y); ctx.fill(); ctx.globalAlpha = 1; }
     return;
   }else if(t.terrain==='dead'){
@@ -14842,6 +15020,13 @@ function openInfo(refreshOnly){
                : t.feature==='gully' ? '⛏️ An erosion gully — the storms carved this scar.'
                : t.feature==='swale' ? '〰️ A contour swale — water sits uphill so the beds below wilt a little less.'
                : '';
+    const washLine = (typeof washAdj==='function' && washAdj(t))
+      ? ((t.washBankPulse||0)>6
+        ? '🌧️ Wash bank — holding a pulse from the last rain.'
+        : '🏜️ Wash bank — dry between storms, a little kinder than the open flats.')
+      : ((typeof dustAwayFromWash==='function' && dustAwayFromWash(t))
+        ? '🌵 Bare dust — this ground will not hold.'
+        : '');
     const wk = deadWakeShown(t);
     const need = wk.need;
     const story = soilStoryLine(t);
@@ -14851,12 +15036,20 @@ function openInfo(refreshOnly){
       <div style="font-weight:800; font-size:13px">Waking up: <b>${Math.min(wk.shown, need)}</b>/${need}</div>
       <div class="chiprow">💀 Nothing can grow here yet — the soil is DEAD.</div>
       ${feat?`<div class="chiprow">${feat}</div>`:''}
+      ${washLine?`<div class="chiprow">${washLine}</div>`:''}
       ${t.compost>0?`<div class="chiprow">🪣 compost working — ${t.compost.toFixed(0)}d left</div>`:''}
       ${t.crop?`<div class="chiprow">🌿 pioneers cracking the crust — ${Math.round(Math.min(1,t.crop.growth)*100)}%</div>`:''}
       ${t.graze?`<div class="chiprow">🐐 goats browsing the scrub</div>`:''}
       <div class="chiprow">💡 Feed it: 🪣 compost${toolAllowed('covercrop')?', 🌿 pioneer plants':''}${toolAllowed('goat')?', or 🐐 goats':''}. Water nearby helps it all work faster.</div>`;
   }else if(t.terrain==='riverbed'){
-    body = `<div class="chiprow">🏜️ A cracked creekbed where water once ran. Complete the <b>Dry Wash</b> restore goal and the creek will flow again!</div>`;
+    const pulsed = (t.washPulse||0) > 8;
+    if(typeof isValleyLevel==='function' && isValleyLevel(state.lv)){
+      body = `<div class="chiprow">🏜️ A cracked creekbed where water once ran. Complete the <b>Dry Wash</b> restore goal and the creek will flow again!</div>`;
+    }else{
+      body = pulsed
+        ? `<div class="chiprow">🏜️ Dry wash — last rain left a pulse of moisture in the bed. It will bake off between storms. Not a river.</div>`
+        : `<div class="chiprow">🏜️ Dry wash — an episodic drain. After rain the bed and banks hold a little moisture; between storms they stay harsh. Not a second river.</div>`;
+    }
   }else if(BUILD_SET.has(t.terrain)){
     body = `<div class="chiprow">${BUILD_INFO[t.terrain]||''}</div>`;
   }else if(t.terrain==='soil'){
@@ -14876,6 +15069,10 @@ function openInfo(refreshOnly){
     if(typeof riparianAdj==='function' && riparianAdj(t)) chips.push('🌳 bank buffer nearby — roots filter a little runoff');
     else if(state && typeof atlasWaterAdjLocal==='function' && atlasWaterAdjLocal(state, t.c, t.r))
       chips.push('🟤 bare bank — mud slides into the water');
+    if(typeof washAdj==='function' && washAdj(t))
+      chips.push((t.washBankPulse||0)>6 ? '🌧️ wash bank holding last rain' : '🏜️ wash bank — dry between storms');
+    else if(typeof dustAwayFromWash==='function' && dustAwayFromWash(t))
+      chips.push('🌵 bare dust — soil will not hold');
     if(t.compost>0) chips.push(`🪣 compost — ${t.compost.toFixed(0)}d`);
     if(t.flowers>0.3) chips.push('🌼 wildflowers');
     if(t.soil.microbial>=70) chips.push('🪱 worms!');
