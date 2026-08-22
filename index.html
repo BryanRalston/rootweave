@@ -470,9 +470,19 @@ body.home-plot #questPanel{
   background:#fffbe9; border:3px solid var(--gold); border-radius:18px; padding:12px 15px;
   max-width:400px; width:92%; box-shadow:0 10px 30px rgba(0,0,0,.4); display:none;
   font-size:14.5px; font-weight:700;
+  pointer-events:none;
 }
 #tut.show{display:block; animation:popIn .3s ease}
+#tut .skip, #tut .tnext{ pointer-events:auto; }
 #tut .skip{float:right; font-size:11.5px; color:var(--soft); cursor:pointer; text-decoration:underline; font-weight:600; margin-left:10px}
+body.home-plot #tut{
+  top:calc(58px + env(safe-area-inset-top, 0px));
+  bottom:auto;
+  right:10px; left:auto;
+  transform:none;
+  width:min(340px, 42vw);
+  max-width:min(340px, 46vw);
+}
 #tut .tnext{
   font-family:inherit; margin-top:8px; width:100%; background:var(--gold); border:none; border-radius:12px;
   font-weight:800; font-size:14px; padding:10px; cursor:pointer; color:#5a3d10; box-shadow:0 3px 0 var(--gold2);
@@ -770,8 +780,13 @@ body.reduce-motion #badgeBanner{ transition:none; }
     width:auto; max-width:min(320px, calc(100vw - 16px));
     z-index:45;
   }
-  body.home-plot #tut{ bottom: calc(88px + env(safe-area-inset-bottom,0px)); }
-  body.home-plot #tut.slim{ bottom: calc(82px + env(safe-area-inset-bottom,0px)); }
+  body.home-plot #tut, body.home-plot #tut.slim{
+    top: calc(96px + env(safe-area-inset-top, 0px));
+    bottom: auto;
+    left: 8px; right: 8px;
+    width: auto; max-width: none;
+    font-size: 13px; padding: 8px 12px;
+  }
   /* C3: default one-line quest strip on mobile — expand on tap */
   #questPanel.min #qBody{ display:none; }
   #questPanel.min{ width:auto; padding-bottom:6px; }
@@ -2648,7 +2663,7 @@ const LEVELS = [
    ],
    gen:genHomePatch,
    tut:[
-     {html:'🏡 <b>Dead ground.</b> Gray cracked tiles will not grow food yet.<br><br>🪣 Compost is selected — paint those gray tiles.', on:'feed_dead'},
+     {html:'🏡 <b>Dead ground.</b> You start with <b>🪙40</b>. Compost <b>🪙5</b> · Pioneers <b>🪙2</b> · 3 Sisters <b>🪙6</b>.<br><br>🪣 Compost is selected — paint the gray tiles. Taps go through this card onto the land.', on:'feed_dead'},
      {html:'🪣 Feeding. Press <b>▶️ Play</b> up top so days pass. A waking tile shows 🌅 <b>REVIVED!</b>', on:'revive'},
      {html:'🌅 Brown soil! Tap a revived tile with 🌽 <b>3 Sisters</b> — one successful plant is the next beat.', on:'plant_crop'},
      {html:'🎯 Three goals — that strip reads <b>0/3</b> until you finish them. Compost, plant, keep tending.', btn:'I\'ve got this 🌿'},
@@ -23219,7 +23234,7 @@ function showSplash(){
     <img src="sprites/title_farm.webp" alt="A living valley — the future you're fighting for" style="width:100%; border-radius:14px; border:2px solid var(--line); display:block" onerror="this.style.display='none'">
     <div class="sub" style="text-align:center;margin-top:6px;opacity:.9;font-weight:800">↑ Hope plate — the valley as it can be again</div>
     <div class="eventkid"><b>Right now, the valley is dying.</b> Dust where wheat stood. This is what you're growing back.</div>
-    <div class="lesson">🌱 Heal land, field by field. Life returns when you tend it.</div>
+    <div class="lesson">You start with 🪙40. Compost 🪙5 · Pioneers 🪙2 · 3 Sisters 🪙6. Heal land, field by field.</div>
     <div class="modalbtns" style="flex-direction:column;gap:8px">
       <button class="mbtn big" data-act="splashgo">Wake the Home Patch 🌱</button>
       <button class="mbtn wood" data-act="splashskip" style="font-size:13.5px">I've farmed before — skip coaching ⏩</button>
