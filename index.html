@@ -12933,7 +12933,11 @@ function applyTool(i){
   }
   if(tool==='sisters' || tool==='wheat' || tool==='clover' || tool==='covercrop'){
     if(typeof swaleBlocksCrop==='function' && swaleBlocksCrop(t)){
-      toast('〰️ That contour holds water for the beds below — fill it and the garden dries.');
+      // Home contour only — orchard / overflow swales keep the generic refuse.
+      const homeSwale = typeof isHomeSwaleOpenT==='function' && isHomeSwaleOpenT(t);
+      toast(homeSwale
+        ? '〰️ That contour holds water for the beds below — fill it and the garden dries.'
+        : '〰️ That contour holds water for the beds below — plant beside it.');
       ringAt(i, '#6a8a5a'); SND.uhoh(); return false;
     }
     if(typeof pathBlocksCrop==='function' && pathBlocksCrop(t)){
@@ -13757,7 +13761,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.homewaterfix';
+const SHIP_BUILD = '2026-08-22.hydrosmoke';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
