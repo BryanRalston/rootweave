@@ -1017,7 +1017,10 @@ const CRATE_LEFTOVER_DAYS = 4; // a few lane days; standClock so frozen yard spr
 // Modest bands so Home Patch and the +3/day market trickle stay intact.
 const STAND_GRAIN_SEASON = [1.06, 0.86, 0.92, 1.16]; // spring, summer, fall, winter
 const STAND_MEAT_SEASON  = [0.86, 0.90, 1.12, 1.16];
+const STAND_EGG_SEASON   = [0.94, 0.88, 1.02, 1.14]; // hens lay in the warm months; winter table wants eggs
 const STAND_MULT_MIN = 0.80, STAND_MULT_MAX = 1.22;
+const COOP_EGG_LOT = 3;   // modest crate lot — well under a wheat cut
+const COOP_EGG_RATE = 0.22; // lots/day at 1 hen; scales with sqrt(heads), stays a trickle
 const OVERGRAZE_RATES = {om:-0.45, structure:-0.35, nutrients:-0.15, water:0, microbial:-0.1, erosion:-0.5};
 function emptyHerd(){ return {cattle:0, chicken:0, sheep:0, goat:0, pig:0, duckT:0}; }
 function ensureHerd(c){
@@ -1241,6 +1244,66 @@ function ensureCrate(c){
   return dest.crate;
 }
 function crateLotCount(){ return ensureCrate().length; }
+function campChickenCount(){
+  if(typeof ensureHerd==='function') ensureHerd(camp);
+  return (camp && camp.herd && (camp.herd.chicken|0)) || 0;
+}
+/** Homestead coop only — atlas pasture landmarks do not lay into the crate. */
+function homesteadHasCoop(){
+  const has = (g)=> !!(g && g.some(t=>t && t.terrain==='coop'));
+  if(typeof homesteadMode!=='undefined' && homesteadMode && has(state && state.grid)) return true;
+  return has(camp && camp.homestead && camp.homestead.tiles);
+}
+/** Seat the yard coop once hens exist after Home — same helper the homestead already uses. */
+function seatCoopIfHens(){
+  if(campChickenCount()<=0) return;
+  if(typeof homePatchCleared==='function' && !homePatchCleared()) return;
+  if(typeof ensureHomesteadCoopOnTiles!=='function') return;
+  const hs = camp && camp.homestead;
+  if(hs && Array.isArray(hs.tiles)) ensureHomesteadCoopOnTiles(hs.tiles, hs.gridSize||8);
+  if(typeof homesteadMode!=='undefined' && homesteadMode && state && state.grid){
+    ensureHomesteadCoopOnTiles(state.grid, state.gridSize||GRID||8);
+  }
+}
+function coopEggDailyRate(n){
+  n = Math.max(0, n|0);
+  if(n<=0) return 0;
+  return COOP_EGG_RATE * Math.sqrt(n);
+}
+function coopEggReady(){
+  if(typeof homePatchCleared==='function' && !homePatchCleared()) return false;
+  if(campChickenCount()<=0) return false;
+  if(typeof seatCoopIfHens==='function') seatCoopIfHens();
+  return homesteadHasCoop();
+}
+/** One sim dawn: hens at the homestead coop may bank a small egg lot into the crate. */
+function tickCoopEggs(){
+  if(!camp || !coopEggReady()) return 0;
+  camp.eggAcc = Math.max(0, +camp.eggAcc || 0) + coopEggDailyRate(campChickenCount());
+  if(camp.eggAcc < 1) return 0;
+  const n = Math.min(2, Math.floor(camp.eggAcc));
+  camp.eggAcc -= n;
+  for(let i=0;i<n;i++){
+    if(typeof bankHarvestLot==='function') bankHarvestLot({type:'egg', em:'🥚', name:'Eggs', coins:COOP_EGG_LOT});
+  }
+  if(!camp.tipsShown) camp.tipsShown = {};
+  let fi = -1;
+  if(state && state.grid){
+    for(let i=0;i<state.grid.length;i++){
+      if(state.grid[i] && state.grid[i].terrain==='coop'){ fi = i; break; }
+    }
+  }
+  if(fi<0) fi = (typeof selected==='number' && selected>=0) ? selected : 0;
+  if(typeof floater==='function' && state && state.grid && state.grid[fi]){
+    floater(fi, n>1 ? '🥚 crate ×'+n : '🥚 crate', '#ffe0b0', 16);
+  }
+  if(typeof toast==='function'){
+    toast('🥚 Eggs in the crate by the house. Neighbors pay by the season — or let them sit for the pile.', {once:'coop_egg_first', throttleMs:4000});
+  }
+  if(typeof refreshNeighborStandIfOpen==='function') refreshNeighborStandIfOpen();
+  if(typeof updateHUD==='function') updateHUD();
+  return n;
+}
 /** Remember the live field calendar so homestead (frozen spring) still pays today's lane. */
 function rememberLaneClock(src){
   if(!camp) return;
@@ -1457,13 +1520,14 @@ function standLaneWobble(){
 }
 function standPriceMult(kind){
   const clk = standClock();
-  const table = kind==='meat' ? STAND_MEAT_SEASON : STAND_GRAIN_SEASON;
+  const table = kind==='meat' ? STAND_MEAT_SEASON : (kind==='egg' ? STAND_EGG_SEASON : STAND_GRAIN_SEASON);
   const base = table[clk.season] || 1;
   const m = base * standLaneWobble();
   return Math.max(STAND_MULT_MIN, Math.min(STAND_MULT_MAX, m));
 }
 function crateLotBase(lot){ return Math.max(1, (lot && lot.coins)|0); }
-function crateLotSellPrice(lot){ return Math.max(1, Math.round(crateLotBase(lot) * standPriceMult('grain'))); }
+function crateLotPriceKind(lot){ return (lot && lot.type)==='egg' ? 'egg' : 'grain'; }
+function crateLotSellPrice(lot){ return Math.max(1, Math.round(crateLotBase(lot) * standPriceMult(crateLotPriceKind(lot)))); }
 function meatSellPrice(kind){ return Math.max(1, Math.round((HERD_MEAT[kind]||0) * standPriceMult('meat'))); }
 function crateCurrentWorth(){
   return ensureCrate().reduce((a,l)=>a+crateLotSellPrice(l), 0);
@@ -3444,6 +3508,7 @@ function defaultCamp(){
     herdV: 2,
     crate: [], // last N harvests banked for the neighbor stand
     compostStock: 0, // leftover crate / surplus bodies returned to the pile
+    eggAcc: 0, // homestead coop → crate lots (fractional days)
   };
   ensureParcelState(c);
   return c;
@@ -6861,6 +6926,7 @@ function simStep(dt){
     if(typeof tutSyncSim==='function') tutSyncSim();
     dailyIncome();
     if(typeof rememberLaneClock==='function') rememberLaneClock();
+    if(typeof tickCoopEggs==='function') tickCoopEggs();
     if(typeof refreshNeighborStandIfOpen==='function') refreshNeighborStandIfOpen();
     updateQuests();
     maybeDustFlatsCoach();
@@ -8334,7 +8400,7 @@ function applyHomesteadTool(i){
     }else     if(t.terrain==='barn'){
       toast('🏠 The barn — leftover compost sits in the yard beside it.');
     }else if(t.terrain==='coop'){
-      toast('🐔 The coop — hens scratch the grass beside it.');
+      toast('🐔 The coop — hens scratch the grass. Eggs go to the crate by the house.');
     }
     return true;
   }
@@ -11027,7 +11093,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.nborhint';
+const SHIP_BUILD = '2026-08-22.coopeggs';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -15490,7 +15556,8 @@ function openInfo(refreshOnly){
       : (t.terrain==='barn'
         ? `<div class="chiprow">The barn — leftover compost sits in the yard beside it when the pile has stock.</div>`
         : (t.terrain==='coop'
-          ? `<div class="chiprow">The coop — hens scratch the grass beside it when you have chickens.</div>`
+          ? `<div class="chiprow">The coop — hens scratch the grass. Eggs trickle into the crate by the house.</div>
+             ${crateChip}`
           : `<div class="chiprow">Bank 🪙${camp.bank|0}. Use 🚜 Clear to remove (free).</div>`));
     if(t.deco) body += `<div class="chiprow">🎀 ${t.deco.replace('deco_','')}</div>`;
     if(hasFence(t)) body += `<div class="chiprow">🚧 Fence ${yardOrientLabel(fenceFacing(t))}</div>`;
@@ -16020,6 +16087,7 @@ function loadCamp(d){
   }else{
     camp.compostStock = Math.max(0, (+c.compostStock||0)|0);
   }
+  camp.eggAcc = Math.max(0, +c.eggAcc || 0);
   if(c.laneClock && typeof c.laneClock==='object'){
     camp.laneClock = {
       season: ((c.laneClock.season|0)%4+4)%4,
