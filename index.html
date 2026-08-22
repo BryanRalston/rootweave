@@ -11848,7 +11848,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.coopbedding';
+const SHIP_BUILD = '2026-08-22.beddingcopy';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -18435,9 +18435,12 @@ function buildJourney(){
   const mapHead = document.createElement('div');
   mapHead.className = 'jsub';
   mapHead.style.marginBottom = '8px';
-  const coopReadyMap = typeof coopBeddingReady==='function' && coopBeddingReady();
+  const feedBits = (typeof leftoverPileFeedBits==='function') ? leftoverPileFeedBits() : [];
+  const feedLine = feedBits.length
+    ? ' '+feedBits.join(' and ')+(feedBits.length===1?' feeds':' feed')+' the compost pile.'
+    : '';
   mapHead.textContent = (typeof homePatchCleared==='function' && homePatchCleared())
-    ? 'Tap a field to walk it. Mist lifts as you heal neighbors. A coin price on the fog is a neighbor selling land. Paddock bedding feeds the compost pile.'+(coopReadyMap?' Coop bedding feeds it too.':'')
+    ? 'Tap a field to walk it. Mist lifts as you heal neighbors. A coin price on the fog is a neighbor selling land.'+feedLine
     : 'Tap a field to walk it. Mist lifts as you heal the neighbors.';
   path.appendChild(mapHead);
   path.appendChild(buildValleyMapEl());
