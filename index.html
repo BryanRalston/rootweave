@@ -1006,9 +1006,11 @@ const HERD_LABEL = {cattle:'cattle', chicken:'chickens', sheep:'sheep', goat:'go
 // Surplus meat at the neighbor stand — more than grain, costs a head. Keep one breeder.
 const HERD_MEAT = {cattle:34, chicken:16, sheep:24, goat:22, pig:28, duckT:18};
 const HERD_MEAT_EM = {cattle:'🐄', chicken:'🐔', sheep:'🐑', goat:'🐐', pig:'🐖', duckT:'🦆'};
-// Stripping toward the last breeder nicks paddock graze / soil. Healthy surplus stays clean.
-const MEAT_STRIP_HEALTHY = 3; // extra heads still on the farm after the sale
+// Neighbors only take heads above a healthy working fold. Last breeder still stays.
+const MEAT_STRIP_HEALTHY = 3; // extra heads that stay on a healthy fold
 const MEAT_STRIP_SOIL = {om:-2, erosion:-2, microbial:-1}; // at the floor (pressure 1)
+const MEAT_THIN_GRAZE = 0.62; // stripped fold: weaker soil work + yield until rebuilt
+const MEAT_THIN_STAY = 1.25; // pad tires sooner on a thin fold
 const CRATE_MAX = 12;
 const CRATE_HARD = 16; // overflow still becomes compost, never silent vanish
 const CRATE_LEFTOVER_DAYS = 4; // a few lane days; standClock so frozen yard spring does not age it
@@ -1180,8 +1182,9 @@ function hydrateGraze(g){
 }
 function grazeDailyYield(g){
   if(!g) return 0;
-  if(g.kind==='team') return (HERD_YIELD.cattle||0)*grazeKindHeads(g,'cattle') + (HERD_YIELD.chicken||0)*grazeKindHeads(g,'chicken');
-  return (HERD_YIELD[g.kind]||0) * Math.max(1, grazeKindHeads(g, g.kind)||1);
+  const thin = (typeof grazeThinMult==='function') ? grazeThinMult(g) : 1;
+  if(g.kind==='team') return thin * ((HERD_YIELD.cattle||0)*grazeKindHeads(g,'cattle') + (HERD_YIELD.chicken||0)*grazeKindHeads(g,'chicken'));
+  return thin * (HERD_YIELD[g.kind]||0) * Math.max(1, grazeKindHeads(g, g.kind)||1);
 }
 function grazeYieldMark(g){
   if(!g) return '🪙';
@@ -1215,14 +1218,20 @@ function grazeInspectLine(g, t){
   const wind = typeof paddockWindShelterNeed==='function' && paddockWindShelterNeed() ? ' · open to the wind — herd needs a windbreak' : '';
   const tile = t || (state && state.grid && state.grid.find(x=>x && x.graze===g));
   const duckEggs = marshDuckTileFeeds(tile, g) ? ' · duck eggs to the crate' : '';
-  if(stay >= rest) return who+' · no yield while this pad is tired — move them.'+manure+thirst+wind+duckEggs;
-  return who+' · '+yBit+' · here '+stay.toFixed(0)+'d · move before '+Math.round(rest)+'d'+(g.synergy?' ✨':'')+manure+thirst+wind+duckEggs;
+  const thin = (typeof grazeThinMult==='function' && grazeThinMult(g) < 1)
+    ? ' · thin fold — grow extra heads'
+    : '';
+  if(stay >= rest) return who+' · no yield while this pad is tired — move them.'+manure+thirst+wind+duckEggs+thin;
+  return who+' · '+yBit+' · here '+stay.toFixed(0)+'d · move before '+Math.round(rest)+'d'+(g.synergy?' ✨':'')+manure+thirst+wind+duckEggs+thin;
 }
 function tickGrazeStay(g, dd){
   if(!g) return;
   hydrateGraze(g);
   const rest = grazeRestDays(g);
-  g.stay = (g.stay||0) + dd;
+  const thinStay = (typeof grazeThinMult==='function' && grazeThinMult(g) < 1)
+    ? ((typeof MEAT_THIN_STAY==='number') ? MEAT_THIN_STAY : 1.25)
+    : 1;
+  g.stay = (g.stay||0) + dd * thinStay;
   g.total = rest;
   g.days = Math.max(0, rest - g.stay);
   if(g.stay >= rest && !g.restWarned){
@@ -1308,13 +1317,74 @@ function herdSurplus(kind){
   ensureHerd(camp);
   return Math.max(0, (camp.herd[kind]|0) - herdBreederMin(kind));
 }
-/** 0 when 3+ extra heads remain. 1 when the sale leaves only the last breeder. */
-function herdStripPressure(kind, afterHeads){
+/** Working fold size. Always leave room for one surplus sale at HERD_MAX (pigs max 4). */
+function herdHealthyMin(kind){
   const keep = herdBreederMin(kind);
+  const max = (typeof HERD_MAX==='object' && HERD_MAX[kind]) ? (HERD_MAX[kind]|0) : 6;
+  const want = keep + ((typeof MEAT_STRIP_HEALTHY==='number') ? MEAT_STRIP_HEALTHY : 3);
+  return Math.min(want, Math.max(keep + 1, max - 1));
+}
+function herdCanSellMeat(kind){
+  if(!kind || !camp) return false;
+  ensureHerd(camp);
+  return (camp.herd[kind]|0) > herdHealthyMin(kind);
+}
+function herdMeatRefuseToast(kind){
+  const label = (HERD_LABEL && HERD_LABEL[kind]) || kind;
+  const keep = herdBreederMin(kind);
+  const have = (camp && camp.herd && (camp.herd[kind]|0)) || 0;
+  const floor = herdHealthyMin(kind);
+  if(have <= keep){
+    return 'Keep a breeder — the last '+label+' stay'+(keep===1?'s':'')+' on the farm.';
+  }
+  return 'Neighbors only take surplus. Keep '+floor+' '+label+' on the fold — grow extra heads first.';
+}
+function ensureHerdThin(c){
+  const dest = c || camp;
+  if(!dest) return {};
+  if(!dest.herdThin || typeof dest.herdThin!=='object') dest.herdThin = {};
+  return dest.herdThin;
+}
+function markHerdThinAfterMeat(kind, afterHeads){
+  if(!kind) return;
+  const thin = ensureHerdThin();
+  if((afterHeads|0) <= herdHealthyMin(kind)) thin[kind] = 1;
+  else delete thin[kind];
+}
+function clearHerdThinIfRebuilt(kind){
+  if(!kind || !camp) return;
+  ensureHerd(camp);
+  if((camp.herd[kind]|0) > herdHealthyMin(kind)){
+    const thin = ensureHerdThin();
+    delete thin[kind];
+  }
+}
+function herdKindIsThin(kind){
+  if(!kind || !camp) return false;
+  const thin = ensureHerdThin();
+  if(!thin[kind]) return false;
+  return (camp.herd[kind]|0) <= herdHealthyMin(kind);
+}
+function grazeThinMult(g){
+  if(!g) return 1;
+  const m = (typeof MEAT_THIN_GRAZE==='number') ? MEAT_THIN_GRAZE : 0.62;
+  if(g.kind==='team'){
+    const cThin = herdKindIsThin('cattle');
+    const hThin = herdKindIsThin('chicken');
+    if(cThin && hThin) return m;
+    if(cThin || hThin) return (1 + m) / 2;
+    return 1;
+  }
+  return herdKindIsThin(g.kind) ? m : 1;
+}
+/** 0 when the sale leaves a healthy surplus. 1 at the last breeder. */
+function herdStripPressure(kind, afterHeads){
+  const floor = herdHealthyMin(kind);
   const after = Math.max(0, afterHeads|0);
-  const surplusLeft = Math.max(0, after - keep);
-  if(surplusLeft >= MEAT_STRIP_HEALTHY) return 0;
-  return (MEAT_STRIP_HEALTHY - surplusLeft) / MEAT_STRIP_HEALTHY;
+  if(after > floor) return 0;
+  const keep = herdBreederMin(kind);
+  const span = Math.max(1, floor - keep);
+  return Math.min(1, (floor - after + 1) / (span + 1));
 }
 function ensureCrate(c){
   const dest = c || camp;
@@ -2058,15 +2128,15 @@ function compostSurplusMeat(kind){
   if(!kind || HERD_MEAT[kind]==null) return false;
   ensureHerd(camp);
   const have = camp.herd[kind]|0;
-  const keep = herdBreederMin(kind);
-  if(have <= keep){
-    toast('Keep a breeder — the last '+(HERD_LABEL[kind]||kind)+' stay'+(keep===1?'s':'')+' on the farm.');
+  if(!herdCanSellMeat(kind)){
+    toast(herdMeatRefuseToast(kind));
     SND.uhoh();
     return false;
   }
   camp.herd[kind] = have - 1;
   creditLeftoverCompost(2);
   syncHerdAfterMeatSale(kind);
+  markHerdThinAfterMeat(kind, camp.herd[kind]|0);
   const nicked = applyMeatStripSoil(kind, camp.herd[kind]|0);
   const skipped = meatSellPrice(kind);
   const em = HERD_MEAT_EM[kind] || '🪣';
@@ -2197,14 +2267,14 @@ function sellSurplusMeat(kind){
   if(!kind || HERD_MEAT[kind]==null) return false;
   ensureHerd(camp);
   const have = camp.herd[kind]|0;
-  const keep = herdBreederMin(kind);
-  if(have <= keep){
-    toast('Keep a breeder — the last '+(HERD_LABEL[kind]||kind)+' stay'+(keep===1?'s':'')+' on the farm.');
+  if(!herdCanSellMeat(kind)){
+    toast(herdMeatRefuseToast(kind));
     SND.uhoh();
     return false;
   }
   camp.herd[kind] = have - 1;
   syncHerdAfterMeatSale(kind);
+  markHerdThinAfterMeat(kind, camp.herd[kind]|0);
   const nicked = applyMeatStripSoil(kind, camp.herd[kind]|0);
   const n = creditStandCoins(meatSellPrice(kind));
   const em = HERD_MEAT_EM[kind] || '🥩';
@@ -2252,22 +2322,25 @@ function neighborStandHtml(opts){
     const extra = herdSurplus(kind);
     const have = (camp && camp.herd && (camp.herd[kind]|0)) || 0;
     if(have<=0) return '';
-    const disabled = extra<=0;
-    const label = extra>0
+    const canSell = typeof herdCanSellMeat==='function' ? herdCanSellMeat(kind) : extra>0;
+    const floor = typeof herdHealthyMin==='function' ? herdHealthyMin(kind) : (herdBreederMin(kind)+3);
+    const label = canSell
       ? `Surplus ${HERD_LABEL[kind]} · 🪙${meatSellPrice(kind)} · ${extra} extra`
-      : `Last ${(HERD_LABEL[kind]||kind)} — breeder stays`;
+      : (have <= herdBreederMin(kind)
+        ? `Last ${(HERD_LABEL[kind]||kind)} — breeder stays`
+        : `Working ${(HERD_LABEL[kind]||kind)} — keep ${floor}`);
     return `<div class="nstand-row">
       <span class="ns-em">${HERD_MEAT_EM[kind]||''}</span>
       <span>${label}</span>
       <span class="ns-btns">
-        <button type="button" class="ns-go" data-nstandmeat="${kind}" ${disabled?'disabled':''}>${disabled?'Keep':'Sell'}</button>
-        ${extra>0?`<button type="button" class="ns-go ns-pile" data-nstandpile="${kind}">Pile</button>`:''}
+        <button type="button" class="ns-go" data-nstandmeat="${kind}">${canSell?'Sell':'Keep'}</button>
+        ${canSell?`<button type="button" class="ns-go ns-pile" data-nstandpile="${kind}">Pile</button>`:''}
       </span>
     </div>`;
   }).filter(Boolean).join('');
   const meatBlock = meatRows
-    ? `<div class="nstand-note">Surplus meat only. Selling a head shrinks the herd — fewer mouths, weaker graze, and less manure for the pile. Selling down toward the last breeder thins the fold. Last of a kind stays. A surplus you do not sell can return to the pile — compost, not a slaughterhouse.</div>${meatRows}`
-    : `<div class="nstand-keep">No herd to sell. Grow extra heads first — keep a breeder of each kind.</div>`;
+    ? `<div class="nstand-note">Surplus meat only. Neighbors take heads above a healthy fold — selling shrinks the herd. A thin fold works the land less and the pad tires sooner. Last of a kind stays. A surplus you do not sell can return to the pile — compost, not a slaughterhouse.</div>${meatRows}`
+    : `<div class="nstand-keep">No herd to sell. Grow a healthy surplus first — keep a working fold of each kind.</div>`;
   return harvestBlock + meatBlock;
 }
 function openNeighborStand(refreshOnly, opts){
@@ -3924,6 +3997,7 @@ function defaultCamp(){
     herd: typeof emptyHerd==='function' ? emptyHerd() : {cattle:0, chicken:0, sheep:0, goat:0, pig:0, duckT:0},
     herdV: 2,
     crate: [], // last N harvests banked for the neighbor stand
+    herdThin: {}, // kind → 1 after a meat sale leaves the fold at/below the healthy floor
     compostStock: 0, // leftover crate / surplus bodies / paddock bedding / coop bedding returned to the pile
     eggAcc: 0, // homestead coop → crate lots (fractional days)
     duckEggAcc: 0, // marsh ducks walking a fold → crate lots (fractional days)
@@ -9626,7 +9700,7 @@ function simStep(dt){
       }
       if(t.graze){                                   // goats browsing the dead brush — they stay
         const g = hydrateGraze(t.graze);
-        feed += 0.5 * herdStock(grazeStockN(g)) * (hasFence(t)?1.5:1);
+        feed += 0.5 * herdStock(grazeStockN(g)) * ((typeof grazeThinMult==='function')?grazeThinMult(g):1) * (hasFence(t)?1.5:1);
         tickGrazeStay(g, dd);
         if(t.deco && g.stay >= grazeRestDays(g) && !g.brushCleared){
           t.deco = null; g.brushCleared = true;
@@ -9663,20 +9737,23 @@ function simStep(dt){
       tickGrazeStay(g, dd);
       const overAt = grazeOverDays(g);
       const sm = herdStock(grazeStockN(g));
+      const thinM = (typeof grazeThinMult==='function') ? grazeThinMult(g) : 1;
+      const thinKind = (kind)=> (typeof herdKindIsThin==='function' && herdKindIsThin(kind))
+        ? ((typeof MEAT_THIN_GRAZE==='number') ? MEAT_THIN_GRAZE : 0.62) : 1;
       if(g.stay >= overAt){
         SOIL_ATTRS.forEach(k=>{
           const d = OVERGRAZE_RATES[k]||0;
-          if(d) t.soil[k] = clamp(t.soil[k] + d*sm*dd);
+          if(d) t.soil[k] = clamp(t.soil[k] + d*sm*thinM*dd);
         });
         if(!g.overWarned){
           g.overWarned = true;
           floater(i, 'overgrazed', '#e8a070');
         }
       }else if(g.kind==='team'){
-        apply(GRAZE.cattle.rates, herdStock(grazeKindHeads(g,'cattle')));
-        apply(GRAZE.chicken.rates, SYNERGY_MULT * herdStock(grazeKindHeads(g,'chicken')));
-      }else if(g.kind==='chicken') apply(GRAZE.chicken.rates, (g.synergy?SYNERGY_MULT:1) * herdStock(grazeKindHeads(g,'chicken')));
-      else if(GRAZE[g.kind]) apply(GRAZE[g.kind].rates, herdStock(grazeKindHeads(g, g.kind)));
+        apply(GRAZE.cattle.rates, herdStock(grazeKindHeads(g,'cattle')) * thinKind('cattle'));
+        apply(GRAZE.chicken.rates, SYNERGY_MULT * herdStock(grazeKindHeads(g,'chicken')) * thinKind('chicken'));
+      }else if(g.kind==='chicken') apply(GRAZE.chicken.rates, (g.synergy?SYNERGY_MULT:1) * herdStock(grazeKindHeads(g,'chicken')) * thinM);
+      else if(GRAZE[g.kind]) apply(GRAZE[g.kind].rates, herdStock(grazeKindHeads(g, g.kind)) * thinM);
       tickGrazeYield(t, i, dd);
     }else{
       t.sinceCattle = Math.min(999, t.sinceCattle+dd);
@@ -12906,6 +12983,7 @@ function addHerdHead(kind, i){
   const cost = HERD_BUY[kind] || 0;
   if(cost>0 && !spend(cost)) return false;
   camp.herd[kind] = (camp.herd[kind]|0) + 1;
+  if(typeof clearHerdThinIfRebuilt==='function') clearHerdThinIfRebuilt(kind);
   const t = state.grid[i];
   const g = hydrateGraze(t.graze);
   if(g.kind==='team'){
@@ -13706,6 +13784,7 @@ function applyTool(i){
     if(cost>0 && !spend(cost)) return false;
     ensureHerd(camp);
     camp.herd[tool] = (camp.herd[tool]|0) + 1;
+    if(typeof clearHerdThinIfRebuilt==='function') clearHerdThinIfRebuilt(tool);
     if(typeof buildPalette==='function') buildPalette();
     return placeHerd(tool, i);
   }
@@ -14422,7 +14501,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.haycrate';
+const SHIP_BUILD = '2026-08-22.meatsurplus';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -19569,7 +19648,16 @@ function loadCamp(d){
   camp.herd = (c.herd && typeof c.herd==='object') ? c.herd : camp.herd;
   camp.herdV = (c.herdV|0);
   ensureHerd(camp);
+  camp.herdThin = {};
+  if(c.herdThin && typeof c.herdThin==='object'){
+    Object.keys(c.herdThin).forEach(k=>{
+      if(c.herdThin[k]) camp.herdThin[k] = 1;
+    });
+  }
   if(typeof migrateHerdHeads==='function') migrateHerdHeads();
+  if(typeof clearHerdThinIfRebuilt==='function'){
+    Object.keys(camp.herd||{}).forEach(k=>clearHerdThinIfRebuilt(k));
+  }
   camp.crate = [];
   if(Array.isArray(c.crate)){
     camp.crate = c.crate.filter(x=>x && typeof x==='object').map(x=>({
@@ -21726,7 +21814,6 @@ function init(){
     const sellMeat = e.target.closest('[data-nstandmeat]');
     if(sellMeat){
       e.preventDefault(); e.stopPropagation();
-      if(sellMeat.disabled) return;
       sellSurplusMeat(sellMeat.dataset.nstandmeat);
       return;
     }
