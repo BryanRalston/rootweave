@@ -1049,6 +1049,8 @@ const PADDOCK_SHELTER_REACH = 2; // chebyshev tiles — herd can walk into the l
 const PADDOCK_EXPOSE_STAY = 0.12; // modest tired-pad tick; thirst uses 0.15
 const DUST_WASH_DRY_SOIL = {water:-2.0, om:-0.5, erosion:-0.8}; // dawn nick: dry season, wash filled / blocked / missing
 const DUST_WASH_WET_SOIL = {water:0.8, om:0.2}; // tiny recover after a rare wet pulse when the wash is open
+const HIGH_POND_NICK_SOIL = {erosion:-0.8, water:-0.4, om:-0.3}; // dawn nick: wet pulse / runoff, pond filled / blocked / missing
+const HIGH_POND_FILTER_SOIL = {erosion:0.5, water:0.4, om:0.15}; // modest filter when the high pond is open during a wet pulse
 const COOP_BEDDING_RATE = 0.12; // pile lots/day at 1 hen; scales with sqrt(hens), smaller than a paddock herd
 const COOP_BEDDING_AUTO = 1;    // at most one dawn pile unit — bedding, not a crate crop
 const WOODLOT_REGEN_DAYS = 8; // clear-cut stump returns as canopy; never an empty plant bed
@@ -4602,6 +4604,200 @@ function woodlotFoldReady(s){
   if(!camp) return false;
   if(typeof homePatchCleared==='function' && !homePatchCleared()) return false;
   return currentWoodlotFold(s);
+}
+/** Field under the player, or the parked ridge fold while they are in the yard. */
+function highPondFarm(){
+  if(typeof homesteadMode!=='undefined' && homesteadMode && typeof plotStateBackup!=='undefined'
+     && plotStateBackup && plotStateBackup.grid && !plotStateBackup.homesteadView){
+    return plotStateBackup;
+  }
+  if(state && !state.homesteadView) return state;
+  return null;
+}
+/** Campaign Wind Ridge + leftover woodlot ridge. Home Patch stays off. */
+function leftoverIsHighPondFold(P){
+  if(!P) return false;
+  if(P.id==='home_garden' || P.lvIndex===0) return false;
+  if(P.id==='wind_ridge' || P.levelId==='wind') return true;
+  return typeof leftoverIsWoodlotRidge==='function' && leftoverIsWoodlotRidge(P);
+}
+function currentHighPondFold(s){
+  s = s || (typeof highPondFarm==='function' ? highPondFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s) return false;
+  if(s.homesteadView) return false;
+  const L = (typeof LEVELS!=='undefined' && LEVELS[s.lv]) ? LEVELS[s.lv] : null;
+  if(L && L.id==='home') return false;
+  if(L && L.id==='wind') return true;
+  const P = typeof valleyParcelByLvIndex==='function' ? valleyParcelByLvIndex(s.lv) : null;
+  return leftoverIsHighPondFold(P);
+}
+/** Painted ridge pond site — survives fill / clear. Not the garden pond, not a marsh pond. */
+function isHighPondMarkedT(t){
+  if(!t) return false;
+  if(t.highPond) return true;
+  if(t.atlasWater==='pond_site' && t.atlasBiome==='ridge') return true;
+  if(t.atlasC!=null && typeof atlasGet==='function'){
+    const A = atlasGet(t.atlasC, t.atlasR);
+    if(A && A.water==='pond_site' && A.biome==='ridge') return true;
+  }
+  return false;
+}
+/** Open basin: still a pond on the painted ridge site. Trees / wetland / buildings / soil fill it. */
+function isHighPondOpenT(t){
+  if(!isHighPondMarkedT(t)) return false;
+  if(t.crop || t.graze) return false;
+  if(typeof BUILD_SET!=='undefined' && BUILD_SET.has(t.terrain)) return false;
+  if(t.terrain==='trees' || t.terrain==='wetland') return false;
+  return t.terrain==='pond';
+}
+function highPondHasMarkers(s){
+  return !!(s && s.grid && s.grid.some(t=>isHighPondMarkedT(t)));
+}
+function rememberHighPondMark(t){
+  if(!t) return;
+  if(t.atlasC!=null && typeof atlasGet==='function'){
+    const A = atlasGet(t.atlasC, t.atlasR);
+    if(A && A.water==='pond_site' && A.biome==='ridge'){
+      t.atlasWater = 'pond_site';
+      t.atlasBiome = 'ridge';
+      t.highPond = true;
+    }
+  }
+  if(t.highPond && !t.atlasWater) t.atlasWater = 'pond_site';
+}
+/** Same gate as dustwashwork / stockthirst: Home cleared, this fold actually in play, pond site exists. */
+function highPondReady(s){
+  if(!camp) return false;
+  if(typeof homePatchCleared==='function' && !homePatchCleared()) return false;
+  s = s || (typeof highPondFarm==='function' ? highPondFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return false;
+  if(!currentHighPondFold(s)) return false;
+  return highPondHasMarkers(s);
+}
+/** Basin is usable when every painted ridge pond tile is still an open pond. */
+function highPondUsable(s){
+  s = s || (typeof highPondFarm==='function' ? highPondFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return false;
+  let marked = 0, open = 0;
+  for(let i=0;i<s.grid.length;i++){
+    const t = s.grid[i];
+    if(!isHighPondMarkedT(t)) continue;
+    marked++;
+    if(isHighPondOpenT(t)) open++;
+  }
+  return marked>0 && open===marked;
+}
+/** Spring / fall (storm seasons), or an existing wet / flood flag. No new season chrome. */
+function highPondRunoffSeason(s){
+  s = s || (typeof highPondFarm==='function' ? highPondFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s) return false;
+  if(s.wetSeason || s.flood || s.runoffSeason) return true;
+  const season = (s.season|0)%4;
+  if(season===0 || season===2) return true;
+  const sn = (typeof SEASONS!=='undefined') ? SEASONS[season] : null;
+  return !!(sn && (sn.wet || sn.flood || sn.runoff));
+}
+/** After rain / flood: the painted basin holds a pulse. Never invents a river. */
+function pulseHighPond(s, amount){
+  if(!s || !s.grid || !(amount>0)) return;
+  s.grid.forEach(t=>{
+    if(!isHighPondMarkedT(t)) return;
+    t.highPondPulse = Math.min(100, (t.highPondPulse||0) + amount);
+    if(isHighPondOpenT(t)) t.soil.water = Math.min(100, (t.soil.water||8) + amount*0.35);
+  });
+}
+function decayHighPondPulse(t, dd){
+  if(!t || !(dd>0)) return;
+  if(t.highPondPulse) t.highPondPulse = Math.max(0, t.highPondPulse - 14*dd);
+}
+function highPondHasWetPulse(s){
+  s = s || (typeof highPondFarm==='function' ? highPondFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return false;
+  return s.grid.some(t=>isHighPondMarkedT(t) && (t.highPondPulse||0)>8);
+}
+/** Inspect / floater mention the nick only when the ridge fold is in play, it is wet, and the pond is not usable. */
+function highPondNeed(s){
+  if(!highPondReady(s)) return false;
+  if(!(highPondHasWetPulse(s) || highPondRunoffSeason(s))) return false;
+  return !highPondUsable(s);
+}
+/** Trees / wetland / buildings / soil on the painted ridge pond are a plug, not a new basin. */
+function isHighPondFillT(t){
+  return !!(t && typeof isHighPondMarkedT==='function' && isHighPondMarkedT(t) && !isHighPondOpenT(t));
+}
+/** Tile sits downhill of a painted ridge pond site — even when the basin was filled. */
+function highPondDownhillOfMarked(t, s){
+  s = s || (typeof state!=='undefined' ? state : null);
+  if(!t || !s || !s.grid) return false;
+  if(typeof isHighPondMarkedT==='function' && isHighPondMarkedT(t)) return false;
+  const spots = [[0,-1],[-1,-1],[1,-1],[0,-2],[-1,-2],[1,-2]];
+  for(let i=0;i<spots.length;i++){
+    const c = (t.c|0)+spots[i][0], r = (t.r|0)+spots[i][1];
+    if(typeof inGrid==='function' && !inGrid(c,r)) continue;
+    const n = s.grid[typeof idx==='function' ? idx(c,r) : (r*(s.gridSize||GRID||0)+c)];
+    if(typeof isHighPondMarkedT==='function' ? isHighPondMarkedT(n) : false) return true;
+  }
+  return false;
+}
+function highPondSoilTiles(s){
+  const tiles = [];
+  if(!s || !s.grid) return tiles;
+  s.grid.forEach((t, i)=>{
+    if(!t || !t.soil) return;
+    if(t.terrain!=='soil' && t.terrain!=='dead') return;
+    if(typeof highPondDownhillOfMarked==='function' ? !highPondDownhillOfMarked(t, s) : true) return;
+    tiles.push({t, i});
+  });
+  return tiles;
+}
+function highPondFloaterIdx(s){
+  if(state && state.grid && s && s.grid && state.grid===s.grid){
+    for(let i=0;i<s.grid.length;i++) if(isHighPondMarkedT(s.grid[i])) return i;
+    for(let i=0;i<s.grid.length;i++){
+      const t = s.grid[i];
+      if(t && highPondDownhillOfMarked(t, s)) return i;
+    }
+  }
+  if(typeof selected==='number' && selected>=0 && state && state.grid && state.grid[selected]) return selected;
+  return (typeof selected==='number' && selected>=0) ? selected : 0;
+}
+/** One sim dawn: filled / blocked / missing high pond nicks downhill soil in a wet pulse or runoff season; an open pond filters instead. */
+function tickHighPondWork(){
+  if(!camp || !highPondReady()) return 0;
+  const s = typeof highPondFarm==='function' ? highPondFarm() : (typeof state!=='undefined' ? state : null);
+  if(!s || !s.grid) return 0;
+  const tiles = highPondSoilTiles(s);
+  if(!tiles.length) return 0;
+  const open = highPondUsable(s);
+  const wet = highPondHasWetPulse(s) || highPondRunoffSeason(s);
+  if(!wet) return 0;
+  if(open){
+    const b = (typeof HIGH_POND_FILTER_SOIL!=='undefined') ? HIGH_POND_FILTER_SOIL : {erosion:0.5, water:0.4, om:0.15};
+    tiles.forEach(({t})=>{
+      if(!t || !t.soil) return;
+      if((t.soil.erosion||0) < 80) t.soil.erosion = clamp((t.soil.erosion||0) + (b.erosion||0));
+      if((t.soil.water||0) < 70) t.soil.water = clamp((t.soil.water||0) + (b.water||0));
+      if((t.soil.om||0) < 70) t.soil.om = clamp((t.soil.om||0) + (b.om||0));
+      if(typeof recalc==='function') recalc(t);
+    });
+    return 0;
+  }
+  const b = (typeof HIGH_POND_NICK_SOIL!=='undefined') ? HIGH_POND_NICK_SOIL : {erosion:-0.8, water:-0.4, om:-0.3};
+  tiles.forEach(({t})=>{
+    if(!t || !t.soil) return;
+    t.soil.erosion = clamp((t.soil.erosion||0) + (b.erosion||0));
+    t.soil.water = clamp((t.soil.water||0) + (b.water||0));
+    t.soil.om = clamp((t.soil.om||0) + (b.om||0));
+    if(typeof recalc==='function') recalc(t);
+  });
+  const fi = highPondFloaterIdx(s);
+  if(typeof floater==='function' && state && state.grid && state.grid[fi]){
+    floater(fi, 'runoff', '#c9a070');
+  }
+  if(typeof toast==='function'){
+    toast('💧 The high pond is blocked — runoff nicks the downhill fields. Keep the basin open so it can filter.', {once:'high_pond_work_first', throttleMs:4000});
+  }
+  return tiles.length;
 }
 /** Living woodlot canopy on this fold — not orchard fruit, not a hay windbreak, not willow rods. */
 function isWoodlotTimberT(t, s){
@@ -8504,6 +8700,7 @@ function simStep(dt){
   const lvB = LV().regen || 1;           // early plots heal a touch faster — gentler lessons
   state.tod = (state.tod + dt/TOD_CYCLE) % 1;        // the sun wheels overhead
   state.grid.forEach((t,i)=>{
+    if(typeof decayHighPondPulse==='function' && t && t.highPondPulse) decayHighPondPulse(t, dd);
     // ---- DEAD GROUND never heals itself — only the player's care wakes it.
     // Remediation succession: compost / pioneer cover crops / goats (+ nearby
     // water helps the medicine work) raise it until it crosses into workable soil.
@@ -8643,8 +8840,14 @@ function simStep(dt){
       if(typeof swaleDownhillAdj==='function' && swaleDownhillAdj(t)){
         if(k==='water') d += 0.05;                   // contour holds a little water for the beds
       }
-      if(typeof highPondDownhillAdj==='function' && highPondDownhillAdj(t)){
+      if(typeof highPondDownhillAdj==='function' && highPondDownhillAdj(t)
+         && (typeof highPondReady!=='function' || highPondReady())){
         if(k==='water') d += 0.05;                   // ridge high pond feeds the downhill fields
+      }
+      if(typeof highPondNeed==='function' && highPondNeed()
+         && typeof highPondDownhillOfMarked==='function' && highPondDownhillOfMarked(t)){
+        if(k==='erosion') d -= 0.05;                 // blocked basin: runoff nicks downhill soil
+        if(k==='water') d -= 0.03;
       }
       if(typeof marshPondFeedAdj==='function' && marshPondFeedAdj(t)){
         if(k==='erosion') d += 0.04;                 // pond bank holds a little dirt out of the river
@@ -8726,6 +8929,7 @@ function simStep(dt){
     if(typeof tickPaddockStockThirst==='function') tickPaddockStockThirst();
     if(typeof tickPaddockWindShelter==='function') tickPaddockWindShelter();
     if(typeof tickDustWashWork==='function') tickDustWashWork();
+    if(typeof tickHighPondWork==='function') tickHighPondWork();
     if(typeof tickCoopBedding==='function') tickCoopBedding();
     if(typeof refreshNeighborStandIfOpen==='function') refreshNeighborStandIfOpen();
     updateQuests();
@@ -11977,6 +12181,12 @@ function soilStoryLine(t){
   if(t.terrain==='dead'){
     if(t.compost>0 || t.crop) return '🌅 Waking — food and living roots are calling the community back.';
     if(t.feature==='saltflat') return '🧂 Salt memory — leftover irrigation and drought. Extra life and time are the only rinse.';
+    if(typeof highPondNeed==='function' && highPondNeed()
+       && typeof isHighPondFillT==='function' && isHighPondFillT(t))
+      return '💧 This filled the high pond — runoff nicks the downhill fields. Clear it to open the basin.';
+    if(typeof highPondNeed==='function' && highPondNeed()
+       && typeof highPondDownhillOfMarked==='function' && highPondDownhillOfMarked(t))
+      return '💧 High pond is blocked — runoff nicks this downhill soil. Keep the basin open so it can filter.';
     if(typeof dustWashNeed==='function' && dustWashNeed())
       return '🏜️ Dry wash is blocked — drought nicks these flats. Keep the bed open so rare water can move.';
     return '💀 Sleeping soil — the living community is gone until you feed it.';
@@ -11985,6 +12195,11 @@ function soilStoryLine(t){
     return '💧 The filter — trees on the bank hold soil and drink the runoff. Clean water is a crop you grow.';
   }
   if(t.terrain==='pond'){
+    if(typeof isHighPondT==='function' && isHighPondT(t)
+       && typeof highPondReady==='function' && highPondReady())
+      return (typeof highPondNeed==='function' && highPondNeed())
+        ? '💧 High pond blocked — runoff nicks downhill until the basin is open.'
+        : '💧 Ridge high pond — water filters here before it runs downhill.';
     if(typeof isMarshPondT==='function' && isMarshPondT(t))
       return '🌾 Marsh pond — runoff settles here before it reaches the main river.';
     return '💧 Water held on the land — a pond keeps neighbors moist.';
@@ -11992,6 +12207,11 @@ function soilStoryLine(t){
   if(t.terrain==='trees'){
     if(typeof isWillowCutT==='function' && isWillowCutT(t))
       return (typeof willowCutStory==='function' ? willowCutStory('') : '🌿 Living willow rods for the crate. The tree stays.');
+    if(typeof isHighPondFillT==='function' && isHighPondFillT(t)
+       && typeof highPondReady==='function' && highPondReady())
+      return (typeof highPondNeed==='function' && highPondNeed())
+        ? '💧 This tree filled the high pond — runoff nicks the downhill fields. Clear it to open the basin.'
+        : '💧 This tree sits in the high pond basin. Clear it so the pond can filter downhill water.';
     if(typeof isDustWashFillT==='function' && isDustWashFillT(t))
       return (typeof dustWashNeed==='function' && dustWashNeed())
         ? '🏜️ This tree filled the dry wash — drought nicks the flats. Clear it to open the bed.'
@@ -12003,6 +12223,11 @@ function soilStoryLine(t){
   if(t.terrain==='wetland'){
     if(typeof isMarshReedT==='function' && isMarshReedT(t))
       return (typeof marshReedStory==='function' ? marshReedStory('') : '🌾 Living marsh reeds for the crate. The stand stays wet and filtering.');
+    if(typeof isHighPondFillT==='function' && isHighPondFillT(t)
+       && typeof highPondReady==='function' && highPondReady())
+      return (typeof highPondNeed==='function' && highPondNeed())
+        ? '💧 This wetland filled the high pond — runoff nicks the downhill fields. Clear it to open the basin.'
+        : '💧 This wetland sits in the high pond basin. Clear it so the pond can filter downhill water.';
     if(typeof isDustWashFillT==='function' && isDustWashFillT(t))
       return (typeof dustWashNeed==='function' && dustWashNeed())
         ? '🏜️ This wetland filled the dry wash — drought nicks the flats. Clear it to open the bed.'
@@ -12062,6 +12287,12 @@ function soilStoryLine(t){
   }
   if(typeof leftoverIsMeadowForageT==='function' && leftoverIsMeadowForageT(t))
     return (typeof meadowForageStory==='function' ? meadowForageStory(tier) : '🌼 Wild meadow cuttings for the crate. '+tier);
+  if(typeof highPondNeed==='function' && highPondNeed()
+     && typeof isHighPondFillT==='function' && isHighPondFillT(t))
+    return '💧 This filled the high pond — runoff nicks downhill soil. Clear it to open the basin. '+tier;
+  if(typeof highPondNeed==='function' && highPondNeed()
+     && typeof highPondDownhillOfMarked==='function' && highPondDownhillOfMarked(t))
+    return '💧 High pond is blocked — runoff nicks this downhill soil. Keep the basin open so it can filter. '+tier;
   if(typeof dustWashNeed==='function' && dustWashNeed())
     return '🏜️ Dry wash is blocked — drought nicks these flats. Keep the bed open so rare water can move. '+tier;
   return tier;
@@ -12249,7 +12480,10 @@ function applyTool(i){
             && typeof stripMarshReed==='function'){
       did = ()=>{ stripMarshReed(t, i); };
     }
-    else if(t.terrain==='pond' || t.terrain==='trees') did = ()=>{ t.terrain = (typeof dustWashShouldReopen==='function' && dustWashShouldReopen(t)) ? 'riverbed' : 'soil'; };
+    else if(t.terrain==='pond' || t.terrain==='trees') did = ()=>{
+      if(typeof rememberHighPondMark==='function') rememberHighPondMark(t);
+      t.terrain = (typeof dustWashShouldReopen==='function' && dustWashShouldReopen(t)) ? 'riverbed' : 'soil';
+    };
     else if(BUILD_SET.has(t.terrain)) did = ()=>{ t.terrain = (typeof dustWashShouldReopen==='function' && dustWashShouldReopen(t)) ? 'riverbed' : 'soil'; agents = agents.filter(a=>a.tile!==i); };
     if(!did){ toast('Nothing to clear here.'); return false; }
     if(!spend(td.cost)) return false;
@@ -12771,7 +13005,7 @@ function showEvent(id){
     bad=true; em='🌵'; title='Drought!'; kid='The sun blazed for weeks and the land got thirsty!';
     let prot=0;
     soils.forEach(t=>{
-      const p = Math.min(0.85, t.soil.om/100*0.55 + (pondNear(t)?0.3:0) + ((t.crop&&CROPS[t.crop.type].diverse)?0.12:0) + t.flowers*0.05 + ((typeof farmEdgeAdj==='function' && farmEdgeAdj(t))?0.08:0) + ((typeof swaleDownhillAdj==='function' && swaleDownhillAdj(t))?0.12:0) + ((typeof highPondDownhillAdj==='function' && highPondDownhillAdj(t))?0.12:0) + ((typeof washAdj==='function' && washAdj(t) && (t.washBankPulse||0)>6)?0.10:0) + ((typeof dustAwayFromWash==='function' && dustAwayFromWash(t))?-0.08:0));
+      const p = Math.min(0.85, t.soil.om/100*0.55 + (pondNear(t)?0.3:0) + ((t.crop&&CROPS[t.crop.type].diverse)?0.12:0) + t.flowers*0.05 + ((typeof farmEdgeAdj==='function' && farmEdgeAdj(t))?0.08:0) + ((typeof swaleDownhillAdj==='function' && swaleDownhillAdj(t))?0.12:0) + ((typeof highPondReady==='function' && highPondReady() && typeof highPondDownhillAdj==='function' && highPondDownhillAdj(t))?0.12:0) + ((typeof highPondNeed==='function' && highPondNeed() && typeof highPondDownhillOfMarked==='function' && highPondDownhillOfMarked(t))?-0.08:0) + ((typeof washAdj==='function' && washAdj(t) && (t.washBankPulse||0)>6)?0.10:0) + ((typeof dustAwayFromWash==='function' && dustAwayFromWash(t))?-0.08:0));
       t.soil.water = clamp(t.soil.water - 13*(1-p));
       if(t.crop) t.crop.growth = Math.max(0.05, t.crop.growth - 0.06*(1-p));
       if(p>0.4) prot++;
@@ -12809,6 +13043,7 @@ function showEvent(id){
       }
     });
     if(typeof pulseDryWash==='function') pulseDryWash(state, 36);
+    if(typeof pulseHighPond==='function') pulseHighPond(state, 36);
     if(safe>0) lines.push(`🌿 ${safe} covered or tree-sheltered tile${safe>1?'s':''} drank the rain safely!`);
     if(bare>0) lines.push(`😟 ${bare} bare tile${bare>1?'s':''} lost some soil to the storm.`);
     // storms flush whatever the land can't hold straight into the river
@@ -12860,6 +13095,7 @@ function showEvent(id){
       if(t.terrain==='dead' && (t.compost>0 || t.crop)){ t.soil.water = clamp(t.soil.water+6); recalc(t); }
     });
     if(typeof pulseDryWash==='function') pulseDryWash(state, 22);
+    if(typeof pulseHighPond==='function') pulseHighPond(state, 22);
     lines.push('💧 Every tile got a lovely drink.');
     lesson='Slow, gentle water is exactly what living soil loves best.';
   }else if(id==='sunny'){
@@ -12882,6 +13118,7 @@ function showEvent(id){
     em='☃️'; title='Snow Blanket'; kid='Thick fluffy snow tucked the whole farm in!';
     soils.forEach(t=>{ t.soil.water = clamp(t.soil.water+6); recalc(t); });
     if(typeof pulseDryWash==='function') pulseDryWash(state, 14);
+    if(typeof pulseHighPond==='function') pulseHighPond(state, 14);
     lines.push('❄️ Melting snow means spring water for everyone.');
     lesson='Winter is not empty time — the soil rests and stores up for spring.';
   }else return;
@@ -13086,7 +13323,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.washnoriver';
+const SHIP_BUILD = '2026-08-22.highpond';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -13709,6 +13946,11 @@ function tileRunoffScore(t){
   }
   if(typeof washAdj==='function' && washAdj(t) && (t.washBankPulse||0)>6) v += 6;
   else if(typeof dustAwayFromWash==='function' && dustAwayFromWash(t)) v -= 8;
+  if(typeof highPondReady==='function' && highPondReady()){
+    if(typeof highPondNeed==='function' && highPondNeed()
+       && typeof highPondDownhillOfMarked==='function' && highPondDownhillOfMarked(t)) v -= 8;
+    else if(typeof highPondDownhillAdj==='function' && highPondDownhillAdj(t)) v += 10;
+  }
   return clamp(v);
 }
 function runoffColor(v){
@@ -17594,6 +17836,14 @@ function openInfo(refreshOnly){
                : t.feature==='swale' ? '〰️ A contour swale — water sits uphill so the beds below wilt a little less.'
                : '';
     const washNeed = typeof dustWashNeed==='function' && dustWashNeed();
+    const highNeed = typeof highPondNeed==='function' && highPondNeed();
+    const highLine = highNeed
+      ? ((typeof isHighPondFillT==='function' && isHighPondFillT(t))
+        ? '💧 This filled the high pond — runoff nicks the downhill fields. Clear it to open the basin.'
+        : ((typeof highPondDownhillOfMarked==='function' && highPondDownhillOfMarked(t))
+          ? '💧 High pond is blocked — runoff nicks this downhill soil. Keep the basin open so it can filter.'
+          : ''))
+      : '';
     const washLine = washNeed
       ? '🏜️ Dry wash is blocked — drought nicks these flats. Keep the bed open.'
       : ((typeof washAdj==='function' && washAdj(t))
@@ -17612,6 +17862,7 @@ function openInfo(refreshOnly){
       <div style="font-weight:800; font-size:13px">Waking up: <b>${Math.min(wk.shown, need)}</b>/${need}</div>
       <div class="chiprow">💀 Nothing can grow here yet — the soil is DEAD.</div>
       ${feat?`<div class="chiprow">${feat}</div>`:''}
+      ${highLine?`<div class="chiprow">${highLine}</div>`:''}
       ${washLine?`<div class="chiprow">${washLine}</div>`:''}
       ${t.compost>0?`<div class="chiprow">🪣 compost working — ${t.compost.toFixed(0)}d left</div>`:''}
       ${t.crop?`<div class="chiprow">🌿 pioneers cracking the crust — ${Math.round(Math.min(1,t.crop.growth)*100)}%</div>`:''}
@@ -17638,6 +17889,11 @@ function openInfo(refreshOnly){
         + `<div class="chiprow">${ready
           ? 'Living reeds — cuttings are ready. Tap for a crate lot; the stand stays wet and filtering. Not meadow forage, not willow.'
           : 'Living reeds — tap when a cutting is ready, or wait for a dawn trickle. The marsh stays wet and filtering. Not meadow forage, not willow.'}</div>`;
+    }else if(t.terrain==='wetland' && typeof isHighPondFillT==='function' && isHighPondFillT(t)
+              && typeof highPondReady==='function' && highPondReady()){
+      body = (typeof highPondNeed==='function' && highPondNeed())
+        ? `<div class="chiprow">This wetland filled the high pond — runoff nicks the downhill fields. Clear it to open the basin again. Not a plant bed.</div>`
+        : `<div class="chiprow">This wetland sits in the high pond basin. Clear it so the pond can filter downhill water again.</div>`;
     }else if(t.terrain==='wetland' && typeof isDustWashFillT==='function' && isDustWashFillT(t)){
       body = (typeof dustWashNeed==='function' && dustWashNeed())
         ? `<div class="chiprow">This wetland filled the dry wash — drought nicks the flats. Clear it to open the bed again. Not a second river.</div>`
@@ -17679,7 +17935,12 @@ function openInfo(refreshOnly){
       chips.push('💧 dry trough — the herd needs a drink they can stand beside');
     if(!t.crop && !t.graze) chips.push('💤 resting & regenerating');
     if(t.feature==='swale') chips.push('〰️ contour — holds water for the beds below');
-    if(typeof highPondDownhillAdj==='function' && highPondDownhillAdj(t)) chips.push('💧 downhill of the high pond — holds a little water');
+    if(typeof highPondNeed==='function' && highPondNeed() && typeof isHighPondFillT==='function' && isHighPondFillT(t))
+      chips.push('💧 this filled the high pond — runoff nicks downhill soil');
+    else if(typeof highPondNeed==='function' && highPondNeed() && typeof highPondDownhillOfMarked==='function' && highPondDownhillOfMarked(t))
+      chips.push('💧 high pond blocked — runoff nicks downhill soil');
+    else if(typeof highPondReady==='function' && highPondReady() && typeof highPondDownhillAdj==='function' && highPondDownhillAdj(t))
+      chips.push('💧 downhill of the high pond — water filters before it runs downhill');
     if(typeof marshPondFeedAdj==='function' && marshPondFeedAdj(t)) chips.push('🌾 feeds a marsh pond — runoff filters before the river');
     else if(typeof shedsTowardMarshPond==='function' && shedsTowardMarshPond(t)) chips.push('🌾 sheds toward a marsh pond — cleaner than a bare drain');
     if(typeof riparianAdj==='function' && riparianAdj(t)) chips.push('🌳 bank buffer nearby — roots filter a little runoff');
@@ -17706,14 +17967,19 @@ function openInfo(refreshOnly){
       <div id="sciBox" class="${sciOpen?'show':''}"></div>`;
   }else if(t.terrain==='pond'){
     const high = typeof isHighPondT==='function' && isHighPondT(t);
+    const highReady = typeof highPondReady==='function' && highPondReady();
+    const highNeed = typeof highPondNeed==='function' && highPondNeed();
+    const highFilled = typeof isHighPondFillT==='function' && isHighPondFillT(t);
     const marsh = typeof isMarshPondT==='function' && isMarshPondT(t);
     const paddockDrink = typeof currentPaddockFold==='function' && currentPaddockFold();
     const manureReady = typeof paddockManureReady==='function' && paddockManureReady();
     const thirstNeed = typeof paddockStockThirstNeed==='function' && paddockStockThirstNeed();
     const washFilled = typeof isDustWashFillT==='function' && isDustWashFillT(t);
     const washNeed = typeof dustWashNeed==='function' && dustWashNeed();
-    body = high
-      ? `<div class="chiprow">A high pond on the ridge — downhill fields hold a little more water and wilt a little less. Not a plant bed.</div>`
+    body = high && highReady
+      ? `<div class="chiprow">${highNeed?'The high pond is blocked — runoff nicks the downhill fields. Keep the basin open so it can filter.':'A high pond on the ridge — it holds and filters water before it runs downhill. Downhill fields hold a little more water and wilt a little less. Not a plant bed.'}</div>`
+      : highFilled && highReady
+        ? `<div class="chiprow">${highNeed?'This filled the high pond — runoff nicks the downhill fields. Clear it to open the basin again. Not a plant bed.':'This sits in the high pond basin. Clear it so the pond can filter downhill water again.'}</div>`
       : marsh
         ? `<div class="chiprow">A marsh pond — runoff settles here before it reaches the main river. Reeds and wet soil feed it. Not a kitchen bed.</div>`
       : washFilled
@@ -17759,6 +18025,10 @@ function openInfo(refreshOnly){
               : 'Ridge woodlot — neighbors hold soil and shrug dust. The herd walks around the canopy. Not an open plant bed.'))
         : t.farmEdge==='riparian' || (typeof isRiparianT==='function' && isRiparianT(t))
           ? 'A riparian buffer — roots filter runoff before it reaches the river. The herd walks around the bank. Keep bare soil off the water.'
+        : (typeof isHighPondFillT==='function' && isHighPondFillT(t) && typeof highPondReady==='function' && highPondReady())
+          ? ((typeof highPondNeed==='function' && highPondNeed())
+            ? 'This tree filled the high pond — runoff nicks the downhill fields. Clear it to open the basin again. Not a plant bed.'
+            : 'This tree sits in the high pond basin. Clear it so the pond can filter downhill water again.')
         : (typeof isDustWashFillT==='function' && isDustWashFillT(t))
           ? ((typeof dustWashNeed==='function' && dustWashNeed())
             ? 'This tree filled the dry wash — drought nicks the flats. Clear it to open the bed again. Not a second river.'
