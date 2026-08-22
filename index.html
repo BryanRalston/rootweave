@@ -1525,8 +1525,8 @@ function compostSurplusMeat(kind){
     return false;
   }
   camp.herd[kind] = have - 1;
-  syncHerdAfterMeatSale(kind);
   creditLeftoverCompost(2);
+  syncHerdAfterMeatSale(kind);
   const skipped = meatSellPrice(kind);
   const em = HERD_MEAT_EM[kind] || '🪣';
   floater(selected>=0?selected:0, em+' 🪣 pile', '#d8c8a0', 16);
@@ -1590,7 +1590,9 @@ function syncHerdAfterMeatSale(kind){
     t.graze.days = Math.max(0, t.graze.total - (t.graze.stay||0));
   });
   const ak = GRAZE_TOOLS[kind];
-  if(ak && typeof agents!=='undefined' && agents && agents.length){
+  if(homesteadMode && typeof syncHomesteadYardWalkers==='function'){
+    syncHomesteadYardWalkers();
+  }else if(ak && typeof agents!=='undefined' && agents && agents.length){
     const ofKind = agents.filter(a=>a.kind===ak);
     while(ofKind.length > heads){
       const a = ofKind.pop();
@@ -5976,6 +5978,104 @@ function ensureHomesteadBarnOnTiles(tiles, size){
     if(homesteadBarnSpotOk(t)){ seatHomesteadBarn(t); return; }
   }
 }
+/** Living stock sits on grass only — never the house, stand, barn door, or leftover pile. */
+function homesteadYardSeatOk(t){
+  if(!t) return false;
+  if(t.terrain==='house' || t.terrain==='nstand' || t.terrain==='barn' || t.terrain==='coop') return false;
+  if(t.terrain!=='soil') return false;
+  if(typeof isLeftoverPileTile==='function' && isLeftoverPileTile(t)) return false;
+  return true;
+}
+function homesteadYardSeatOpen(t){
+  return homesteadYardSeatOk(t) && !t.deco && !t.crop && !t.graze && t.feature!=='path'
+    && !(typeof hasFence==='function' && hasFence(t));
+}
+/** A few walkers from camp.herd — 1–3 hens, 0–2 larger stock. Empty herd = none. */
+function homesteadYardPlan(){
+  if(typeof ensureHerd==='function') ensureHerd(camp);
+  const h = (camp && camp.herd) || {};
+  const chickenN = Math.min(3, Math.max(0, h.chicken|0));
+  const large = [];
+  const pushLarge = (hk, ak)=>{
+    let n = h[hk]|0;
+    while(n>0 && large.length<2){ large.push(ak); n--; }
+  };
+  pushLarge('cattle', 'cow');
+  pushLarge('sheep', 'sheep');
+  pushLarge('goat', 'goat');
+  pushLarge('pig', 'pig');
+  return {chickenN, large};
+}
+function homesteadYardSeatsNear(grid, origin, dirs){
+  const out = [];
+  if(!grid || !origin || !dirs) return out;
+  let fallback = [];
+  for(let i=0;i<dirs.length;i++){
+    const c = (origin.c|0)+dirs[i][0], r = (origin.r|0)+dirs[i][1];
+    if(typeof inGrid==='function' && !inGrid(c,r)) continue;
+    const t = grid[(typeof idx==='function') ? idx(c,r) : (r*(GRID||0)+c)];
+    if(homesteadYardSeatOpen(t)) out.push(t);
+    else if(homesteadYardSeatOk(t)) fallback.push(t);
+  }
+  return out.concat(fallback);
+}
+function homesteadYardAnyGrass(grid){
+  const open = [], ok = [];
+  (grid||[]).forEach(t=>{
+    if(homesteadYardSeatOpen(t)) open.push(t);
+    else if(homesteadYardSeatOk(t)) ok.push(t);
+  });
+  return open.concat(ok);
+}
+function homesteadYardTakeSeat(pool, used){
+  const tryCap = (cap)=>{
+    for(let i=0;i<pool.length;i++){
+      const t = pool[i];
+      if(!homesteadYardSeatOk(t)) continue;
+      const key = (t.c|0)+','+(t.r|0);
+      if((used[key]|0) >= cap) continue;
+      used[key] = (used[key]|0) + 1;
+      return t;
+    }
+    return null;
+  };
+  return tryCap(1) || tryCap(2);
+}
+/** Homestead only. Campaign plots keep their own graze agents. Fresh Home Patch has no herd → none. */
+function spawnHomesteadYardWalkers(){
+  if(!homesteadMode || !state || !state.grid) return;
+  const plan = homesteadYardPlan();
+  if(!plan.chickenN && !plan.large.length) return;
+  const grid = state.grid;
+  const used = {};
+  const house = grid.find(t=>t && t.terrain==='house') || null;
+  const barn = (typeof findGridBarn==='function') ? findGridBarn(grid) : grid.find(t=>t && t.terrain==='barn');
+  const coop = grid.find(t=>t && t.terrain==='coop') || null;
+  const garden = grid.find(t=>t && (t.deco==='deco_vegbox' || t.deco==='deco_herb' || t.deco==='deco_flowerbed')) || null;
+  const henDirs = [[0,1],[-1,1],[1,1],[-1,0],[0,2],[1,2],[-1,2],[0,3],[-2,1],[1,0],[2,2]];
+  const stockDirs = [[-1,0],[0,1],[-1,1],[0,-1],[-1,-1],[1,1],[1,0],[1,-1],[0,2],[-2,0],[2,0]];
+  const henPool = homesteadYardSeatsNear(grid, coop, henDirs)
+    .concat(homesteadYardSeatsNear(grid, garden, henDirs))
+    .concat(homesteadYardSeatsNear(grid, house, henDirs))
+    .concat(homesteadYardAnyGrass(grid));
+  const stockPool = homesteadYardSeatsNear(grid, barn, stockDirs)
+    .concat(homesteadYardSeatsNear(grid, house, [[2,0],[3,0],[2,1],[3,1],[2,2],[1,2],[4,1]]))
+    .concat(homesteadYardAnyGrass(grid));
+  const place = (kind, pool)=>{
+    const t = homesteadYardTakeSeat(pool, used);
+    if(!t || typeof spawnAnimals!=='function') return;
+    spawnAnimals(idx(t.c, t.r), kind, 1);
+    const a = agents[agents.length-1];
+    if(a) a.yard = true;
+  };
+  for(let i=0;i<plan.chickenN;i++) place('chicken', henPool);
+  for(let i=0;i<plan.large.length;i++) place(plan.large[i], stockPool);
+}
+function syncHomesteadYardWalkers(){
+  if(!homesteadMode) return;
+  agents = (agents||[]).filter(a=>!a.yard);
+  spawnHomesteadYardWalkers();
+}
 function inHS(c,r,size){ return c>=0 && r>=0 && c<size && r<size; }
 function serializeHomesteadFromState(){
   if(!homesteadMode || !state || !state.grid) return;
@@ -6048,6 +6148,7 @@ function enterHomestead(){
   if(camp.tipsShown) delete camp.tipsShown.hs_first_place_visit;
   agents = []; wildlife = []; birds = []; worldParts = []; screenParts = [];
   GRID = state.gridSize;
+  if(typeof spawnHomesteadYardWalkers==='function') spawnHomesteadYardWalkers();
   selected = -1; hovered = -1; tool = 'select';
   canvas.classList.remove('tooling');
   closeModal(); closeInfo();
@@ -12567,7 +12668,9 @@ function frame(now){
     if(simDt>0) simStep(simDt);
     // wakeDeadTile / applyTool dirty farmCache mid-tick — never read a null cache
     if(!farmCache) farmCache = farmStats();
-    updateAgents(simDt);
+    // Homestead clock stays frozen; yard stock still walks with the 12-frame packs.
+    const yardWalk = !!(homesteadMode && !modalOpen && !journeyOpen && agents && agents.length);
+    updateAgents(yardWalk ? dt : simDt);
     const bio = (farmCache && typeof farmCache.bio==='number') ? farmCache.bio : 0;
     updateWildlife(dt, bio);
     // beacon fades in real time (even while paused looking around)
