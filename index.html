@@ -1914,11 +1914,11 @@ const LEVELS = [
      {html:'🌅 Brown soil! Tap a revived tile with 🌽 <b>3 Sisters</b> — one successful plant is the next beat.', on:'plant_crop'},
      {html:'🎯 Three goals — that strip reads <b>0/3</b> until you finish them. Compost, plant, keep tending.', btn:'I\'ve got this 🌿'},
    ]},
-  {id:'field', name:'Back Paddock', em:'🐄', grid:8, coins:55, parYears:4,
+  {id:'field', name:'Back Paddock', em:'🐄', grid:8, coins:55, parYears:4, stampFeel:'paddock',
    teaser:'Bring in the animals — hooves, beaks & manure.',
    story:'The grazing folds behind the garden, around the stock pond. Buy cattle one head at a time — more mouths work the soil harder and tire a pad faster. Move them so the land can rest, then send chickens through for team graze.',
    doneText:'The Back Field hums with life — you\'ve mastered the grazing dance!',
-   tools:['select','compost','covercrop','sisters','clover','cattle','chicken','pond','bulldoze'],
+   tools:['select','compost','covercrop','clover','cattle','chicken','pond','bulldoze'],
    shop:false, river:false, events:false, startPaused:false, regen:1.5,
    ovs:['health','om'],
    goalText:'Heal the Back Field with the help of the herd.',
@@ -2109,7 +2109,7 @@ function leftoverStampFeelFor(spec){
   if(id==='hay_field' || id==='south_lane') return 'hay';
   if(id==='woodlot') return 'woodlot';
   if(id==='wet_meadow' || id==='willow_bottom' || id==='marsh_finger') return 'wet';
-  if(id==='north_folds' || id==='west_folds') return 'paddock';
+  if(id==='north_folds' || id==='west_folds' || id==='back_paddock') return 'paddock';
   if(id==='orchard_block') return 'orchard';
   if(id==='dust_scrub' || id==='dust_flats' || id==='flats') return 'dust';
   if(id==='east_pasture') return 'dry_graze';
@@ -2129,7 +2129,7 @@ function leftoverStampStory(feel, P){
     hay: 'Open hay and cover — cut forage, rest the ground, keep the weather-side windbreak. Not a kitchen row.',
     woodlot: 'Shade and brush. Restore the understory; leave the canopy.',
     wet: 'Wet ground and reeds. Do not farm this like a dry garden.',
-    paddock: 'A grazing fold. Manure, rest, and stock water — not a kitchen garden.',
+    paddock: 'A grazing fold. Pasture, manure, rest, and stock water — not a kitchen garden.',
     orchard: 'Trees and understory. Perennials, not corn rows.',
     dust: 'Salt, dust, and a dry wash that only runs after rain. Soften it; do not pretend it is lush.',
     dry_graze: 'Dry pasture at the quarter-section edge. Sparse graze and salt-crust, not a garden.',
@@ -2240,6 +2240,7 @@ function leftoverStampProfile(feel, grid, spec){
       doneText: name+' takes a light stocking again.',
       goals: [
         {em:'🐎', desc:'Graze '+grazeN+' tiles on this dry fold', prog:()=>[Math.min(grazeN, (state.stats && state.stats.grazes)|0), grazeN]},
+        {em:'💧', desc:'Keep stock water the herd can stand beside', prog:()=>[stockDrinkReachable(state)?1:0, 1]},
         {em:'🌅', desc:'Revive '+revive+' dead tiles (dead → soil)', prog:()=>[Math.min(revive, countRevived()), revive]},
       ]
     };
@@ -2510,7 +2511,7 @@ const VALLEY_PARCELS = [
    origin:{c:8, r:58}, size:{w:6, h:6}, teaser:'basics',
    systemsTaught:['feed_dead','compost','diversity'], neighborParcels:['homestead','back_paddock','school_garden','willow_bottom'],
    unlockRules:{type:'always'}, landmark:'shed_fence', desc:'A small kitchen garden by the house, above the floodplain.'},
-  {id:'back_paddock', name:'Back Paddock', em:'🐄', kind:'plot', levelId:'field', lvIndex:1,
+  {id:'back_paddock', name:'Back Paddock', em:'🐄', kind:'plot', stampFeel:'paddock', levelId:'field', lvIndex:1,
    origin:{c:10, r:32}, size:{w:8, h:8}, teaser:'herd',
    systemsTaught:['cattle','chicken','team_graze','clover'], neighborParcels:['home_garden','north_folds','west_folds'],
    unlockRules:{type:'parcel_cleared', parcelId:'home_garden'}, landmark:'fence_trough', desc:'One grazing fold around the stock pond.'},
@@ -3822,6 +3823,8 @@ function genHomePatch(s){
 // LEVEL 2 — Back Paddock: pasture folds + stock pond from the atlas
 function genBackField(s){
   sowAtlasCrop(s, 'back_paddock');
+  const P = typeof valleyParcel==='function' ? valleyParcel('back_paddock') : null;
+  if(P && typeof dressLeftoverStamp==='function') dressLeftoverStamp(s, P);
   ensureReachableStockWater(s);
   if(typeof ensureAtlasLaneOnCrop==='function') ensureAtlasLaneOnCrop(s, 'back_paddock');
 }
@@ -4250,6 +4253,41 @@ function currentHayFold(s){
   const P = typeof valleyParcelByLvIndex==='function' ? valleyParcelByLvIndex(s.lv) : null;
   return leftoverIsHayFold(P);
 }
+/** Interior leftover land that can take a clover / cover graze start. Leave drink + play edges. */
+function leftoverPaddockSeatOk(t, g){
+  if(!t || !leftoverStampLand(t)) return false;
+  if(t.feature==='path' || t.feature==='swale' || t.feature==='saltflat') return false;
+  if(t.atlasLandmark) return false;
+  if(typeof isFarmEdgeT==='function' && isFarmEdgeT(t)) return false;
+  if(typeof isStockDrinkT==='function' && isStockDrinkT(t)) return false;
+  const side = (g|0) || (typeof GRID==='number' ? GRID : 0);
+  if(side>2){
+    const c = t.c|0, r = t.r|0;
+    if(r===0 || r===side-1 || c===0 || c===side-1) return false;
+  }
+  return true;
+}
+/** Standing clover / pioneer cover — pasture, not sisters kitchen rows. */
+function leftoverIsPastureCoverT(t){
+  return !!(t && t.crop && (t.crop.type==='clover' || t.crop.type==='covercrop'));
+}
+/** Leftover / bought / campaign paddock folds. Home Patch stays off. */
+function leftoverIsPaddockFold(P){
+  if(!P) return false;
+  if(P.id==='home_garden' || P.lvIndex===0) return false;
+  const feel = typeof leftoverStampFeelFor==='function' ? leftoverStampFeelFor(P) : (P.stampFeel||'');
+  return feel==='paddock' || feel==='dry_graze'
+    || P.id==='north_folds' || P.id==='west_folds' || P.id==='east_pasture' || P.id==='back_paddock';
+}
+function currentPaddockFold(s){
+  s = s || (typeof state!=='undefined' ? state : null);
+  if(!s) return false;
+  const L = (typeof LEVELS!=='undefined' && LEVELS[s.lv]) ? LEVELS[s.lv] : null;
+  if(L && L.id==='home') return false;
+  if(L && (L.id==='field' || L.stampFeel==='paddock' || L.stampFeel==='dry_graze')) return true;
+  const P = typeof valleyParcelByLvIndex==='function' ? valleyParcelByLvIndex(s.lv) : null;
+  return leftoverIsPaddockFold(P);
+}
 /** Atlas orchard / leftover fruit trees — not a woodlot belt, not a hay row. */
 function leftoverIsOrchardGroveT(t){
   if(!t) return false;
@@ -4276,6 +4314,16 @@ function stockDrinkOrtho(s, t){
 }
 function stockStandOk(t){
   return !!(t && t.terrain==='soil' && leftoverStampOpen(t));
+}
+/** Ortho neighbor of a working stock pond. Home Patch stays off this tradeoff. */
+function stockDrinkAdj(t, s){
+  s = s || (typeof state!=='undefined' ? state : null);
+  if(!t || !s || !s.grid) return false;
+  const nbs = typeof stockDrinkOrtho==='function' ? stockDrinkOrtho(s, t) : [];
+  for(let i=0;i<nbs.length;i++){
+    if(typeof isStockDrinkT==='function' ? isStockDrinkT(nbs[i]) : (nbs[i] && nbs[i].terrain==='pond')) return true;
+  }
+  return false;
 }
 /** True when a pond has open soil the herd can stand on — not on the water. */
 function stockDrinkReachable(s){
@@ -4651,19 +4699,43 @@ function dressLeftoverStamp(s, P){
     return;
   }
   if(feel==='paddock'){
+    // Open graze fold first — leftover-open tillage stays. Play edges stay free for the windbreak.
+    const leftoverPad = !!(P.leftover || P.buyable);
     tiles.forEach(t=>{
       if(!leftoverStampLand(t)) return;
-      if(t.terrain==='dead' && roll(t,1)<0.48){
-        seedSoil(t, 36, 8);
+      if(leftoverPad && t.terrain==='dead' && roll(t,1)<0.42){
+        seedSoil(t, 36 + roll(t,2)*8, 8);
       }
       if(t.terrain==='soil'){
         t.soil.om = Math.min(100, (t.soil.om||30)+8);
+        t.soil.erosion = Math.min(100, (t.soil.erosion||30)+6);
         recalc(t);
       }
     });
     ensureReachableStockWater(s);
+    const g = (s.gridSize|0) || GRID;
+    const wantCover = Math.max(6, Math.round((g*g)*0.07));
+    let pasture = tiles.filter(t=>typeof leftoverIsPastureCoverT==='function' ? leftoverIsPastureCoverT(t) : false).length;
+    const scorePad = (t)=>{
+      let n = 0;
+      // Clover / cover by the drink holds the bank; open pads stay for the herd.
+      if(typeof stockDrinkAdj==='function' && stockDrinkAdj(t, s)) n += 10;
+      if(t.atlasBiome==='pasture' || t.atlasBiome==='heartland') n += 4;
+      if(t.atlasBiome==='garden') n += 1;
+      n += roll(t, 1) * 1.2;
+      return n;
+    };
+    tiles.filter(t=>leftoverPaddockSeatOk(t, g) && t.terrain==='soil').slice().sort((a,b)=>scorePad(b)-scorePad(a)).forEach(t=>{
+      if(pasture>=wantCover) return;
+      const atDrink = typeof stockDrinkAdj==='function' && stockDrinkAdj(t, s);
+      if(!(atDrink || pasture < Math.round(wantCover*0.55) || roll(t,3)<0.38)) return;
+      const type = roll(t,4)<0.62 ? 'clover' : 'covercrop';
+      t.crop = {type, growth:0.28 + roll(t,5)*0.18, days:2};
+      t.deco = null;
+      pasture++;
+    });
     if(!tiles.some(t=>t.deco==='deco_rock')){
-      const soil = tiles.find(t=>t.terrain==='soil' && leftoverStampOpen(t) && !isStockDrinkT(t));
+      const soil = tiles.filter(t=>leftoverPaddockSeatOk(t, g) && t.terrain==='soil' && !t.crop)[0];
       if(soil) soil.deco = 'deco_rock';
     }
     return;
@@ -4765,6 +4837,24 @@ function dressLeftoverStamp(s, P){
       }
     });
     ensureReachableStockWater(s);
+    const g = (s.gridSize|0) || GRID;
+    const wantCover = Math.max(4, Math.round((g*g)*0.05));
+    let pasture = tiles.filter(t=>typeof leftoverIsPastureCoverT==='function' ? leftoverIsPastureCoverT(t) : false).length;
+    const scoreDry = (t)=>{
+      let n = 0;
+      if(typeof stockDrinkAdj==='function' && stockDrinkAdj(t, s)) n += 10;
+      if(t.atlasBiome==='pasture') n += 3;
+      if(typeof washAdj==='function' && washAdj(t, s)) n -= 4;
+      n += roll(t, 1) * 1.2;
+      return n;
+    };
+    tiles.filter(t=>leftoverPaddockSeatOk(t, g) && t.terrain==='soil').slice().sort((a,b)=>scoreDry(b)-scoreDry(a)).forEach(t=>{
+      if(pasture>=wantCover) return;
+      const type = roll(t,3)<0.55 ? 'clover' : 'covercrop';
+      t.crop = {type, growth:0.24 + roll(t,4)*0.16, days:2};
+      t.deco = null;
+      pasture++;
+    });
     return;
   }
   if(feel==='river'){
@@ -6358,6 +6448,22 @@ function simStep(dt){
           else if(!hayHold) d -= 0.05;               // bare open hay away from the break blows
         }
         if(k==='water' && lee) d += 0.02;
+      }
+      if(typeof currentPaddockFold==='function' && currentPaddockFold()){
+        const atDrink = typeof stockDrinkAdj==='function' && stockDrinkAdj(t);
+        if(atDrink){
+          const hold = t.crop && CROPS[t.crop.type] && CROPS[t.crop.type].cover;
+          const g = t.graze;
+          const over = !!(g && (g.stay||0) >= (typeof grazeOverDays==='function' ? grazeOverDays(g) : 99));
+          if(k==='erosion'){
+            if(hold) d += 0.08;                      // clover / cover by the drink holds the bank
+            else if(over || !t.crop) d -= 0.06;      // overgraze / bare soil at the trough tears
+          }
+          if(k==='om'){
+            if(hold) d += 0.02;
+            else if(over) d -= 0.05;
+          }
+        }
       }
       if(typeof riparianAdj==='function' && riparianAdj(t)){
         if(k==='erosion') d += 0.05;                 // bank buffer: less soil into the river
@@ -10600,7 +10706,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.hayfold';
+const SHIP_BUILD = '2026-08-22.paddockfeel';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -10750,7 +10856,7 @@ function openAboutCredits(){
   if(showNew) camp.tipsShown['whats_new_'+ver] = true;
   const whatsNew = showNew
     ? `<div class="lesson" style="text-align:left;margin-top:6px;border-color:rgba(234,181,67,.45)">
-        <b>What's new (${ver}):</b> The painted farm lane stays on leftover and homestead stamps, and walkers prefer that high-dry path. Home Patch stays a dead garden. Play stays free; no pay-to-revive.
+        <b>What's new (${ver}):</b> Paddock folds play as graze land — clover and cover by the stock pond, herd tools, not a kitchen row. Home Patch stays a dead garden. Play stays free; no pay-to-revive.
       </div>`
     : '';
   // CD — first About open literacy (in-modal; no toast spam)
