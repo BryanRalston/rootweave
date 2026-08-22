@@ -1293,6 +1293,7 @@ function leftoverPileTier(){
 function leftoverPileInspectLine(){
   const n = leftoverCompostStock();
   if(n<=0) return '';
+  if(typeof homePatchCleared==='function' && !homePatchCleared()) return '';
   return n+' leftover compost — paint 🪣';
 }
 function leftoverPileSpotOk(t){
@@ -2762,6 +2763,9 @@ function parcelUnlockHint(P){
   if(ur.type==='coin_deed'){
     const cost = parcelDeedCost(P);
     if(parcelIsBought(P)) return 'Yours — tap to work it';
+    if(typeof homePatchCleared==='function' && !homePatchCleared()){
+      return 'Home Patch comes first — this fold can wait';
+    }
     if(parcelDeedOffered(P)) return `A neighbor will sign this land over for 🪙${cost}`;
     return 'Work the neighboring field, then this fold can change hands';
   }
@@ -8969,7 +8973,7 @@ function applyTool(i){
       toast(dead ? '🪣 Compost is already on this tile — press ▶️ so days can wake it. No coins taken.' : '🪣 Already composted — the soil is still digesting. No coins taken.');
       SND.uhoh(); return false;
     }
-    const fromPile = leftoverCompostStock()>0;
+    const fromPile = leftoverCompostStock()>0 && (typeof homePatchCleared!=='function' || homePatchCleared());
     if(fromPile){
       spendLeftoverCompost();
     }else{
@@ -9509,7 +9513,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.yard-seat';
+const SHIP_BUILD = '2026-08-22.home-first';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -13326,7 +13330,7 @@ function closeModal(){
 }
 function toolCost(td){
   if(GRAZE_TOOLS[td.id]) return HERD_BUY[td.id] || td.cost;
-  if(td.id==='compost' && leftoverCompostStock()>0) return 0;
+  if(td.id==='compost' && leftoverCompostStock()>0 && (typeof homePatchCleared!=='function' || homePatchCleared())) return 0;
   if(td.id==='compost' && state.unlocks.upg_compost) return 2;
   if((td.id==='sisters'||td.id==='wheat'||td.id==='clover'||td.id==='covercrop') && state.unlocks.upg_seeds) return Math.max(1, td.cost-1);
   return td.cost;
@@ -13493,7 +13497,7 @@ function buildPalette(){
       const herdMax = herdTool ? (HERD_MAX[td.id]||6) : 0;
       const atMax = herdTool && nOwn >= herdMax;
       const placed = herdTool && typeof herdKindPlaced==='function' && herdKindPlaced(td.id);
-      const pileN = (!herdTool && td.id==='compost') ? leftoverCompostStock() : 0;
+      const pileN = (!herdTool && td.id==='compost' && leftoverCompostStock()>0 && (typeof homePatchCleared!=='function' || homePatchCleared())) ? leftoverCompostStock() : 0;
       const costLab = !herdTool
         ? (pileN>0 ? ('pile×'+pileN) : (cost>0 ? ('🪙'+cost) : 'free'))
         : (atMax ? (nOwn+'/'+herdMax)
@@ -13796,7 +13800,7 @@ function updateHUD(){
   }
   TOOLS.forEach(td=>{
     const el = document.getElementById('tool_'+td.id);
-    const pileFree = td.id==='compost' && leftoverCompostStock()>0;
+    const pileFree = td.id==='compost' && leftoverCompostStock()>0 && (typeof homePatchCleared!=='function' || homePatchCleared());
     if(el) el.classList.toggle('cant', !pileFree && td.cost>0 && state.coins<td.cost);
   });
 }
@@ -15518,6 +15522,7 @@ function drawMapHerdAt(hctx, ag, p, time){
 }
 function mapPilePoint(){
   if(typeof leftoverCompostStock!=='function' || leftoverCompostStock()<=0) return null;
+  if(typeof homePatchCleared==='function' && !homePatchCleared()) return null;
   const P = (typeof valleyParcel==='function') ? valleyParcel('homestead') : null;
   if(!P) return null;
   const b = (typeof parcelAtlasBox==='function') ? parcelAtlasBox(P) : null;
@@ -15598,7 +15603,8 @@ function stopMapHerd(){
 }
 function startMapHerd(cv, agents){
   stopMapHerd();
-  const pileOn = typeof leftoverCompostStock==='function' && leftoverCompostStock()>0;
+  const pileOn = typeof leftoverCompostStock==='function' && leftoverCompostStock()>0
+    && (typeof homePatchCleared!=='function' || homePatchCleared());
   if(!cv || ((!agents || !agents.length) && !pileOn)) return;
   _mapHerd.cv = cv;
   _mapHerd.agents = agents || [];
@@ -15616,7 +15622,8 @@ function startMapHerd(cv, agents){
 }
 function mountMapHerdOverlay(wrap){
   const agents = buildMapHerdAgents();
-  const pileOn = typeof leftoverCompostStock==='function' && leftoverCompostStock()>0;
+  const pileOn = typeof leftoverCompostStock==='function' && leftoverCompostStock()>0
+    && (typeof homePatchCleared!=='function' || homePatchCleared());
   if(!agents.length && !pileOn) return null;
   const hv = document.createElement('canvas');
   hv.className = 'vscene-herd';
