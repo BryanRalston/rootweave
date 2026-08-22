@@ -328,13 +328,17 @@ body.home-plot #questPanel{
   background:#f6f0dd; font-size:12.5px; font-weight:700;
 }
 #infoPanel .nstand-row .ns-em{font-size:20px; width:26px; text-align:center; flex:none}
+#infoPanel .nstand-row .ns-btns{margin-left:auto; display:flex; gap:4px; flex:none}
 #infoPanel .nstand-row .ns-go{
-  margin-left:auto; font-family:inherit; font-weight:800;
+  font-family:inherit; font-weight:800;
   background:var(--green); color:#fff; border:none; border-radius:10px;
   padding:6px 10px; cursor:pointer; box-shadow:0 3px 0 var(--green2); min-height:36px; flex:none;
 }
 #infoPanel .nstand-row .ns-go:disabled{opacity:.45; box-shadow:none; cursor:default}
 #infoPanel .nstand-row .ns-go:active{transform:translateY(2px); box-shadow:0 1px 0 var(--green2)}
+#infoPanel .nstand-row .ns-go.ns-pile{background:var(--wood); box-shadow:0 3px 0 var(--wood2)}
+#infoPanel .nstand-row .ns-go.ns-pile:active{box-shadow:0 1px 0 var(--wood2)}
+#infoPanel .nstand-row.leftover{background:#efe4c4}
 #infoPanel .nstand-note{font-size:12px; font-weight:700; color:var(--soft); margin:6px 0 4px; line-height:1.35}
 #infoPanel .nstand-keep{font-size:11.5px; font-weight:700; color:var(--soft); opacity:.85}
 #btnNotes{position:relative}
@@ -1002,6 +1006,8 @@ const HERD_LABEL = {cattle:'cattle', chicken:'chickens', sheep:'sheep', goat:'go
 const HERD_MEAT = {cattle:34, chicken:16, sheep:24, goat:22, pig:28, duckT:18};
 const HERD_MEAT_EM = {cattle:'🐄', chicken:'🐔', sheep:'🐑', goat:'🐐', pig:'🐖', duckT:'🦆'};
 const CRATE_MAX = 12;
+const CRATE_HARD = 16; // overflow still becomes compost, never silent vanish
+const CRATE_LEFTOVER_DAYS = 4; // a few lane days; standClock so frozen yard spring does not age it
 // Lane rates by season — grain cheap at harvest glut, dear when stores thin.
 // Meat wanted at the winter table; slower while the herd is the season's work.
 // Modest bands so Home Patch and the +3/day market trickle stay intact.
@@ -1244,6 +1250,48 @@ function standClock(){
   const src = parked || mem || {season:0, day:1, year:1};
   return {season:((src.season|0)%4+4)%4, day:Math.max(1, src.day|0), year:Math.max(1, src.year|0)};
 }
+/** Absolute lane-day so leftover age follows the field calendar, not homestead's frozen spring. */
+function standClockDays(clk){
+  const c = clk || standClock();
+  return ((c.year|0)-1)*4*DAYS_PER_SEASON + ((c.season|0)%4)*DAYS_PER_SEASON + Math.max(1, c.day|0);
+}
+function ensureCompostStock(c){
+  const dest = c || camp;
+  if(!dest) return 0;
+  dest.compostStock = Math.max(0, dest.compostStock|0);
+  return dest.compostStock;
+}
+function leftoverCompostStock(){ return ensureCompostStock(); }
+function creditLeftoverCompost(n){
+  n = Math.max(0, n|0);
+  if(!camp || n<=0) return 0;
+  camp.compostStock = leftoverCompostStock() + n;
+  return n;
+}
+function spendLeftoverCompost(){
+  if(leftoverCompostStock()<=0) return false;
+  camp.compostStock = leftoverCompostStock() - 1;
+  return true;
+}
+function crateLotAgeDays(lot){
+  if(!lot) return 0;
+  const now = standClockDays();
+  const at = (lot.at|0);
+  if(!at) return now; // pre-stamp lots: already sitting — treat as leftover so they can go to the pile
+  return Math.max(0, now - at);
+}
+function crateLotIsLeftover(lot){
+  return crateLotAgeDays(lot) >= CRATE_LEFTOVER_DAYS;
+}
+function crateLotCanCompost(lot, idx){
+  if(crateLotIsLeftover(lot)) return true;
+  const crate = ensureCrate();
+  const i = (idx==null) ? crate.indexOf(lot) : (idx|0);
+  return crate.length > CRATE_MAX && i>=0 && i < (crate.length - CRATE_MAX);
+}
+function crateLeftoverCount(){
+  return ensureCrate().filter((lot,i)=>crateLotCanCompost(lot,i)).length;
+}
 /** One shared daily wobble — a quiet market-day mood, not a ticker. Deterministic so reloads don't reroll. */
 function standLaneWobble(){
   const clk = standClock();
@@ -1313,13 +1361,89 @@ function bankHarvestLot(lot){
     em: lot.em || '🌾',
     name: lot.name || 'Harvest',
     coins: Math.max(1, lot.coins|0),
+    at: standClockDays(),
   });
-  let rotted = 0;
-  while(crate.length > CRATE_MAX){ crate.shift(); rotted++; }
-  if(rotted && camp){
-    if(!camp.tipsShown) camp.tipsShown = {};
-    toast('🧺 Oldest harvest left the crate — neighbors only buy what’s fresh.', {once:'crate_rot', throttleMs:4000});
+  let piled = 0;
+  while(crate.length > CRATE_HARD){
+    const idx = crate.findIndex((l,i)=>crateLotCanCompost(l,i));
+    const take = idx>=0 ? idx : 0;
+    crate.splice(take, 1);
+    creditLeftoverCompost(1);
+    piled++;
   }
+  if(piled && camp){
+    if(!camp.tipsShown) camp.tipsShown = {};
+    toast('🪣 Oldest leftover went to the pile — crate was full. Soil instead of coins.', {once:'crate_pile_overflow', throttleMs:4000});
+  }else if(crate.length > CRATE_MAX && camp){
+    if(!camp.tipsShown) camp.tipsShown = {};
+    toast('🧺 Crate is full — compost leftovers at the stand, or sell. Nothing is thrown away.', {once:'crate_soft_cap', throttleMs:4000});
+  }
+}
+function afterCrateCompost(){
+  if(typeof buildPalette==='function') buildPalette();
+  if(typeof updateHUD==='function') updateHUD();
+  save();
+  if(typeof openNeighborStand==='function') openNeighborStand(true);
+}
+function compostCrateLot(idx){
+  if(!neighborStandUnlocked()){ toast('🧺 The neighbor stand opens after Home Patch.'); SND.uhoh(); return false; }
+  const crate = ensureCrate();
+  const i = idx|0;
+  if(i<0 || i>=crate.length) return false;
+  const lot = crate[i];
+  if(!crateLotCanCompost(lot, i)){
+    toast('Let it sit a few days — leftover harvest can go to the pile.');
+    SND.uhoh();
+    return false;
+  }
+  crate.splice(i, 1);
+  creditLeftoverCompost(1);
+  const skipped = crateLotSellPrice(lot);
+  floater(selected>=0?selected:0, '🪣 pile', '#d8c8a0', 16);
+  SND.place();
+  toast((lot.em||'🪣')+' Leftover '+(lot.name||'harvest')+' returned to the pile — skipped 🪙'+skipped+' for soil.');
+  afterCrateCompost();
+  return true;
+}
+function compostAllLeftoverLots(){
+  if(!neighborStandUnlocked()){ toast('🧺 The neighbor stand opens after Home Patch.'); SND.uhoh(); return false; }
+  const crate = ensureCrate();
+  let n = 0, skipped = 0;
+  for(let i=crate.length-1;i>=0;i--){
+    if(!crateLotCanCompost(crate[i], i)) continue;
+    skipped += crateLotSellPrice(crate[i]);
+    crate.splice(i, 1);
+    creditLeftoverCompost(1);
+    n++;
+  }
+  if(!n){ toast('No leftovers ready — sell fresh harvest, or wait a few lane days.'); SND.uhoh(); return false; }
+  floater(selected>=0?selected:0, '🪣 pile ×'+n, '#d8c8a0', 16);
+  SND.place();
+  toast('🪣 '+n+' leftover'+(n===1?'':'s')+' went to the pile — skipped 🪙'+skipped+' for soil.');
+  afterCrateCompost();
+  return true;
+}
+function compostSurplusMeat(kind){
+  if(!neighborStandUnlocked()){ toast('🧺 The neighbor stand opens after Home Patch.'); SND.uhoh(); return false; }
+  if(!kind || HERD_MEAT[kind]==null) return false;
+  ensureHerd(camp);
+  const have = camp.herd[kind]|0;
+  const keep = herdBreederMin(kind);
+  if(have <= keep){
+    toast('Keep a breeder — the last '+(HERD_LABEL[kind]||kind)+' stay'+(keep===1?'s':'')+' on the farm.');
+    SND.uhoh();
+    return false;
+  }
+  camp.herd[kind] = have - 1;
+  syncHerdAfterMeatSale(kind);
+  creditLeftoverCompost(2);
+  const skipped = meatSellPrice(kind);
+  const em = HERD_MEAT_EM[kind] || '🪣';
+  floater(selected>=0?selected:0, em+' 🪣 pile', '#d8c8a0', 16);
+  SND.place();
+  toast(em+' Surplus returned to the pile — skipped 🪙'+skipped+' for soil. Herd is '+(camp.herd[kind]|0)+' '+(HERD_LABEL[kind]||kind)+'. Weaker graze now.');
+  afterCrateCompost();
+  return true;
 }
 function sellCrateLot(idx){
   if(!neighborStandUnlocked()){ toast('🧺 The neighbor stand opens after Home Patch.'); SND.uhoh(); return false; }
@@ -1411,16 +1535,32 @@ function sellSurplusMeat(kind){
 function neighborStandHtml(opts){
   const o = opts || {};
   const crate = ensureCrate();
+  const pileN = leftoverCompostStock();
+  const leftoverN = crateLeftoverCount();
   const harvestRows = crate.length
-    ? crate.map((lot,i)=>`<div class="nstand-row">
+    ? crate.map((lot,i)=>{
+        const leftover = crateLotCanCompost(lot, i);
+        return `<div class="nstand-row${leftover?' leftover':''}">
         <span class="ns-em">${lot.em||'🌾'}</span>
-        <span>${lot.name||'Harvest'} · 🪙${crateLotSellPrice(lot)}</span>
-        <button type="button" class="ns-go" data-nstandsell="${i}">Sell</button>
-      </div>`).join('')
+        <span>${lot.name||'Harvest'} · 🪙${crateLotSellPrice(lot)}${leftover?' · leftover':''}</span>
+        <span class="ns-btns">
+          <button type="button" class="ns-go" data-nstandsell="${i}">Sell</button>
+          ${leftover?`<button type="button" class="ns-go ns-pile" data-nstandcompost="${i}">Compost</button>`:''}
+        </span>
+      </div>`;
+      }).join('')
     : `<div class="nstand-note">Crate is empty. Harvest wheat or sisters, then bring it here.</div>`;
-  const harvestBlock = `<div class="nstand-note">🧺 Last ${CRATE_MAX} harvests sit in this crate. Neighbors pay today's lane — hold if grain is cheap.</div>
+  const pileNote = pileN
+    ? `<div class="nstand-note">🪣 ${pileN} leftover compost ready — paint 🪣 Compost on the land (no coins). You already skipped the stand coins.</div>`
+    : '';
+  const leftoverNote = leftoverN
+    ? `<div class="nstand-note">Leftovers sat a few lane days. Compost them — you skip today's lane coins for soil.</div>`
+    : '';
+  const harvestBlock = `<div class="nstand-note">🧺 Last ${CRATE_MAX} harvests sit in this crate. Neighbors pay today's lane — hold if grain is cheap. Old lots go to the pile, not into nothing.</div>
+    ${pileNote}${leftoverNote}
     ${harvestRows}
-    ${crate.length>1?`<button type="button" class="mbtn wood" style="width:100%;margin-top:6px" data-nstandall>Sell all harvest · 🪙${crateCurrentWorth()}</button>`:''}`;
+    ${crate.length>1?`<button type="button" class="mbtn wood" style="width:100%;margin-top:6px" data-nstandall>Sell all harvest · 🪙${crateCurrentWorth()}</button>`:''}
+    ${leftoverN>1?`<button type="button" class="mbtn wood" style="width:100%;margin-top:6px" data-nstandcompostall>Compost leftovers · skip 🪙${ensureCrate().reduce((a,l,i)=>a+(crateLotCanCompost(l,i)?crateLotSellPrice(l):0),0)}</button>`:''}`;
   if(o.harvestOnly) return harvestBlock;
   const kinds = Object.keys(HERD_MEAT);
   const meatRows = kinds.map(kind=>{
@@ -1434,11 +1574,14 @@ function neighborStandHtml(opts){
     return `<div class="nstand-row">
       <span class="ns-em">${HERD_MEAT_EM[kind]||''}</span>
       <span>${label}</span>
-      <button type="button" class="ns-go" data-nstandmeat="${kind}" ${disabled?'disabled':''}>${disabled?'Keep':'Sell'}</button>
+      <span class="ns-btns">
+        <button type="button" class="ns-go" data-nstandmeat="${kind}" ${disabled?'disabled':''}>${disabled?'Keep':'Sell'}</button>
+        ${extra>0?`<button type="button" class="ns-go ns-pile" data-nstandpile="${kind}">Pile</button>`:''}
+      </span>
     </div>`;
   }).filter(Boolean).join('');
   const meatBlock = meatRows
-    ? `<div class="nstand-note">Surplus meat only. Selling a head shrinks the herd — fewer mouths, weaker graze and less soil help. Last of a kind stays.</div>${meatRows}`
+    ? `<div class="nstand-note">Surplus meat only. Selling a head shrinks the herd — fewer mouths, weaker graze and less soil help. Last of a kind stays. A surplus you do not sell can return to the pile — compost, not a slaughterhouse.</div>${meatRows}`
     : `<div class="nstand-keep">No herd to sell. Grow extra heads first — keep a breeder of each kind.</div>`;
   return harvestBlock + meatBlock;
 }
@@ -1465,11 +1608,17 @@ function openNeighborStand(refreshOnly, opts){
   }
 }
 function harvestCrateChipHtml(){
-  if(!neighborStandUnlocked() || crateLotCount()<=0) return '';
-  const n = crateLotCount();
-  const worth = crateCurrentWorth();
-  return `<div class="nstand-note">🧺 ${n} harvest${n===1?'':'s'} in the crate · 🪙${worth} today</div>
-    <button type="button" class="mbtn wood" style="width:100%;margin-top:4px" data-act="nstand">Sell at the stand</button>`;
+  const pileN = leftoverCompostStock();
+  const lots = crateLotCount();
+  if(!neighborStandUnlocked() || (lots<=0 && pileN<=0)) return '';
+  const leftoverN = crateLeftoverCount();
+  const worth = lots ? crateCurrentWorth() : 0;
+  const lotLine = lots
+    ? `🧺 ${lots} harvest${lots===1?'':'s'} in the crate · 🪙${worth} today${leftoverN?` · ${leftoverN} leftover`:''}`
+    : '';
+  const pileLine = pileN ? `🪣 ${pileN} leftover compost ready — paint 🪣 Compost (no coins)` : '';
+  return `<div class="nstand-note">${[lotLine, pileLine].filter(Boolean).join('<br>')}</div>
+    <button type="button" class="mbtn wood" style="width:100%;margin-top:4px" data-act="nstand">${leftoverN?'Sell or compost at the stand':'Sell at the stand'}</button>`;
 }
 // tools with a shopId appear in the palette only after that shop unlock is bought
 const TOOLS = [
@@ -3004,6 +3153,7 @@ function defaultCamp(){
     herd: typeof emptyHerd==='function' ? emptyHerd() : {cattle:0, chicken:0, sheep:0, goat:0, pig:0, duckT:0},
     herdV: 2,
     crate: [], // last N harvests banked for the neighbor stand
+    compostStock: 0, // leftover crate / surplus bodies returned to the pile
   };
   ensureParcelState(c);
   return c;
@@ -8340,11 +8490,20 @@ function applyTool(i){
       toast(dead ? '🪣 Compost is already on this tile — press ▶️ so days can wake it. No coins taken.' : '🪣 Already composted — the soil is still digesting. No coins taken.');
       SND.uhoh(); return false;
     }
-    const cost = state.unlocks.upg_compost ? 2 : td.cost;
-    if(!spend(cost)) return false;
+    const fromPile = leftoverCompostStock()>0;
+    if(fromPile){
+      spendLeftoverCompost();
+    }else{
+      const cost = state.unlocks.upg_compost ? 2 : td.cost;
+      if(!spend(cost)) return false;
+    }
     t.compost = state.unlocks.upg_compost ? 14 : 10;
     state.stats.composts++;
-    floater(i, '🪣 +compost', '#d8c8a0'); burst(i, '#9a7d54', 10); SND.place();
+    floater(i, fromPile ? '🪣 leftover pile' : '🪣 +compost', '#d8c8a0'); burst(i, '#9a7d54', 10); SND.place();
+    if(fromPile){
+      toast('🪣 Leftover compost feeding the soil — you already skipped the stand coins.', {once:'leftover_compost_use', throttleMs:4000});
+      if(typeof buildPalette==='function') buildPalette();
+    }
     if(dead){
       markPlayerFedDead(t); tutEvent('feed_dead');
       if(typeof earnNote==='function') earnNote('wake', {delay:700});
@@ -11348,6 +11507,9 @@ function drawNeighborStand(t){
   }else{
     drawEmoji('🧺', seat.x+1, seat.y-18, 11);
   }
+  if(typeof leftoverCompostStock==='function' && leftoverCompostStock()>0){
+    drawEmoji('🪣', seat.x+12, seat.y-22, 11);
+  }
   ctx.restore();
 }
 function drawTileObjects(t, i, time){
@@ -12637,6 +12799,7 @@ function closeModal(){
 }
 function toolCost(td){
   if(GRAZE_TOOLS[td.id]) return HERD_BUY[td.id] || td.cost;
+  if(td.id==='compost' && leftoverCompostStock()>0) return 0;
   if(td.id==='compost' && state.unlocks.upg_compost) return 2;
   if((td.id==='sisters'||td.id==='wheat'||td.id==='clover'||td.id==='covercrop') && state.unlocks.upg_seeds) return Math.max(1, td.cost-1);
   return td.cost;
@@ -12803,8 +12966,9 @@ function buildPalette(){
       const herdMax = herdTool ? (HERD_MAX[td.id]||6) : 0;
       const atMax = herdTool && nOwn >= herdMax;
       const placed = herdTool && typeof herdKindPlaced==='function' && herdKindPlaced(td.id);
+      const pileN = (!herdTool && td.id==='compost') ? leftoverCompostStock() : 0;
       const costLab = !herdTool
-        ? (cost>0 ? ('🪙'+cost) : 'free')
+        ? (pileN>0 ? ('pile×'+pileN) : (cost>0 ? ('🪙'+cost) : 'free'))
         : (atMax ? (nOwn+'/'+herdMax)
           : (nOwn<=0 ? ('🪙'+cost)
             : (placed ? 'move' : 'send')));
@@ -12813,7 +12977,7 @@ function buildPalette(){
       }
       const tip = td.tip || td.name || '';
       const costTitle = !herdTool
-        ? (cost>0 ? ' · 🪙'+cost : ' · free')
+        ? (pileN>0 ? ' · leftover pile ×'+pileN : (cost>0 ? ' · 🪙'+cost : ' · free'))
         : (atMax ? ' · herd full'
           : (nOwn<=0 ? ' · 🪙'+cost
             : (placed ? ' · tap a new pad to move · this pad adds 🪙'+cost
@@ -13105,7 +13269,8 @@ function updateHUD(){
   }
   TOOLS.forEach(td=>{
     const el = document.getElementById('tool_'+td.id);
-    if(el) el.classList.toggle('cant', td.cost>0 && state.coins<td.cost);
+    const pileFree = td.id==='compost' && leftoverCompostStock()>0;
+    if(el) el.classList.toggle('cant', !pileFree && td.cost>0 && state.coins<td.cost);
   });
 }
 function updateClockUI(){
@@ -13220,9 +13385,11 @@ function openInfo(refreshOnly){
       return;
     }
     let title = (t.terrain==='house'||t.terrain==='barn') ? `${H.em} ${H.name}` : (t.deco ? 'Decoration' : (t.terrain==='soil'?'Yard':'Placed'));
+    const crateChip = (typeof harvestCrateChipHtml==='function') ? harvestCrateChipHtml() : '';
     let body = (t.terrain==='house'||t.terrain==='barn')
       ? `<div class="chiprow">Home anchor — build the yard from 🛒 Catalog (Expand kits + Yard Build). Rooms are optional.</div>
          ${neighborStandUnlocked()?`<button type="button" class="mbtn wood" style="width:100%;margin-top:8px" data-act="nstand">🧺 Neighbor stand</button>`:''}
+         ${crateChip}
          <button type="button" class="mbtn wood" style="width:100%;margin-top:8px" id="btnGoInside">🚪 Peek Inside</button>`
       : `<div class="chiprow">Bank 🪙${camp.bank|0}. Use 🚜 Clear to remove (free).</div>`;
     if(t.deco) body += `<div class="chiprow">🎀 ${t.deco.replace('deco_','')}</div>`;
@@ -13698,7 +13865,16 @@ function loadCamp(d){
       em: x.em || '🌾',
       name: x.name || 'Harvest',
       coins: Math.max(1, (+x.coins||0)|0),
-    })).slice(-CRATE_MAX);
+      at: Math.max(0, (+x.at||0)|0),
+    }));
+    let piled = 0;
+    while(camp.crate.length > CRATE_HARD){
+      camp.crate.shift();
+      piled++;
+    }
+    camp.compostStock = Math.max(0, (+c.compostStock||0)|0) + piled;
+  }else{
+    camp.compostStock = Math.max(0, (+c.compostStock||0)|0);
   }
   if(c.laneClock && typeof c.laneClock==='object'){
     camp.laneClock = {
@@ -15446,13 +15622,23 @@ function init(){
     if(openNs){ e.preventDefault(); e.stopPropagation(); openNeighborStand(); return; }
     const sellLot = e.target.closest('[data-nstandsell]');
     if(sellLot){ e.preventDefault(); e.stopPropagation(); sellCrateLot(+sellLot.dataset.nstandsell); return; }
+    const compostLot = e.target.closest('[data-nstandcompost]');
+    if(compostLot){ e.preventDefault(); e.stopPropagation(); compostCrateLot(+compostLot.dataset.nstandcompost); return; }
     const sellAll = e.target.closest('[data-nstandall]');
     if(sellAll){ e.preventDefault(); e.stopPropagation(); sellAllCrateLots(); return; }
+    const compostAll = e.target.closest('[data-nstandcompostall]');
+    if(compostAll){ e.preventDefault(); e.stopPropagation(); compostAllLeftoverLots(); return; }
     const sellMeat = e.target.closest('[data-nstandmeat]');
     if(sellMeat){
       e.preventDefault(); e.stopPropagation();
       if(sellMeat.disabled) return;
       sellSurplusMeat(sellMeat.dataset.nstandmeat);
+      return;
+    }
+    const pileMeat = e.target.closest('[data-nstandpile]');
+    if(pileMeat){
+      e.preventDefault(); e.stopPropagation();
+      compostSurplusMeat(pileMeat.dataset.nstandpile);
     }
   });
   // shop + quest panel
