@@ -1068,6 +1068,11 @@ const RIPARIAN_NICK_SOIL = {erosion:-0.8, water:-0.4, om:-0.3}; // dawn nick: we
 const RIPARIAN_FILTER_SOIL = {erosion:0.5, water:0.4, om:0.15}; // modest filter when living bank trees stay in a wet season
 const COOP_BEDDING_RATE = 0.12; // pile lots/day at 1 hen; scales with sqrt(hens), smaller than a paddock herd
 const COOP_BEDDING_AUTO = 1;    // at most one dawn pile unit — bedding, not a crate crop
+const COOP_CORRIDOR_HOLD_SOIL = {om:0.35, microbial:0.4}; // hens scratch pests / orchard understory
+const COOP_CORRIDOR_NICK_SOIL = {om:-0.3, microbial:-0.25}; // pests linger when the walk is empty
+const COOP_CORRIDOR_PATH_MUL = 1.12; // eggs / bedding walk is a touch smoother on the corridor
+const COOP_CORRIDOR_RIPEN_MUL = 1.08; // understory scratch helps the hang a little
+const COOP_CORRIDOR_SEATS = [[2,3],[3,3],[2,4],[3,4],[4,3],[1,3],[4,2],[4,4]]; // locked garden–orchard walk
 const WOODLOT_REGEN_DAYS = 8; // clear-cut stump returns as canopy; never an empty plant bed
 const WOODLOT_CLEAR_SOIL = {om:-3, erosion:-4, water:-2, microbial:-1}; // heavy cut nicks the fold
 const STAND_WILLOW_SEASON = [1.14, 0.88, 1.02, 1.12]; // spring withies; summer leafy; fall set; winter rods
@@ -1427,7 +1432,10 @@ function seatCoopIfHens(){
 function coopEggDailyRate(n){
   n = Math.max(0, n|0);
   if(n<=0) return 0;
-  return COOP_EGG_RATE * Math.sqrt(n);
+  let r = COOP_EGG_RATE * Math.sqrt(n);
+  if(typeof coopCorridorOk==='function' && coopCorridorOk())
+    r *= (typeof COOP_CORRIDOR_PATH_MUL==='number') ? COOP_CORRIDOR_PATH_MUL : 1.12;
+  return r;
 }
 function coopEggReady(){
   if(typeof homePatchCleared==='function' && !homePatchCleared()) return false;
@@ -1467,7 +1475,9 @@ function coopBeddingDailyRate(n){
   n = Math.max(0, n|0);
   if(n<=0) return 0;
   const mul = (typeof leftoverPileCookMul==='function') ? leftoverPileCookMul() : 1;
-  return COOP_BEDDING_RATE * Math.sqrt(n) * mul;
+  const path = (typeof coopCorridorOk==='function' && coopCorridorOk()
+    && typeof COOP_CORRIDOR_PATH_MUL==='number') ? COOP_CORRIDOR_PATH_MUL : 1;
+  return COOP_BEDDING_RATE * Math.sqrt(n) * mul * path;
 }
 function coopBeddingFloaterIdx(){
   if(state && state.grid){
@@ -1595,6 +1605,8 @@ function orchardHiveNear(s, t){
 function orchardRipenRate(s, t){
   let r = ORCHARD_FRUIT_SET;
   if(orchardHiveNear(s, t)) r *= 1.15;
+  if(typeof coopCorridorOk==='function' && coopCorridorOk())
+    r *= (typeof COOP_CORRIDOR_RIPEN_MUL==='number') ? COOP_CORRIDOR_RIPEN_MUL : 1.08;
   const season = (s && (s.season|0)) || 0;
   if(season===2) r *= 1.12; // fall hang
   if(season===0) r *= 0.88; // spring blossom
@@ -10316,6 +10328,7 @@ function simStep(dt){
     if(typeof tickLaneWork==='function') tickLaneWork();
     if(typeof tickRiparianBufferWork==='function') tickRiparianBufferWork();
     if(typeof tickCoopBedding==='function') tickCoopBedding();
+    if(typeof tickCoopCorridor==='function') tickCoopCorridor();
     if(typeof refreshNeighborStandIfOpen==='function') refreshNeighborStandIfOpen();
     updateQuests();
     maybeDustFlatsCoach();
@@ -11057,6 +11070,22 @@ function homesteadGardenOnTiles(tiles){
   }
   return null;
 }
+function homesteadOrchardOnTiles(tiles){
+  if(!tiles) return null;
+  for(let i=0;i<tiles.length;i++){
+    const t = tiles[i];
+    if(!t) continue;
+    if(t.terrain==='orchard' || t.terrain==='berrybush') return t;
+    if(t.terrain==='trees' && (t.farmEdge==='orchard' || (typeof isOrchardMarkedT==='function' && isOrchardMarkedT(t)))) return t;
+    if(t.deco==='deco_sunflower' || t.deco==='deco_roses' || t.deco==='deco_mushroom') return t;
+  }
+  return null;
+}
+function homesteadCoopOnTiles(tiles){
+  if(!tiles) return null;
+  for(let i=0;i<tiles.length;i++) if(tiles[i] && tiles[i].terrain==='coop') return tiles[i];
+  return null;
+}
 /** Same seat leftoverPileTile uses — barn offset allowed, house fallback when the barn is missing. Never the coop. */
 function homesteadPileSeatOnTiles(tiles, size){
   if(!tiles || !size) return null;
@@ -11128,6 +11157,235 @@ function ensureHomesteadCoopOnTiles(tiles, size){
       if(trySeat(tiles[r*size+c])) return;
     }
   }
+}
+/** Yard tiles after Home — live grid in the yard, saved tiles while walking a fold. */
+function homesteadCoopYardTiles(){
+  if(typeof homePatchCleared==='function' && !homePatchCleared()) return null;
+  if(typeof homesteadMode!=='undefined' && homesteadMode && state && state.grid) return state.grid;
+  const hs = camp && camp.homestead;
+  if(hs && hs.unlocked && Array.isArray(hs.tiles) && hs.tiles.length) return hs.tiles;
+  return null;
+}
+function coopCorridorReady(){
+  if(!camp) return false;
+  if(typeof homePatchCleared==='function' && !homePatchCleared()) return false;
+  if(typeof campChickenCount==='function' ? campChickenCount()<=0 : !((camp.herd && camp.herd.chicken)|0)) return false;
+  if(typeof seatCoopIfHens==='function') seatCoopIfHens();
+  return true;
+}
+/** Coop sits between two anchors (garden ↔ orchard), or on the locked walk seats. */
+function coopBetweenAnchors(coop, a, b){
+  if(!coop || !a || !b) return false;
+  const ac = a.c|0, ar = a.r|0, bc = b.c|0, br = b.r|0;
+  const cc = coop.c|0, cr = coop.r|0;
+  const vx = bc-ac, vy = br-ar;
+  const len2 = vx*vx + vy*vy;
+  if(len2 <= 2){
+    const mx = (ac+bc)/2, my = (ar+br)/2;
+    return Math.max(Math.abs(cc-mx), Math.abs(cr-my)) <= 1.6;
+  }
+  const t = ((cc-ac)*vx + (cr-ar)*vy) / len2;
+  if(t < 0.12 || t > 0.92) return false;
+  const px = ac + t*vx, py = ar + t*vy;
+  return Math.max(Math.abs(cc-px), Math.abs(cr-py)) <= 1.6;
+}
+function coopCorridorAnchors(tiles){
+  const garden = typeof homesteadGardenOnTiles==='function' ? homesteadGardenOnTiles(tiles) : null;
+  const orchard = typeof homesteadOrchardOnTiles==='function' ? homesteadOrchardOnTiles(tiles) : null;
+  const barn = typeof findGridBarn==='function' ? findGridBarn(tiles) : null;
+  let house = null;
+  if(tiles){
+    for(let i=0;i<tiles.length;i++) if(tiles[i] && tiles[i].terrain==='house'){ house = tiles[i]; break; }
+  }
+  const gardenAnchor = garden || (house ? {c:(house.c|0), r:(house.r|0)+2} : {c:1, r:3});
+  const orchardAnchor = orchard || (barn ? {c:(barn.c|0)+2, r:(barn.r|0)} : {c:5, r:2});
+  return {garden, orchard, gardenAnchor, orchardAnchor, barn, house};
+}
+function coopInGardenOrchardCorridor(tiles){
+  const coop = typeof homesteadCoopOnTiles==='function' ? homesteadCoopOnTiles(tiles) : null;
+  if(!coop) return false;
+  const A = coopCorridorAnchors(tiles);
+  if(coopBetweenAnchors(coop, A.gardenAnchor, A.orchardAnchor)) return true;
+  const seats = (typeof COOP_CORRIDOR_SEATS!=='undefined' && COOP_CORRIDOR_SEATS) || [[2,3],[3,3],[2,4],[3,4],[4,3]];
+  for(let i=0;i<seats.length;i++){
+    const dc = Math.abs((coop.c|0)-seats[i][0]);
+    const dr = Math.abs((coop.r|0)-seats[i][1]);
+    if(Math.max(dc, dr) <= 1) return true;
+  }
+  return false;
+}
+/** Locked layout seats the coop on the garden–orchard walk once hens exist. */
+function coopCorridorOk(){
+  if(typeof coopCorridorReady==='function' && !coopCorridorReady()) return false;
+  const tiles = typeof homesteadCoopYardTiles==='function' ? homesteadCoopYardTiles() : null;
+  if(!tiles) return typeof campChickenCount==='function' ? campChickenCount()>0 : true;
+  if(typeof homesteadHasCoop==='function' && !homesteadHasCoop()) return false;
+  return coopInGardenOrchardCorridor(tiles);
+}
+function coopCorridorNeed(){
+  return !!(typeof coopCorridorReady==='function' && coopCorridorReady() && !(typeof coopCorridorOk==='function' && coopCorridorOk()));
+}
+function isCoopCorridorGardenT(t, s){
+  if(!t) return false;
+  if(t.deco==='deco_vegbox' || t.deco==='deco_herb' || t.deco==='deco_flowerbed') return true;
+  s = s || (typeof homeWaterFarm==='function' ? homeWaterFarm() : (typeof state!=='undefined' ? state : null));
+  if(t.crop && typeof currentHomeWaterFold==='function' && currentHomeWaterFold(s)) return true;
+  return false;
+}
+function isCoopCorridorOrchardT(t, s){
+  if(!t) return false;
+  if(t.terrain==='orchard' || t.terrain==='berrybush') return true;
+  if(t.deco==='deco_sunflower' || t.deco==='deco_roses' || t.deco==='deco_mushroom') return true;
+  if(t.farmEdge==='orchard' || t.orchardRegen!=null) return true;
+  if(typeof isOrchardMarkedT==='function' && isOrchardMarkedT(t)) return true;
+  s = s || (typeof orchardFruitFarm==='function' ? orchardFruitFarm() : (typeof state!=='undefined' ? state : null));
+  if(t.terrain==='trees' && typeof currentOrchardFold==='function' && currentOrchardFold(s)) return true;
+  return false;
+}
+function isCoopCorridorUnderstoryT(t, s){
+  if(!t || (t.terrain!=='soil' && t.terrain!=='dead')) return false;
+  s = s || (typeof orchardFruitFarm==='function' ? orchardFruitFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid || typeof currentOrchardFold!=='function' || !currentOrchardFold(s)) return false;
+  const g = (s.gridSize|0) || (typeof GRID==='number' ? GRID : 0);
+  if(g<=0) return false;
+  for(let dr=-1; dr<=1; dr++) for(let dc=-1; dc<=1; dc++){
+    if(!dc && !dr) continue;
+    const c = (t.c|0)+dc, r = (t.r|0)+dr;
+    if(c<0 || r<0 || c>=g || r>=g) continue;
+    const n = s.grid[r*g+c];
+    if(n && isCoopCorridorOrchardT(n, s)) return true;
+  }
+  return false;
+}
+function coopCorridorStory(t, opts){
+  opts = opts || {};
+  if(typeof coopCorridorReady==='function' && !coopCorridorReady()) return '';
+  const ok = typeof coopCorridorOk==='function' && coopCorridorOk();
+  const need = typeof coopCorridorNeed==='function' && coopCorridorNeed();
+  if(!ok && !need) return '';
+  const s = (typeof state!=='undefined') ? state : null;
+  const isCoop = !!(t && t.terrain==='coop');
+  const garden = typeof isCoopCorridorGardenT==='function' && isCoopCorridorGardenT(t, s);
+  const orchard = typeof isCoopCorridorOrchardT==='function' && isCoopCorridorOrchardT(t, s);
+  const under = typeof isCoopCorridorUnderstoryT==='function' && isCoopCorridorUnderstoryT(t, s);
+  if(!isCoop && !garden && !orchard && !under) return '';
+  if(opts.needOnly && ok) return '';
+  if(isCoop){
+    if(ok) return '🐔 The coop sits on the garden–orchard walk — hens scratch pests and understory. Eggs and bedding have a short path to the house.';
+    return (typeof homesteadHasCoop==='function' && homesteadHasCoop())
+      ? '🐔 The coop sits off the garden–orchard walk — pests linger in the beds, and the egg path is longer.'
+      : '🐔 No coop on the garden–orchard walk — pests linger until hens have a house between the beds and the trees.';
+  }
+  if(garden){
+    return ok
+      ? '🐔 Hens from the yard coop scratch pests on these beds.'
+      : '🐔 The yard coop is off the garden–orchard walk — pests linger on these beds.';
+  }
+  return ok
+    ? '🐔 Hens from the yard coop scratch the orchard understory.'
+    : '🐔 The yard coop is off the garden–orchard walk — the understory stays buggy.';
+}
+function coopCorridorGardenSoilTiles(s){
+  const tiles = [];
+  if(!s || !s.grid) return tiles;
+  if(typeof currentHomeWaterFold!=='function' || !currentHomeWaterFold(s)) return tiles;
+  s.grid.forEach((t, i)=>{
+    if(!t || !t.soil) return;
+    if(t.terrain!=='soil' && t.terrain!=='dead') return;
+    if(t.feature==='path' || t.feature==='swale') return;
+    if(typeof isGardenPondMarkedT==='function' && isGardenPondMarkedT(t)) return;
+    if(typeof isHomeSwaleMarkedT==='function' && isHomeSwaleMarkedT(t)) return;
+    if(!t.crop && t.deco!=='deco_vegbox' && t.deco!=='deco_herb' && t.deco!=='deco_flowerbed') return;
+    tiles.push({t, i});
+  });
+  return tiles;
+}
+function coopCorridorOrchardSoilTiles(s){
+  const tiles = [];
+  if(!s || !s.grid) return tiles;
+  if(typeof currentOrchardFold!=='function' || !currentOrchardFold(s)) return tiles;
+  const g = (s.gridSize|0) || (typeof GRID==='number' ? GRID : 0);
+  const seen = {};
+  const add = (t, i)=>{
+    if(!t || !t.soil) return;
+    const k = (t.c|0)+','+(t.r|0);
+    if(seen[k]) return;
+    seen[k] = 1;
+    tiles.push({t, i});
+  };
+  s.grid.forEach((t, i)=>{
+    if(!t || !isCoopCorridorOrchardT(t, s)) return;
+    add(t, i);
+    if(g<=0) return;
+    for(let dr=-1; dr<=1; dr++) for(let dc=-1; dc<=1; dc++){
+      if(!dc && !dr) continue;
+      const c = (t.c|0)+dc, r = (t.r|0)+dr;
+      if(c<0 || r<0 || c>=g || r>=g) continue;
+      const n = s.grid[r*g+c];
+      if(!n || (n.terrain!=='soil' && n.terrain!=='dead')) continue;
+      if(n.feature==='path') continue;
+      add(n, r*g+c);
+    }
+  });
+  return tiles;
+}
+function applyCoopCorridorSoil(t, hold){
+  if(!t || !t.soil) return;
+  const b = hold
+    ? ((typeof COOP_CORRIDOR_HOLD_SOIL!=='undefined') ? COOP_CORRIDOR_HOLD_SOIL : {om:0.35, microbial:0.4})
+    : ((typeof COOP_CORRIDOR_NICK_SOIL!=='undefined') ? COOP_CORRIDOR_NICK_SOIL : {om:-0.3, microbial:-0.25});
+  if(hold){
+    if((t.soil.om||0) < 78) t.soil.om = clamp((t.soil.om||0) + (b.om||0));
+    if((t.soil.microbial||0) < 78) t.soil.microbial = clamp((t.soil.microbial||0) + (b.microbial||0));
+  }else{
+    t.soil.om = clamp((t.soil.om||0) + (b.om||0));
+    t.soil.microbial = clamp((t.soil.microbial||0) + (b.microbial||0));
+  }
+  if(typeof recalc==='function') recalc(t);
+}
+function coopCorridorApplyFarms(){
+  const farms = [];
+  const push = (s)=>{
+    if(!s || !s.grid) return;
+    for(let i=0;i<farms.length;i++) if(farms[i]===s) return;
+    farms.push(s);
+  };
+  if(typeof homeWaterFarm==='function') push(homeWaterFarm());
+  if(typeof orchardFruitFarm==='function') push(orchardFruitFarm());
+  if(typeof state!=='undefined' && state && !state.homesteadView) push(state);
+  return farms;
+}
+/** One sim dawn: corridor hens scratch garden pests / orchard understory; a missing or far coop nicks those beds. First session stays off. */
+function tickCoopCorridor(){
+  if(!camp || typeof coopCorridorReady!=='function' || !coopCorridorReady()) return 0;
+  const hold = typeof coopCorridorOk==='function' && coopCorridorOk();
+  const farms = coopCorridorApplyFarms();
+  let n = 0;
+  let fi = -1;
+  farms.forEach(s=>{
+    const tiles = coopCorridorGardenSoilTiles(s).concat(coopCorridorOrchardSoilTiles(s));
+    tiles.forEach(({t, i})=>{
+      applyCoopCorridorSoil(t, hold);
+      n++;
+      if(fi<0 && state && state.grid===s.grid && state.grid[i]) fi = i;
+    });
+  });
+  if(fi<0 && state && state.grid){
+    for(let i=0;i<state.grid.length;i++){
+      if(state.grid[i] && state.grid[i].terrain==='coop'){ fi = i; break; }
+    }
+  }
+  if(fi<0) fi = (typeof selected==='number' && selected>=0) ? selected : 0;
+  if(!hold && n>0){
+    if(typeof floater==='function' && state && state.grid && state.grid[fi])
+      floater(fi, 'pests', '#c9a070');
+    if(typeof toast==='function')
+      toast('🐔 The coop is off the garden–orchard walk — pests linger in the beds.', {once:'coop_corridor_need_first', throttleMs:4000});
+  }else if(hold && n>0){
+    if(typeof toast==='function')
+      toast('🐔 Hens scratch garden pests and orchard understory from the coop on that walk.', {once:'coop_corridor_hold_first', throttleMs:4000});
+  }
+  return n;
 }
 /** Living stock sits on grass only — never the house, stand, barn door, or leftover pile. */
 function homesteadYardSeatOk(t){
@@ -11807,7 +12065,8 @@ function applyHomesteadTool(i){
       toast('🏠 The barn — leftover compost sits in the yard beside it. Manure heat cooks that pile hotter than one parked far away.');
     }else if(t.terrain==='coop'){
       const coopReady = typeof coopBeddingReady==='function' && coopBeddingReady();
-      toast('🐔 The coop — hens scratch the grass. Eggs go to the crate by the house.'+(coopReady?' Bedding and droppings feed the compost pile.':''));
+      const corridor = (typeof coopCorridorStory==='function') ? coopCorridorStory(t) : '';
+      toast(corridor || ('🐔 The coop — hens scratch the grass. Eggs go to the crate by the house.'+(coopReady?' Bedding and droppings feed the compost pile.':'')));
     }
     return true;
   }
@@ -14947,7 +15206,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.compostyardfix';
+const SHIP_BUILD = '2026-08-22.coopcorridor';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -15097,7 +15356,7 @@ function openAboutCredits(){
   if(showNew) camp.tipsShown['whats_new_'+ver] = true;
   const whatsNew = showNew
     ? `<div class="lesson" style="text-align:left;margin-top:6px;border-color:rgba(234,181,67,.45)">
-        <b>What's new (${ver}):</b> After Home Patch the compost pile by the barn cooks hotter — leftover compost from that yard pile feeds beds harder than a pile parked far from the manure.
+        <b>What's new (${ver}):</b> After Home Patch a coop on the garden–orchard walk lets hens scratch pests and understory; off that walk, the beds miss the birds.
       </div>`
     : '';
   // CD — first About open literacy (in-modal; no toast spam)
@@ -19466,9 +19725,11 @@ function openInfo(refreshOnly){
       : (t.terrain==='barn'
         ? `<div class="chiprow">The barn — leftover compost sits in the yard beside it. Manure heat cooks that pile hotter than one parked far from the yard. Crate leftovers${pileFeedAnd} feed that pile.</div>`
         : (t.terrain==='coop'
-          ? `<div class="chiprow">The coop — hens scratch the grass. Eggs trickle into the crate by the house.${coopReady?' Bedding and droppings feed the compost pile.':''}</div>
+          ? `<div class="chiprow">${(typeof coopCorridorStory==='function' && coopCorridorStory(t)) || ('The coop — hens scratch the grass. Eggs trickle into the crate by the house.'+(coopReady?' Bedding and droppings feed the compost pile.':''))}</div>
              ${crateChip}`
           : `<div class="chiprow">Bank 🪙${camp.bank|0}. Use 🚜 Clear to remove (free).</div>`));
+    const yardCorridor = (t.terrain!=='coop' && typeof coopCorridorStory==='function') ? coopCorridorStory(t) : '';
+    if(yardCorridor) body += `<div class="chiprow">${yardCorridor}</div>`;
     if(t.deco) body += `<div class="chiprow">🎀 ${t.deco.replace('deco_','')}</div>`;
     if(hasFence(t)) body += `<div class="chiprow">🚧 Fence ${yardOrientLabel(fenceFacing(t))}</div>`;
     if(t.terrain!=='soil' && t.terrain!=='barn' && t.terrain!=='house' && t.terrain!=='dead' && t.terrain!=='nstand' && t.terrain!=='coop') body += `<div class="chiprow">🏗️ ${t.terrain}</div>`;
@@ -19588,6 +19849,10 @@ function openInfo(refreshOnly){
       else
         body += `<div class="chiprow">🍎 sapling — fruit after it settles in</div>`;
     }
+    if(typeof coopCorridorStory==='function'){
+      const coopLine = coopCorridorStory(t);
+      if(coopLine) body += `<div class="chiprow">${coopLine}</div>`;
+    }
   }else if(t.terrain==='soil'){
     const chips = [];
     if(t.crop){
@@ -19637,6 +19902,10 @@ function openInfo(refreshOnly){
       chips.push('💧 garden water blocked — nearby beds lose moisture');
     else if(typeof homeWaterReady==='function' && homeWaterReady() && typeof homeWaterNearMarked==='function' && homeWaterNearMarked(t) && t.feature!=='swale')
       chips.push('💧 beside the garden pond and swale — more hold when those stay open');
+    {
+      const coopLine = (typeof coopCorridorStory==='function') ? coopCorridorStory(t) : '';
+      if(coopLine) chips.push(coopLine);
+    }
     if(typeof isAtlasLaneMarkedT==='function' && isAtlasLaneMarkedT(t)){
       const laneChip = (typeof laneStory==='function' && laneStory(t)) || '🛤️ farm lane — keep it clear for the herd';
       chips.push(laneChip);
@@ -19769,8 +20038,13 @@ function openInfo(refreshOnly){
             : 'This tree sits in the dry wash. Clear it to open the bed again. Not a second river.')
         : 'A living hedgerow — shelter from wind and rain for neighbors, and a home for bees, butterflies and songbirds.';
     body = `<div class="istory">${story}</div><div class="chiprow">${edgeLine}</div>`;
+    if(typeof coopCorridorStory==='function'){
+      const coopLine = coopCorridorStory(t);
+      if(coopLine) body += `<div class="chiprow">${coopLine}</div>`;
+    }
   }else{
-    body = `<div class="chiprow">${t.terrain==='barn'?'Home sweet home. The heart of the farm.':'Cozy quarters for the cluck crew.'}</div>`;
+    const coopLine = (typeof coopCorridorStory==='function') ? coopCorridorStory(t) : '';
+    body = `<div class="chiprow">${coopLine || (t.terrain==='barn'?'Home sweet home. The heart of the farm.':'Cozy quarters for the cluck crew.')}</div>`;
   }
   const regName = (REGIONS.find(r=>r.id===t.region)||{}).name || '';
   const crateChip = (typeof harvestCrateChipHtml==='function') ? harvestCrateChipHtml() : '';
