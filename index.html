@@ -2108,7 +2108,8 @@ function leftoverStampFeelFor(spec){
   const id = (spec && spec.id) || '';
   if(id==='hay_field' || id==='south_lane') return 'hay';
   if(id==='woodlot') return 'woodlot';
-  if(id==='wet_meadow' || id==='willow_bottom' || id==='marsh_finger') return 'wet';
+  if(id==='wet_meadow') return 'meadow';
+  if(id==='willow_bottom' || id==='marsh_finger') return 'wet';
   if(id==='north_folds' || id==='west_folds' || id==='back_paddock') return 'paddock';
   if(id==='orchard_block') return 'orchard';
   if(id==='dust_scrub' || id==='dust_flats' || id==='flats') return 'dust';
@@ -2116,10 +2117,11 @@ function leftoverStampFeelFor(spec){
   if(id==='south_reach') return 'river';
   return 'heal';
 }
-/** Hay / paddock / orchard / dry graze / meadow — open leftover fields that take a weather-side windbreak. */
+/** Hay / paddock / orchard / dry graze — open leftover fields that take a weather-side windbreak.
+ *  Meadow / wet leftover stays a wet fold, not a hay break. */
 function leftoverOpenFieldFeel(spec){
   const feel = leftoverStampFeelFor(spec);
-  if(feel==='hay' || feel==='paddock' || feel==='orchard' || feel==='dry_graze' || feel==='meadow') return true;
+  if(feel==='hay' || feel==='paddock' || feel==='orchard' || feel==='dry_graze') return true;
   return false;
 }
 function leftoverStampStory(feel, P){
@@ -2129,6 +2131,7 @@ function leftoverStampStory(feel, P){
     hay: 'Open hay and cover — cut forage, rest the ground, keep the weather-side windbreak. Not a kitchen row.',
     woodlot: 'Shade and brush. Restore the understory; leave the canopy.',
     wet: 'Wet ground and reeds. Do not farm this like a dry garden.',
+    meadow: 'Wet flowery meadow — reeds, clover, and flowers along the creek. Not hay, not a kitchen row.',
     paddock: 'A grazing fold. Pasture, manure, rest, and stock water — not a kitchen garden.',
     orchard: 'Trees and understory. Perennials, not corn rows.',
     dust: 'Salt, dust, and a dry wash that only runs after rain. Soften it; do not pretend it is lush.',
@@ -2184,6 +2187,22 @@ function leftoverStampProfile(feel, grid, spec){
         {em:'🦢', desc:'Hold '+wetN+' wet tiles (water, pond, or reeds)', prog:()=>[Math.min(wetN, countWetTiles()), wetN]},
         {em:'💚', desc:'Heal '+bankN+' wet-bank tiles to 50+', prog:()=>[Math.min(bankN, countWetBankHealthy(50)), bankN]},
         {em:'🌳', desc:'Plant '+bufN+' trees by the water', prog:()=>[Math.min(bufN, (state.stats && state.stats.buffers)|0), bufN]},
+      ]
+    };
+  }
+  if(feel==='meadow'){
+    const wetN = Math.max(4, Math.round(g*0.28));
+    const bloomN = Math.max(8, Math.round(g*g*0.08));
+    const bankN = Math.max(5, Math.round(g*0.42));
+    return {
+      tools: ['select','compost','covercrop','clover','wetland','pond','trees','bulldoze'],
+      river: true, regen: 1.2, ovs: ['health','water','runoff'],
+      goalText: 'Keep this wet meadow in flower and flow.',
+      doneText: name+' is a living wet meadow again.',
+      goals: [
+        {em:'🦢', desc:'Hold '+wetN+' wet tiles (water, creek, or reeds)', prog:()=>[Math.min(wetN, countWetTiles()), wetN]},
+        {em:'🌸', desc:'Keep '+bloomN+' clover or flower tiles', prog:()=>[Math.min(bloomN, countMeadowBloom()), bloomN]},
+        {em:'💚', desc:'Heal '+bankN+' wet-bank tiles to 50+', prog:()=>[Math.min(bankN, countWetBankHealthy(50)), bankN]},
       ]
     };
   }
@@ -2564,7 +2583,7 @@ const VALLEY_PARCELS = [
    systemsTaught:[], neighborParcels:['back_paddock','homestead'],
    unlockRules:{type:'parcel_cleared', parcelId:'back_paddock'}, landmark:'fence',
    desc:'Lower paddock folds between the house and the herd.'},
-  {id:'wet_meadow', name:'Wet Meadow', em:'🦢', kind:'plot', leftover:true, stampFeel:'wet', levelId:'wet_meadow', lvIndex:null,
+  {id:'wet_meadow', name:'Wet Meadow', em:'🦢', kind:'plot', leftover:true, stampFeel:'meadow', levelId:'wet_meadow', lvIndex:null,
    origin:{c:2, r:2}, size:{w:18, h:14}, teaser:'wetland',
    systemsTaught:[], neighborParcels:['marsh_finger'],
    unlockRules:{type:'parcel_cleared', parcelId:'marsh_finger'}, landmark:'heron',
@@ -4288,6 +4307,50 @@ function currentPaddockFold(s){
   const P = typeof valleyParcelByLvIndex==='function' ? valleyParcelByLvIndex(s.lv) : null;
   return leftoverIsPaddockFold(P);
 }
+/** Interior leftover land that can take clover / flowers. Leave creek, reeds, and riparian trees. */
+function leftoverMeadowSeatOk(t, g){
+  if(!t || !leftoverStampLand(t)) return false;
+  if(t.feature==='path' || t.feature==='swale' || t.feature==='saltflat') return false;
+  if(t.atlasLandmark) return false;
+  if(typeof isFarmEdgeT==='function' && isFarmEdgeT(t)) return false;
+  if(typeof isWoodlotT==='function' && isWoodlotT(t)) return false;
+  if(typeof isRiparianT==='function' && isRiparianT(t)) return false;
+  if(typeof isStockDrinkT==='function' && isStockDrinkT(t)) return false;
+  return true;
+}
+/** Clover / pioneer cover or a flowered soil tile — meadow, not hay wheat or sisters. */
+function leftoverIsMeadowBloomT(t){
+  if(!t) return false;
+  if(t.crop && (t.crop.type==='clover' || t.crop.type==='covercrop')) return true;
+  return t.terrain==='soil' && (t.flowers||0) > 0.14;
+}
+/** Leftover / bought wet-meadow folds. Home Patch and campaign marsh stay off. */
+function leftoverIsMeadowFold(P){
+  if(!P) return false;
+  if(P.id==='home_garden' || P.lvIndex===0) return false;
+  if(P.id==='marsh_finger' || P.levelId==='marsh') return false;
+  const feel = typeof leftoverStampFeelFor==='function' ? leftoverStampFeelFor(P) : (P.stampFeel||'');
+  if(feel==='meadow' || P.id==='wet_meadow') return true;
+  return (feel==='wet') && !!(P.leftover || P.buyable);
+}
+function currentMeadowFold(s){
+  s = s || (typeof state!=='undefined' ? state : null);
+  if(!s) return false;
+  const L = (typeof LEVELS!=='undefined' && LEVELS[s.lv]) ? LEVELS[s.lv] : null;
+  if(L && L.id==='home') return false;
+  if(L && L.id==='marsh') return false;
+  if(L && (L.stampFeel==='meadow' || L.id==='wet_meadow')) return true;
+  const P = typeof valleyParcelByLvIndex==='function' ? valleyParcelByLvIndex(s.lv) : null;
+  return leftoverIsMeadowFold(P);
+}
+/** Bare leftover soil away from creek / reeds / pond — dries harder on a meadow fold. */
+function leftoverMeadowDryAway(t, s){
+  s = s || (typeof state!=='undefined' ? state : null);
+  if(!t || t.terrain!=='soil') return false;
+  if(t.crop || t.graze) return false;
+  if(typeof leftoverWetNear==='function' && leftoverWetNear(s, t)) return false;
+  return typeof leftoverStampLand==='function' ? leftoverStampLand(t) : true;
+}
 /** Atlas orchard / leftover fruit trees — not a woodlot belt, not a hay row. */
 function leftoverIsOrchardGroveT(t){
   if(!t) return false;
@@ -4532,6 +4595,53 @@ function ensureNoInventedRiverOnDust(s, P){
     if(t.terrain==='riverbed') t.atlasWater = 'wash';
   });
 }
+/** Clover / flowers on leftover meadow or leftover wet. No wheat, no sisters, no second river. */
+function dressLeftoverMeadowBloom(s, P, opts){
+  if(!s || !s.grid || !P) return;
+  opts = opts || {};
+  const tiles = s.grid;
+  const roll = (t, k)=> sr(((t.c+3)*19 + (t.r+7)*41 + (k||0)*13 + (P.id||'').length*8));
+  const g = (s.gridSize|0) || (typeof GRID==='number' ? GRID : 8);
+  const light = !!opts.light;
+  const wantCover = light ? Math.max(3, Math.round((g*g)*0.06)) : Math.max(8, Math.round((g*g)*0.08));
+  let bloom = tiles.filter(t=>typeof leftoverIsMeadowBloomT==='function' ? leftoverIsMeadowBloomT(t) && t.crop : false).length;
+  const scoreBloom = (t)=>{
+    let n = 0;
+    if(typeof leftoverWetNear==='function' && leftoverWetNear(s, t)) n += 10;
+    if(t.atlasBiome==='marsh' || t.atlasBiome==='riparian') n += 4;
+    if(t.atlasBiome==='pasture' || t.atlasBiome==='heartland') n += 2;
+    n += roll(t, 1) * 1.3;
+    return n;
+  };
+  tiles.filter(t=>leftoverMeadowSeatOk(t, g) && t.terrain==='soil').slice().sort((a,b)=>scoreBloom(b)-scoreBloom(a)).forEach(t=>{
+    if(bloom>=wantCover) return;
+    if(typeof farmCoverWouldBreakStock==='function' && farmCoverWouldBreakStock(s, t)) return;
+    const bank = typeof leftoverWetNear==='function' && leftoverWetNear(s, t);
+    if(!(bank || bloom < Math.round(wantCover*0.55) || roll(t,2)<0.34)) return;
+    const type = roll(t,3)<0.68 ? 'clover' : 'covercrop';
+    t.crop = {type, growth:0.26 + roll(t,4)*0.18, days:2};
+    t.deco = null;
+    t.flowers = Math.max(t.flowers||0, 0.18 + roll(t,5)*0.22);
+    bloom++;
+  });
+  tiles.forEach(t=>{
+    if(!t || !leftoverMeadowSeatOk(t, g)) return;
+    if(t.terrain==='dead' && leftoverWetNear(s, t) && roll(t,6)<0.58){
+      seedSoil(t, 22 + roll(t,7)*8, 8);
+      t.soil.water = Math.min(100, (t.soil.water||30)+20);
+    }
+    if(t.terrain!=='soil') return;
+    const bank = typeof leftoverWetNear==='function' && leftoverWetNear(s, t);
+    if(bank){
+      t.soil.water = Math.min(100, (t.soil.water||30)+10);
+      t.soil.om = Math.min(100, (t.soil.om||30)+3);
+      t.flowers = Math.max(t.flowers||0, 0.22 + roll(t,8)*0.28);
+    }else if(!t.crop && roll(t,9)<(light?0.22:0.38)){
+      t.flowers = Math.max(t.flowers||0, 0.14 + roll(t,10)*0.22);
+    }
+    if(typeof recalc==='function') recalc(t);
+  });
+}
 /** Thin land-tied starting mix on top of the atlas crop. Does not invent a new river. */
 function dressLeftoverStamp(s, P){
   if(!s || !s.grid || !P) return;
@@ -4628,6 +4738,53 @@ function dressLeftoverStamp(s, P){
     });
     return;
   }
+  if(feel==='meadow'){
+    // Keep painted creek / reeds / marsh ponds. Do not invent a river or filter pond.
+    if(typeof ensureMarshPondKeep==='function') ensureMarshPondKeep(s, P);
+    const atlasPonds = tiles.filter(t=>t.terrain==='pond' && (t.atlasWater==='pond_site' || (typeof isMarshPondT==='function' && isMarshPondT(t)))).length;
+    const liveWater = tiles.filter(t=>t.terrain==='water').length;
+    const wantReed = (atlasPonds || liveWater) ? Math.max(6, Math.round(((s.gridSize|0)||GRID)*0.55)) : 0;
+    let reeds = tiles.filter(t=>t.terrain==='wetland').length;
+    const scoreReed = (t)=>{
+      let n = 0;
+      if(typeof leftoverWetNear==='function' && leftoverWetNear(s, t)) n += 8;
+      if(t.atlasBiome==='marsh') n += 5;
+      if(t.atlasBiome==='riparian') n += 3;
+      if(typeof marshPondFeedAdj==='function' && marshPondFeedAdj(t, s)) n += 6;
+      n += roll(t, 1) * 1.4;
+      return n;
+    };
+    tiles.filter(t=>leftoverStampLand(t)).slice().sort((a,b)=>scoreReed(b)-scoreReed(a)).forEach(t=>{
+      if(reeds>=wantReed) return;
+      const marshy = t.atlasBiome==='marsh' || t.atlasBiome==='riparian';
+      if(!(leftoverWetNear(s,t) || marshy || (typeof marshPondFeedAdj==='function' && marshPondFeedAdj(t, s)))) return;
+      t.terrain = 'wetland';
+      carveClear(t);
+      reeds++;
+    });
+    tiles.forEach(t=>{
+      if(!t || t.terrain!=='soil') return;
+      const marshy = t.atlasBiome==='marsh' || t.atlasBiome==='riparian';
+      const bank = typeof leftoverWetNear==='function' && leftoverWetNear(s, t);
+      const feed = typeof marshPondFeedAdj==='function' && marshPondFeedAdj(t, s);
+      if(!(marshy || bank || feed)) return;
+      t.soil.water = Math.min(100, (t.soil.water||30)+(feed?28:22));
+      t.soil.om = Math.min(100, (t.soil.om||30)+4);
+      recalc(t);
+    });
+    tiles.forEach(t=>{
+      if(!t || t.terrain!=='dead' || !leftoverStampLand(t)) return;
+      const marshy = t.atlasBiome==='marsh' || t.atlasBiome==='riparian';
+      if(!(leftoverWetNear(s,t) || marshy)) return;
+      if(roll(t,6)<0.62){
+        seedSoil(t, 22, 8);
+        t.soil.water = Math.min(100, (t.soil.water||30)+26);
+        recalc(t);
+      }
+    });
+    if(typeof dressLeftoverMeadowBloom==='function') dressLeftoverMeadowBloom(s, P, {light:false});
+    return;
+  }
   if(feel==='wet'){
     if(typeof ensureMarshPondKeep==='function') ensureMarshPondKeep(s, P);
     const atlasPonds = tiles.filter(t=>t.terrain==='pond' && (t.atlasWater==='pond_site' || (typeof isMarshPondT==='function' && isMarshPondT(t)))).length;
@@ -4698,6 +4855,9 @@ function dressLeftoverStamp(s, P){
           willows++;
         }
       });
+    }
+    if((P.leftover || P.buyable) && typeof dressLeftoverMeadowBloom==='function'){
+      dressLeftoverMeadowBloom(s, P, {light:true});
     }
     return;
   }
@@ -5159,6 +5319,12 @@ function countHayPlanted(){
   const cover = (state.stats && state.stats.coverPlanted)|0;
   const wheat = (state.stats && state.stats.wheatPlanted)|0;
   return Math.max(live, cover + wheat);
+}
+function countMeadowBloom(){
+  if(!state || !state.grid) return 0;
+  const live = state.grid.filter(t=>typeof leftoverIsMeadowBloomT==='function' ? leftoverIsMeadowBloomT(t) : false).length;
+  const cover = (state.stats && state.stats.coverPlanted)|0;
+  return Math.max(live, cover);
 }
 function countTreeTiles(){
   if(!state || !state.grid) return 0;
@@ -6480,6 +6646,13 @@ function simStep(dt){
             if(hold) d += 0.02;
             else if(over) d -= 0.05;
           }
+        }
+      }
+      if(typeof currentMeadowFold==='function' && currentMeadowFold()){
+        const bank = typeof leftoverWetNear==='function' && leftoverWetNear(state, t);
+        if(k==='water'){
+          if(bank) d += 0.07;                        // wet banks hold water
+          else if(typeof leftoverMeadowDryAway==='function' && leftoverMeadowDryAway(t, state)) d -= 0.05;
         }
       }
       if(typeof riparianAdj==='function' && riparianAdj(t)){
@@ -10723,7 +10896,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.drinkstand';
+const SHIP_BUILD = '2026-08-22.meadowfeel';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
