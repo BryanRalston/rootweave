@@ -5121,10 +5121,11 @@ function tickPaddockStockThirst(){
   }
   return tiles.length;
 }
-/** Seated / atlas windbreak, hedgerow, or woodlot canopy — not riparian, not a stump. */
+/** Seated / atlas / planted windbreak, hedgerow, or woodlot canopy — not riparian, not a stump. */
 function isWindShelterT(t){
   if(!t) return false;
   if(t.woodRegen!=null) return false;
+  if(typeof isRiparianT==='function' && isRiparianT(t)) return false;
   if(t.farmEdge==='windbreak' || t.farmEdge==='hedgerow' || t.farmEdge==='woodlot') return true;
   if(typeof isWoodlotT==='function' && isWoodlotT(t)) return true;
   if(t.atlasFeature==='hedgerow' || t.atlasFeature==='windbreak') return true;
@@ -5132,6 +5133,8 @@ function isWindShelterT(t){
     const A = atlasGet(t.atlasC, t.atlasR);
     if(A && (A.feature==='hedgerow' || A.feature==='woodlot')) return true;
   }
+  // Leftover paddock trees tool + inspect already call this a living hedgerow.
+  if(t.terrain==='trees') return true;
   return false;
 }
 /** Walking graze is in the lee when a windbreak / hedgerow / woodlot is in reach. */
@@ -12019,7 +12022,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.windshelter';
+const SHIP_BUILD = '2026-08-22.hedgelee';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
