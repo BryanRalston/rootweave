@@ -5084,6 +5084,7 @@ function tickHedgeBerryGrow(s){
       if(t.hedgeRegen >= HEDGE_REGEN_DAYS){
         t.terrain = 'trees';
         t.deco = null;
+        t.graze = null;
         t.farmEdge = 'hedgerow';
         t.atlasFeature = t.atlasFeature || 'hedgerow';
         t.hedgeRegen = null;
@@ -11815,6 +11816,10 @@ function applyTool(i){
       toast('🌳 The herd walks around the bank buffer — keep hooves off the water.');
       ringAt(i, '#7fd4f0'); SND.uhoh(); return false;
     }
+    if(typeof isHedgerowT==='function' && isHedgerowT(t)){
+      toast('🫐 The herd walks around the hedge — leave the shelter standing.');
+      ringAt(i, '#6fae5f'); SND.uhoh(); return false;
+    }
     // L5 — graze branch only for animal tools (never bleed into orchard/build wording)
     if(dead && tool!=='goat'){
       toast(toolAllowed('goat') ? '💀 Nothing to eat on dead ground… only 🐐 goats can browse this scrub!'
@@ -11847,6 +11852,10 @@ function applyTool(i){
   }
   if(tool==='pond'){
     if(t.crop || t.graze){ toastNeedClear(t); return false; }
+    if(typeof isHedgerowT==='function' && isHedgerowT(t)){
+      toast('🫐 That hedge is returning — not a pond bed. Leave the shelter standing.');
+      ringAt(i, '#6fae5f'); SND.uhoh(); return false;
+    }
     if(!spend(td.cost)) return false;
     t.terrain = 'pond'; t.flowers = 0; t.deco = null; t.feature = null;
     state.stats.ponds++;
@@ -11856,6 +11865,10 @@ function applyTool(i){
   if(tool==='trees'){
     if(dead){ toast('💀 Saplings can\'t root in dead ground — feed it first with 🪣 or 🌿!'); SND.uhoh(); return false; }
     if(t.crop || t.graze){ toastNeedClear(t); return false; }
+    if(typeof isHedgerowT==='function' && isHedgerowT(t)){
+      toast('🫐 That hedge is returning — not a plant bed. Leave the shelter standing.');
+      ringAt(i, '#6fae5f'); SND.uhoh(); return false;
+    }
     if(!spend(td.cost)) return false;
     t.terrain = 'trees'; t.flowers = Math.min(1, t.flowers+0.3); t.deco = null;
     if(typeof currentWoodlotFold==='function' && currentWoodlotFold()){
@@ -12484,7 +12497,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.hedgeberry';
+const SHIP_BUILD = '2026-08-22.hedgestump';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
