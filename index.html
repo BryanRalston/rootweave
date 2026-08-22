@@ -1055,6 +1055,8 @@ const PADDOCK_DRINK_SOIL = {water:1, om:0.25}; // tiny recover when the drink is
 const PADDOCK_EXPOSE_SOIL = {om:-0.6, erosion:-1.0, water:-0.5}; // dawn nick: winter graze with no windbreak in reach
 const PADDOCK_SHELTER_REACH = 2; // chebyshev tiles — herd can walk into the lee
 const PADDOCK_EXPOSE_STAY = 0.12; // modest tired-pad tick; thirst uses 0.15
+const WIND_SHELTER_NICK_SOIL = {water:-0.8, erosion:-0.6, om:-0.2}; // dawn nick: weather-edge bare after Home
+const WIND_SHELTER_HOLD_SOIL = {water:0.35, erosion:0.3, om:0.1}; // modest hold when the weather-side break stays
 const DUST_WASH_DRY_SOIL = {water:-2.0, om:-0.5, erosion:-0.8}; // dawn nick: dry season, wash filled / blocked / missing
 const DUST_WASH_WET_SOIL = {water:0.8, om:0.2}; // tiny recover after a rare wet pulse when the wash is open
 const HIGH_POND_NICK_SOIL = {erosion:-0.8, water:-0.4, om:-0.3}; // dawn nick: wet pulse / runoff, pond filled / blocked / missing
@@ -7375,21 +7377,22 @@ function tickPaddockStockThirst(){
   }
   return tiles.length;
 }
-/** Seated / atlas / planted windbreak, hedgerow, or woodlot canopy — not riparian, not a stump. */
+/** Seated / atlas / planted windbreak, hedgerow, or woodlot canopy — living cover only, not a stump or a cleared mark. */
 function isWindShelterT(t){
   if(!t) return false;
   if(t.woodRegen!=null || t.willowRegen!=null || t.hedgeRegen!=null || t.reedRegen!=null || t.orchardRegen!=null || t.hayRegen!=null) return false;
   if(typeof isRiparianT==='function' && isRiparianT(t)) return false;
+  const living = t.terrain==='trees' || t.terrain==='orchard' || t.terrain==='berrybush';
+  if(!living) return false;
   if(t.farmEdge==='windbreak' || t.farmEdge==='hedgerow' || t.farmEdge==='woodlot' || t.farmEdge==='willow') return true;
   if(typeof isWoodlotT==='function' && isWoodlotT(t)) return true;
   if(t.atlasFeature==='hedgerow' || t.atlasFeature==='windbreak') return true;
-  if(t.terrain==='trees' && t.atlasC!=null && typeof atlasGet==='function'){
+  if(t.atlasC!=null && typeof atlasGet==='function'){
     const A = atlasGet(t.atlasC, t.atlasR);
     if(A && (A.feature==='hedgerow' || A.feature==='woodlot')) return true;
   }
   // Leftover paddock trees tool + inspect already call this a living hedgerow.
-  if(t.terrain==='trees') return true;
-  return false;
+  return true;
 }
 /** Walking graze is in the lee when a windbreak / hedgerow / woodlot is in reach. */
 function paddockWindShelterNear(t, s){
@@ -8701,6 +8704,200 @@ function seatLeftoverHedgerowSeams(s, P){
 function seatLeftoverFarmEdges(s, P){
   seatLeftoverHedgerowSeams(s, P);
   seatLeftoverWindbreak(s, P);
+}
+/** Field under the player, or the parked open fold while they are in the yard. */
+function windShelterFarm(){
+  if(typeof homesteadMode!=='undefined' && homesteadMode && typeof plotStateBackup!=='undefined'
+     && plotStateBackup && plotStateBackup.grid && !plotStateBackup.homesteadView){
+    return plotStateBackup;
+  }
+  if(state && !state.homesteadView) return state;
+  return null;
+}
+function currentWindShelterParcel(s){
+  s = s || (typeof windShelterFarm==='function' ? windShelterFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s) return null;
+  if(s.homesteadView) return null;
+  const L = (typeof LEVELS!=='undefined' && LEVELS[s.lv]) ? LEVELS[s.lv] : null;
+  if(L && L.id==='home') return null;
+  const P = typeof valleyParcelByLvIndex==='function' ? valleyParcelByLvIndex(s.lv) : null;
+  if(P && (P.id==='home_garden' || P.lvIndex===0)) return null;
+  return P || null;
+}
+/** Hay / paddock / orchard / dry graze — folds that already seat a weather-side break. Home stays off. */
+function currentWindShelterFold(s){
+  s = s || (typeof windShelterFarm==='function' ? windShelterFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || s.homesteadView) return false;
+  const L = (typeof LEVELS!=='undefined' && LEVELS[s.lv]) ? LEVELS[s.lv] : null;
+  if(L && L.id==='home') return false;
+  const P = typeof currentWindShelterParcel==='function' ? currentWindShelterParcel(s) : null;
+  if(typeof leftoverOpenFieldFeel==='function' && leftoverOpenFieldFeel(P || L)) return true;
+  return !!(P && typeof leftoverWantsWindbreak==='function' && leftoverWantsWindbreak(P));
+}
+function isWeatherEdgeShelterMarkT(t){
+  if(!t) return false;
+  if(t.farmEdge==='windbreak' || t.farmEdge==='hedgerow' || t.farmEdge==='woodlot') return true;
+  if(t.atlasFeature==='hedgerow' || t.atlasFeature==='woodlot' || t.atlasFeature==='windbreak') return true;
+  return false;
+}
+/** Weather-side play cells for this crop — same N / NW seats leftover windbreaks use. */
+function weatherEdgeTiles(s, P){
+  const out = [];
+  s = s || (typeof windShelterFarm==='function' ? windShelterFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return out;
+  P = P || (typeof currentWindShelterParcel==='function' ? currentWindShelterParcel(s) : null);
+  const g = (s.gridSize|0) || (typeof GRID==='number' ? GRID : 0);
+  if(g<=0) return out;
+  const side = (P && typeof leftoverWeatherSide==='function') ? leftoverWeatherSide(P) : 'n';
+  const push = (c, r)=>{
+    if(typeof inGrid==='function' && !inGrid(c,r)) return;
+    const t = s.grid[typeof idx==='function' ? idx(c,r) : (r*g+c)];
+    if(t) out.push(t);
+  };
+  if(side==='n' || side==='nw'){
+    for(let c=0;c<g;c++) push(c, 0);
+  }
+  if(side==='nw'){
+    const tongue = Math.max(2, Math.min(3, (g/4)|0 || 2));
+    for(let r=1;r<tongue;r++) push(0, r);
+  }
+  return out;
+}
+function windShelterWeatherEdgeAt(t, s){
+  if(!t) return false;
+  const edge = weatherEdgeTiles(s);
+  for(let i=0;i<edge.length;i++) if(edge[i]===t) return true;
+  return false;
+}
+function windShelterCoverCount(s){
+  let live = 0, marked = 0;
+  weatherEdgeTiles(s).forEach(t=>{
+    const living = typeof isWindShelterT==='function' && isWindShelterT(t);
+    if(living || isWeatherEdgeShelterMarkT(t)) marked++;
+    if(living) live++;
+  });
+  return {live, marked};
+}
+function rememberWeatherEdgeMark(t){
+  if(!t) return;
+  if(t.farmEdge==='windbreak' || t.farmEdge==='hedgerow' || t.farmEdge==='woodlot') return;
+  if(typeof homePatchCleared==='function' && !homePatchCleared()) return;
+  if(typeof currentWindShelterFold==='function' && !currentWindShelterFold()) return;
+  if(typeof windShelterWeatherEdgeAt==='function' && !windShelterWeatherEdgeAt(t)) return;
+  t.farmEdge = t.farmEdge || 'windbreak';
+}
+function windShelterReady(s){
+  if(!camp) return false;
+  if(typeof homePatchCleared==='function' && !homePatchCleared()) return false;
+  s = s || (typeof windShelterFarm==='function' ? windShelterFarm() : (typeof state!=='undefined' ? state : null));
+  if(!currentWindShelterFold(s)) return false;
+  return windShelterCoverCount(s).marked > 0;
+}
+function windShelterUsable(s){
+  if(!windShelterReady(s)) return false;
+  const n = windShelterCoverCount(s);
+  return n.live >= Math.max(1, Math.ceil(n.marked * 0.5));
+}
+function windShelterNeed(s){
+  return !!(windShelterReady(s) && !windShelterUsable(s));
+}
+/** Working garden / paddock / hay beds — not the living break itself. */
+function windShelterSoilTiles(s){
+  const tiles = [];
+  s = s || (typeof windShelterFarm==='function' ? windShelterFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return tiles;
+  s.grid.forEach((t, i)=>{
+    if(!t || !t.soil) return;
+    if(t.terrain!=='soil' && t.terrain!=='dead') return;
+    if(t.feature==='path' || t.feature==='swale' || t.feature==='saltflat') return;
+    if(typeof isWindShelterT==='function' && isWindShelterT(t)) return;
+    if(!t.crop && !t.graze && !(typeof leftoverIsPastureCoverT==='function' && leftoverIsPastureCoverT(t))) return;
+    tiles.push({t, i});
+  });
+  return tiles;
+}
+function windShelterFloaterIdx(s){
+  s = s || (typeof windShelterFarm==='function' ? windShelterFarm() : (typeof state!=='undefined' ? state : null));
+  if(state && state.grid && s && s.grid && state.grid===s.grid){
+    const edge = weatherEdgeTiles(s);
+    for(let i=0;i<edge.length;i++){
+      if(isWeatherEdgeShelterMarkT(edge[i]) && !(typeof isWindShelterT==='function' && isWindShelterT(edge[i]))){
+        const k = state.grid.indexOf(edge[i]);
+        if(k>=0) return k;
+      }
+    }
+    for(let i=0;i<s.grid.length;i++){
+      if(s.grid[i] && (s.grid[i].crop || s.grid[i].graze)) return i;
+    }
+  }
+  if(typeof selected==='number' && selected>=0 && state && state.grid && state.grid[selected]) return selected;
+  return (typeof selected==='number' && selected>=0) ? selected : 0;
+}
+function windShelterStory(t, opts){
+  opts = opts || {};
+  const ready = typeof windShelterReady==='function' && windShelterReady();
+  const need = typeof windShelterNeed==='function' && windShelterNeed();
+  const hold = ready && !need;
+  const edge = typeof windShelterWeatherEdgeAt==='function' && windShelterWeatherEdgeAt(t);
+  const mark = typeof isWeatherEdgeShelterMarkT==='function' && isWeatherEdgeShelterMarkT(t);
+  const live = typeof isWindShelterT==='function' && isWindShelterT(t);
+  const bed = !!(t && (t.crop || t.graze || (typeof leftoverIsPastureCoverT==='function' && leftoverIsPastureCoverT(t))));
+  if(!ready && !mark && !live) return '';
+  if(!ready && !edge) return '';
+  if(opts.needOnly && !need) return '';
+  if(edge || mark || (live && t && (t.farmEdge==='windbreak' || t.farmEdge==='hedgerow' || t.farmEdge==='woodlot'))){
+    if(live)
+      return need
+        ? '🌬️ Weather-side break is thin — wind still nicks the beds. Keep trees on this edge.'
+        : '🌬️ Weather-side windbreak — beds in the lee hold moisture. Clear it and wind dries the fold.';
+    return need
+      ? '🌬️ Weather-side break is gone — wind nicks the beds. Plant trees on this edge to restore the lee.'
+      : '🌬️ Weather-side seat — plant trees here so the beds keep their lee.';
+  }
+  if(need && bed)
+    return '🌬️ Open to the weather — wind dries this bed. Keep the weather-side windbreak.';
+  if(hold && bed && !opts.needOnly)
+    return '🌬️ In the lee of the weather-side break — soil holds a little more moisture.';
+  return '';
+}
+/** One sim dawn: living weather-edge cover holds garden / paddock beds; a bare edge nicks them. First session stays off. */
+function tickWindShelterWork(){
+  if(!camp || !windShelterReady()) return 0;
+  const s = typeof windShelterFarm==='function' ? windShelterFarm() : (typeof state!=='undefined' ? state : null);
+  if(!s || !s.grid) return 0;
+  const tiles = windShelterSoilTiles(s);
+  if(!tiles.length) return 0;
+  const open = windShelterUsable(s);
+  if(open){
+    const b = (typeof WIND_SHELTER_HOLD_SOIL!=='undefined') ? WIND_SHELTER_HOLD_SOIL : {water:0.35, erosion:0.3, om:0.1};
+    tiles.forEach(({t})=>{
+      if(!t || !t.soil) return;
+      if((t.soil.water||0) < 70) t.soil.water = clamp((t.soil.water||0) + (b.water||0));
+      if((t.soil.erosion||0) < 80) t.soil.erosion = clamp((t.soil.erosion||0) + (b.erosion||0));
+      if((t.soil.om||0) < 70) t.soil.om = clamp((t.soil.om||0) + (b.om||0));
+      if(typeof recalc==='function') recalc(t);
+    });
+    if(typeof toast==='function'){
+      toast('🌬️ The weather-side windbreak holds the beds — keep that edge standing.', {once:'wind_shelter_hold_first', throttleMs:4000});
+    }
+    return 0;
+  }
+  const b = (typeof WIND_SHELTER_NICK_SOIL!=='undefined') ? WIND_SHELTER_NICK_SOIL : {water:-0.8, erosion:-0.6, om:-0.2};
+  tiles.forEach(({t})=>{
+    if(!t || !t.soil) return;
+    t.soil.water = clamp((t.soil.water||0) + (b.water||0));
+    t.soil.erosion = clamp((t.soil.erosion||0) + (b.erosion||0));
+    t.soil.om = clamp((t.soil.om||0) + (b.om||0));
+    if(typeof recalc==='function') recalc(t);
+  });
+  const fi = windShelterFloaterIdx(s);
+  if(typeof floater==='function' && state && state.grid && state.grid[fi]){
+    floater(fi, 'wind', '#a8b8c8');
+  }
+  if(typeof toast==='function'){
+    toast('🌬️ The weather-side break is gone — wind nicks the beds. Keep trees on that edge.', {once:'wind_shelter_need_first', throttleMs:4000});
+  }
+  return tiles.length;
 }
 /** Painted orchard grove on orchard folds — living fruit trees, not orchard buildings.
  *  Stump-row landmarks and orchard-biome trees hang fruit. Home, woodlot belts, and banks stay off. */
@@ -10322,6 +10519,7 @@ function simStep(dt){
     if(typeof tickPaddockManure==='function') tickPaddockManure();
     if(typeof tickPaddockStockThirst==='function') tickPaddockStockThirst();
     if(typeof tickPaddockWindShelter==='function') tickPaddockWindShelter();
+    if(typeof tickWindShelterWork==='function') tickWindShelterWork();
     if(typeof tickDustWashWork==='function') tickDustWashWork();
     if(typeof tickHighPondWork==='function') tickHighPondWork();
     if(typeof tickHomeWaterWork==='function') tickHomeWaterWork();
@@ -13853,6 +14051,10 @@ function soilStoryLine(t){
       const ln = laneStory(t, {needOnly:true});
       if(ln) return ln;
     }
+    if(typeof windShelterStory==='function'){
+      const ws = windShelterStory(t, {needOnly:true});
+      if(ws) return ws;
+    }
     if(typeof dustWashNeed==='function' && dustWashNeed())
       return '🏜️ Dry wash is blocked — drought nicks these flats. Keep the bed open so rare water can move.';
     return '💀 Sleeping soil — the living community is gone until you feed it.';
@@ -13899,6 +14101,10 @@ function soilStoryLine(t){
       return (typeof dustWashNeed==='function' && dustWashNeed())
         ? '🏜️ This tree filled the dry wash — drought nicks the flats. Clear it to open the bed.'
         : '🏜️ This tree sits in the dry wash. Clear it to open the bed. Not a second river.';
+    if(typeof windShelterStory==='function'){
+      const ws = windShelterStory(t);
+      if(ws) return ws;
+    }
     if(typeof waterAdj==='function' && waterAdj(t))
       return '🌳 The filter — roots hold the bank and drink the runoff.';
     return '🌳 Living hedge — windbreak, shade, and a home for bees.';
@@ -13943,6 +14149,10 @@ function soilStoryLine(t){
       return '💧 Dry fold — the herd needs stock water they can stand beside. '+tier;
     if(typeof paddockWindShelterNeed==='function' && paddockWindShelterNeed())
       return '🌬️ Open fold — winter wind finds the herd. Graze in the lee of the windbreak or woodlot. '+tier;
+    if(typeof windShelterStory==='function'){
+      const ws = windShelterStory(t);
+      if(ws) return ws+' '+tier;
+    }
     if(g.kind==='team' || g.synergy) return '🐄🐔 Follow the herd — hooves open the sod; chickens follow. That\'s how prairie stayed fertile. '+tier;
     if(g.kind==='cattle' || g.kind==='cow') return '🐄 Cattle remaking this pad — send 🐔 chickens next. '+tier;
     if(g.kind==='chicken') return '🐔 Chickens working the surface. '+tier;
@@ -13955,23 +14165,24 @@ function soilStoryLine(t){
   }
   if(t.crop && CROPS[t.crop.type]){
     const c = CROPS[t.crop.type];
+    const windNeed = (typeof windShelterStory==='function') ? windShelterStory(t, {needOnly:true}) : '';
     if(t.crop.type==='sisters')
-      return '🌽 The guild — corn is the pole, beans feed nitrogen, squash shades weeds. A team feeds the soil. '+tier;
+      return (windNeed?windNeed+' ':'')+'🌽 The guild — corn is the pole, beans feed nitrogen, squash shades weeds. A team feeds the soil. '+tier;
     if(typeof leftoverIsHayCutT==='function' && leftoverIsHayCutT(t))
-      return (typeof hayCutStory==='function' ? hayCutStory(tier) : '🌾 Standing hay for the crate. '+tier);
+      return (windNeed?windNeed+' ':'')+(typeof hayCutStory==='function' ? hayCutStory(tier) : '🌾 Standing hay for the crate. '+tier);
     if(typeof hayFoldForageWheat==='function' && hayFoldForageWheat(t))
-      return (typeof hayCutStory==='function' ? hayCutStory(tier) : '🌾 Standing hay — a forage cut for the crate, not a kitchen till. Neighbors pay more in winter feed season. '+tier);
+      return (windNeed?windNeed+' ':'')+(typeof hayCutStory==='function' ? hayCutStory(tier) : '🌾 Standing hay — a forage cut for the crate, not a kitchen till. Neighbors pay more in winter feed season. '+tier);
     if(typeof leftoverIsMeadowForageT==='function' && leftoverIsMeadowForageT(t))
-      return (typeof meadowForageStory==='function' ? meadowForageStory(tier) : '🌼 Wild meadow cuttings for the crate. '+tier);
+      return (windNeed?windNeed+' ':'')+(typeof meadowForageStory==='function' ? meadowForageStory(tier) : '🌼 Wild meadow cuttings for the crate. '+tier);
     if(t.crop.type==='wheat' || (!c.diverse && !c.cover)){
       const days = t.crop.days||0;
       if(days >= 1)
-        return '🌾 The lonely crop — this stand is charging the soil a fee. Fast coins, thinner ground. '+tier;
-      return '🌾 The lonely crop — one species, one appetite. Fast coins if it pays. '+tier;
+        return (windNeed?windNeed+' ':'')+'🌾 The lonely crop — this stand is charging the soil a fee. Fast coins, thinner ground. '+tier;
+      return (windNeed?windNeed+' ':'')+'🌾 The lonely crop — one species, one appetite. Fast coins if it pays. '+tier;
     }
-    if(c.cover || c.pioneer) return (c.em||'🌿')+' Living roots pump carbon down and crack the crust. '+tier;
-    if(c.diverse) return (c.em||'🌽')+' Diverse crop growing. '+tier;
-    return (c.em||'🌾')+' Crop in the ground. '+tier;
+    if(c.cover || c.pioneer) return (windNeed?windNeed+' ':'')+(c.em||'🌿')+' Living roots pump carbon down and crack the crust. '+tier;
+    if(c.diverse) return (windNeed?windNeed+' ':'')+(c.em||'🌽')+' Diverse crop growing. '+tier;
+    return (windNeed?windNeed+' ':'')+(c.em||'🌾')+' Crop in the ground. '+tier;
   }
   if(typeof isHayStubbleT==='function' && isHayStubbleT(t))
     return '🌾 Stubble after a strip — the hay returns; soil thins and graze waits until then. '+tier;
@@ -13997,6 +14208,10 @@ function soilStoryLine(t){
   if(typeof laneStory==='function'){
     const ln = laneStory(t);
     if(ln) return ln+' '+tier;
+  }
+  if(typeof windShelterStory==='function'){
+    const ws = windShelterStory(t);
+    if(ws) return ws+' '+tier;
   }
   if(typeof dustWashNeed==='function' && dustWashNeed())
     return '🏜️ Dry wash is blocked — drought nicks these flats. Keep the bed open so rare water can move. '+tier;
@@ -14235,6 +14450,7 @@ function applyTool(i){
     }
     else if(t.terrain==='pond' || t.terrain==='trees') did = ()=>{
       if(typeof rememberRiparianMark==='function') rememberRiparianMark(t);
+      if(typeof rememberWeatherEdgeMark==='function') rememberWeatherEdgeMark(t);
       if(typeof rememberHomeWaterMarks==='function') rememberHomeWaterMarks(t);
       if(typeof rememberHighPondMark==='function') rememberHighPondMark(t);
       if(typeof rememberAtlasLaneMark==='function') rememberAtlasLaneMark(t);
@@ -14581,6 +14797,10 @@ function applyTool(i){
       if(typeof earnNote==='function') earnNote('buffer', {delay:1800});
     }
     if(!t.farmEdge && typeof homePatchCleared==='function' && homePatchCleared()
+       && typeof windShelterWeatherEdgeAt==='function' && windShelterWeatherEdgeAt(t)
+       && typeof currentWindShelterFold==='function' && currentWindShelterFold()){
+      t.farmEdge = 'windbreak';
+    }else if(!t.farmEdge && typeof homePatchCleared==='function' && homePatchCleared()
        && typeof currentPaddockFold==='function' && currentPaddockFold()){
       t.farmEdge = 'hedgerow';
       t.hedgeReady = false;
@@ -15205,7 +15425,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.coopcorridorfix';
+const SHIP_BUILD = '2026-08-22.windbreak';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -15355,7 +15575,7 @@ function openAboutCredits(){
   if(showNew) camp.tipsShown['whats_new_'+ver] = true;
   const whatsNew = showNew
     ? `<div class="lesson" style="text-align:left;margin-top:6px;border-color:rgba(234,181,67,.45)">
-        <b>What's new (${ver}):</b> After Home Patch a coop on the garden–orchard walk lets hens scratch pests and understory; fill that walk or seat the coop far and the beds miss the birds.
+        <b>What's new (${ver}):</b> After Home Patch a weather-side windbreak or hedge holds garden and paddock beds; clear that edge and a mild wind nick dries the exposed soil.
       </div>`
     : '';
   // CD — first About open literacy (in-modal; no toast spam)
@@ -19797,6 +20017,7 @@ function openInfo(refreshOnly){
       ${highLine?`<div class="chiprow">${highLine}</div>`:''}
       ${homeNeedLine && homeNeedLine!==feat?`<div class="chiprow">${homeNeedLine}</div>`:''}
       ${(typeof riparianBufferStory==='function' && riparianBufferStory(t))?`<div class="chiprow">${riparianBufferStory(t)}</div>`:''}
+      ${(typeof windShelterStory==='function' && windShelterStory(t,{needOnly:true}))?`<div class="chiprow">${windShelterStory(t,{needOnly:true})}</div>`:''}
       ${washLine?`<div class="chiprow">${washLine}</div>`:''}
       ${t.compost>0?`<div class="chiprow">🪣 compost working — ${t.compost.toFixed(0)}d left</div>`:''}
       ${t.crop?`<div class="chiprow">🌿 pioneers cracking the crust — ${Math.round(Math.min(1,t.crop.growth)*100)}%</div>`:''}
@@ -19912,6 +20133,10 @@ function openInfo(refreshOnly){
       chips.push('🛤️ lane blocked — the herd slogs and this bed dries');
     else if(typeof laneWorkReady==='function' && laneWorkReady() && typeof laneNearMarked==='function' && laneNearMarked(t))
       chips.push('🛤️ beside the farm lane — keep the path clear');
+    {
+      const wsLine = (typeof windShelterStory==='function') ? windShelterStory(t) : '';
+      if(wsLine) chips.push(wsLine);
+    }
     if(typeof highPondNeed==='function' && highPondNeed() && typeof isHighPondFillT==='function' && isHighPondFillT(t))
       chips.push('💧 this filled the high pond — runoff nicks downhill soil');
     else if(typeof highPondNeed==='function' && highPondNeed() && typeof highPondDownhillOfMarked==='function' && highPondDownhillOfMarked(t))
@@ -19990,7 +20215,8 @@ function openInfo(refreshOnly){
   }else if(t.terrain==='trees'){
     const story = soilStoryLine(t);
     const edgeLine = t.farmEdge==='windbreak'
-      ? 'A thin windbreak on the weather side — neighbors hold soil a little better, and the herd walks around it.'
+      ? ((typeof windShelterStory==='function' && windShelterStory(t))
+        || 'A thin windbreak on the weather side — neighbors hold soil a little better, and the herd walks around it.')
       : (typeof orchardFruitReady==='function' && orchardFruitReady()
          && ((typeof isOrchardFruitT==='function' && isOrchardFruitT(t)) || t.farmEdge==='orchard'))
         ? ((t.orchardRegen!=null)
@@ -20004,8 +20230,10 @@ function openInfo(refreshOnly){
           : (typeof isHedgerowBerryT==='function' && isHedgerowBerryT(t)
             ? (typeof hedgeBerryTileReady==='function' && hedgeBerryTileReady(t)
               ? 'Living hedgerow — berries are ready. Tap for a crate lot; the hedge stays. Shelter still counts. Not willow, not firewood.'
-              : 'Living hedgerow — tap when berries are ready, or wait for a dawn trickle. The hedge stays. Shelter from wind. Not willow, not firewood.')
-            : 'A hedgerow seam from the painting — shelter for the next fold, and the herd walks around it.'))
+              : ((typeof windShelterStory==='function' && windShelterStory(t))
+              || 'Living hedgerow — tap when berries are ready, or wait for a dawn trickle. The hedge stays. Shelter from wind. Not willow, not firewood.'))
+            : ((typeof windShelterStory==='function' && windShelterStory(t))
+              || 'A hedgerow seam from the painting — shelter for the next fold, and the herd walks around it.')))
         : (typeof isWillowCutT==='function' && isWillowCutT(t)) || t.farmEdge==='willow'
           ? ((t.willowRegen!=null)
             ? 'A stump after a strip — bank soil and shelter thin until the willow returns. Not an open plant bed.'
