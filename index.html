@@ -4586,7 +4586,8 @@ function homeWaterStory(t, opts){
   const filledPond = typeof isGardenPondFillT==='function' && isGardenPondFillT(t);
   const filledSwale = typeof isHomeSwaleFillT==='function' && isHomeSwaleFillT(t);
   const openPond = typeof isGardenPondT==='function' && isGardenPondT(t);
-  const openSwale = typeof isSwaleT==='function' && isSwaleT(t);
+  // Home contour only — orchard / overflow swales keep the generic inspect line.
+  const openSwale = typeof isHomeSwaleOpenT==='function' && isHomeSwaleOpenT(t);
   const near = typeof homeWaterNearMarked==='function' && homeWaterNearMarked(t);
   if(!ready && !openPond && !openSwale && !filledPond && !filledSwale) return '';
   if(filledPond)
@@ -13756,7 +13757,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.homeswale';
+const SHIP_BUILD = '2026-08-22.homewaterfix';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
