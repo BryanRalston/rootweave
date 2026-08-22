@@ -1274,6 +1274,24 @@ function spendLeftoverCompost(){
   camp.compostStock = leftoverCompostStock() - 1;
   return true;
 }
+/** Paint compost from leftover pile stock only after Home Patch — first session stays paid/wake. */
+function compostUsesPile(){
+  return leftoverCompostStock()>0 && (typeof homePatchCleared!=='function' || homePatchCleared());
+}
+/** Farm-made leftovers wake soil a touch harder than a bought bag. Light, readable on the tile. */
+const PILE_COMPOST_SOIL = {om:2, microbial:1.5, water:1.5};
+function applyCompostSoil(t, fromPile){
+  if(!t || !t.soil) return false;
+  t.compost = (state && state.unlocks && state.unlocks.upg_compost) ? 14 : 10;
+  if(fromPile){
+    const b = PILE_COMPOST_SOIL;
+    t.soil.om = clamp((t.soil.om||0) + b.om);
+    t.soil.microbial = clamp((t.soil.microbial||0) + b.microbial);
+    t.soil.water = clamp((t.soil.water||0) + b.water);
+  }
+  if(typeof recalc==='function') recalc(t);
+  return true;
+}
 /** Yard pile is leftover stock you can see — not a saved tile, not a fresh Home Patch. */
 function leftoverPileWanted(){
   if(leftoverCompostStock()<=0) return false;
@@ -10338,18 +10356,18 @@ function applyTool(i){
       toast(dead ? '🪣 Compost is already on this tile — press ▶️ so days can wake it. No coins taken.' : '🪣 Already composted — the soil is still digesting. No coins taken.');
       SND.uhoh(); return false;
     }
-    const fromPile = leftoverCompostStock()>0 && (typeof homePatchCleared!=='function' || homePatchCleared());
+    const fromPile = typeof compostUsesPile==='function' && compostUsesPile();
     if(fromPile){
       spendLeftoverCompost();
     }else{
       const cost = state.unlocks.upg_compost ? 2 : td.cost;
       if(!spend(cost)) return false;
     }
-    t.compost = state.unlocks.upg_compost ? 14 : 10;
+    applyCompostSoil(t, fromPile);
     state.stats.composts++;
-    floater(i, fromPile ? '🪣 leftover pile' : '🪣 +compost', '#d8c8a0'); burst(i, '#9a7d54', 10); SND.place();
+    floater(i, fromPile ? '🪣 leftover pile · richer wake' : '🪣 +compost', '#d8c8a0'); burst(i, '#9a7d54', 10); SND.place();
     if(fromPile){
-      toast('🪣 Leftover compost feeding the soil — you already skipped the stand coins.', {once:'leftover_compost_use', throttleMs:4000});
+      toast('🪣 Leftover pile compost feeds the soil harder than a bought bag.', {once:'leftover_compost_use', throttleMs:4000});
       if(typeof buildPalette==='function') buildPalette();
     }
     if(dead){
@@ -10896,7 +10914,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.herdgate';
+const SHIP_BUILD = '2026-08-22.pilesoil';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -14751,7 +14769,7 @@ function closeModal(){
 }
 function toolCost(td){
   if(GRAZE_TOOLS[td.id]) return HERD_BUY[td.id] || td.cost;
-  if(td.id==='compost' && leftoverCompostStock()>0 && (typeof homePatchCleared!=='function' || homePatchCleared())) return 0;
+  if(td.id==='compost' && typeof compostUsesPile==='function' && compostUsesPile()) return 0;
   if(td.id==='compost' && state.unlocks.upg_compost) return 2;
   if((td.id==='sisters'||td.id==='wheat'||td.id==='clover'||td.id==='covercrop') && state.unlocks.upg_seeds) return Math.max(1, td.cost-1);
   return td.cost;
@@ -14918,7 +14936,7 @@ function buildPalette(){
       const herdMax = herdTool ? (HERD_MAX[td.id]||6) : 0;
       const atMax = herdTool && nOwn >= herdMax;
       const placed = herdTool && typeof herdKindPlaced==='function' && herdKindPlaced(td.id);
-      const pileN = (!herdTool && td.id==='compost' && leftoverCompostStock()>0 && (typeof homePatchCleared!=='function' || homePatchCleared())) ? leftoverCompostStock() : 0;
+      const pileN = (!herdTool && td.id==='compost' && typeof compostUsesPile==='function' && compostUsesPile()) ? leftoverCompostStock() : 0;
       const costLab = !herdTool
         ? (pileN>0 ? ('pile×'+pileN) : (cost>0 ? ('🪙'+cost) : 'free'))
         : (atMax ? (nOwn+'/'+herdMax)
@@ -15221,7 +15239,7 @@ function updateHUD(){
   }
   TOOLS.forEach(td=>{
     const el = document.getElementById('tool_'+td.id);
-    const pileFree = td.id==='compost' && leftoverCompostStock()>0 && (typeof homePatchCleared!=='function' || homePatchCleared());
+    const pileFree = td.id==='compost' && typeof compostUsesPile==='function' && compostUsesPile();
     if(el) el.classList.toggle('cant', !pileFree && td.cost>0 && state.coins<td.cost);
   });
 }
@@ -17033,8 +17051,9 @@ function drawMapPileMark(hctx){
   hctx.restore();
 }
 function mapPileOverlayOn(){
-  return typeof leftoverCompostStock==='function' && leftoverCompostStock()>0
-    && (typeof homePatchCleared!=='function' || homePatchCleared());
+  return typeof compostUsesPile==='function' ? compostUsesPile()
+    : (typeof leftoverCompostStock==='function' && leftoverCompostStock()>0
+      && (typeof homePatchCleared!=='function' || homePatchCleared()));
 }
 /** Overlay neighbor stand — same spirit as the map pile. First session stays bare. */
 function mapStandOverlayOn(){
