@@ -10896,7 +10896,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.meadowfeel';
+const SHIP_BUILD = '2026-08-22.mapstand';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -17029,6 +17029,72 @@ function drawMapPileMark(hctx){
   hctx.fillText('🪣', p.x+1, p.y-s*1.15);
   hctx.restore();
 }
+function mapPileOverlayOn(){
+  return typeof leftoverCompostStock==='function' && leftoverCompostStock()>0
+    && (typeof homePatchCleared!=='function' || homePatchCleared());
+}
+/** Overlay neighbor stand — same spirit as the map pile. First session stays bare. */
+function mapStandOverlayOn(){
+  if(typeof neighborStandUnlocked==='function' && !neighborStandUnlocked()) return false;
+  if(typeof homePatchCleared==='function' && !homePatchCleared()) return false;
+  return true;
+}
+/** Atlas cell for the map stand: house (10,56), lane-side path if the homestead box holds it. */
+function mapStandAtlasCell(){
+  if(!mapStandOverlayOn()) return null;
+  const P = (typeof valleyParcel==='function') ? valleyParcel('homestead') : null;
+  if(!P) return null;
+  const b = (typeof parcelAtlasBox==='function') ? parcelAtlasBox(P) : null;
+  if(!b) return null;
+  const inBox = (c,r)=> c>=b.c && c<b.c+b.w && r>=b.r && r<b.r+b.h;
+  // Lane walks east from the house toward market. Prefer that path, never the house cell.
+  const prefs = [[11,56],[12,56],[11,55],[10,57],[12,55],[9,56],[11,57]];
+  for(let i=0;i<prefs.length;i++){
+    const c = prefs[i][0], r = prefs[i][1];
+    if(!inBox(c,r)) continue;
+    const A = typeof atlasGet==='function' ? atlasGet(c,r) : null;
+    if(A && A.landmark==='house') continue;
+    if(A && A.feature==='path') return {c, r};
+  }
+  for(let i=0;i<prefs.length;i++){
+    const c = prefs[i][0], r = prefs[i][1];
+    if(inBox(c,r)) return {c, r};
+  }
+  return null;
+}
+function mapStandPoint(){
+  const cell = mapStandAtlasCell();
+  if(!cell) return null;
+  const P = (typeof valleyParcel==='function') ? valleyParcel('homestead') : null;
+  const b = (typeof parcelAtlasBox==='function') ? parcelAtlasBox(P) : null;
+  if(!P || !b) return null;
+  const u = clampUV((cell.c + 0.55 - b.c) / b.w, 0.18, 0.82);
+  const v = clampUV((cell.r + 0.45 - b.r) / b.h, 0.22, 0.82);
+  return parcelSeat(P, u, v);
+}
+function drawMapStandMark(hctx){
+  const p = mapStandPoint();
+  if(!p || !hctx) return;
+  const s = 3.4;
+  hctx.save();
+  hctx.fillStyle = 'rgba(22,14,8,.28)';
+  hctx.beginPath();
+  hctx.ellipse(p.x, p.y+0.8, s*1.35, Math.max(1.6, s*0.42), 0, 0, 6.29);
+  hctx.fill();
+  hctx.fillStyle = '#6b4424';
+  hctx.beginPath();
+  hctx.ellipse(p.x, p.y-0.2, s*1.25, s*0.42, 0, 0, 6.29);
+  hctx.fill();
+  hctx.fillStyle = '#c4a06a';
+  hctx.beginPath();
+  hctx.ellipse(p.x, p.y-s*0.45, s*1.15, s*0.38, 0, 0, 6.29);
+  hctx.fill();
+  hctx.font = '10px "Segoe UI Emoji",sans-serif';
+  hctx.textAlign = 'center';
+  hctx.textBaseline = 'middle';
+  hctx.fillText('🧺', p.x+1, p.y-s*1.2);
+  hctx.restore();
+}
 function paintMapHerd(cv, agents){
   if(!cv) return;
   const hctx = cv.getContext('2d');
@@ -17041,6 +17107,7 @@ function paintMapHerd(cv, agents){
     });
   }
   if(typeof drawMapPileMark==='function') drawMapPileMark(hctx);
+  if(typeof drawMapStandMark==='function') drawMapStandMark(hctx);
 }
 function mapHerdAtlasCell(ag, u, v){
   const P = typeof valleyParcel==='function' ? valleyParcel(ag && ag.parcelId) : null;
@@ -17127,9 +17194,9 @@ function stopMapHerd(){
 }
 function startMapHerd(cv, agents){
   stopMapHerd();
-  const pileOn = typeof leftoverCompostStock==='function' && leftoverCompostStock()>0
-    && (typeof homePatchCleared!=='function' || homePatchCleared());
-  if(!cv || ((!agents || !agents.length) && !pileOn)) return;
+  const pileOn = typeof mapPileOverlayOn==='function' ? mapPileOverlayOn() : false;
+  const standOn = typeof mapStandOverlayOn==='function' ? mapStandOverlayOn() : false;
+  if(!cv || ((!agents || !agents.length) && !pileOn && !standOn)) return;
   _mapHerd.cv = cv;
   _mapHerd.agents = agents || [];
   _mapHerd.last = 0;
@@ -17146,9 +17213,9 @@ function startMapHerd(cv, agents){
 }
 function mountMapHerdOverlay(wrap){
   const agents = buildMapHerdAgents();
-  const pileOn = typeof leftoverCompostStock==='function' && leftoverCompostStock()>0
-    && (typeof homePatchCleared!=='function' || homePatchCleared());
-  if(!agents.length && !pileOn) return null;
+  const pileOn = typeof mapPileOverlayOn==='function' ? mapPileOverlayOn() : false;
+  const standOn = typeof mapStandOverlayOn==='function' ? mapStandOverlayOn() : false;
+  if(!agents.length && !pileOn && !standOn) return null;
   const hv = document.createElement('canvas');
   hv.className = 'vscene-herd';
   hv.width = VALLEY_VIEW.w;
