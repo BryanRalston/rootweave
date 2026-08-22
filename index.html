@@ -11205,12 +11205,11 @@ function coopInGardenOrchardCorridor(tiles){
   const coop = typeof homesteadCoopOnTiles==='function' ? homesteadCoopOnTiles(tiles) : null;
   if(!coop) return false;
   const A = coopCorridorAnchors(tiles);
-  if(coopBetweenAnchors(coop, A.gardenAnchor, A.orchardAnchor)) return true;
+  // Real garden + orchard only — house/barn fallbacks made a filled [2,3]/[3,3] walk still hold.
+  if(A.garden && A.orchard && coopBetweenAnchors(coop, A.garden, A.orchard)) return true;
   const seats = (typeof COOP_CORRIDOR_SEATS!=='undefined' && COOP_CORRIDOR_SEATS) || [[2,3],[3,3],[2,4],[3,4],[4,3]];
   for(let i=0;i<seats.length;i++){
-    const dc = Math.abs((coop.c|0)-seats[i][0]);
-    const dr = Math.abs((coop.r|0)-seats[i][1]);
-    if(Math.max(dc, dr) <= 1) return true;
+    if((coop.c|0)===seats[i][0] && (coop.r|0)===seats[i][1]) return true;
   }
   return false;
 }
@@ -15206,7 +15205,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.coopcorridor';
+const SHIP_BUILD = '2026-08-22.coopcorridorfix';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -15356,7 +15355,7 @@ function openAboutCredits(){
   if(showNew) camp.tipsShown['whats_new_'+ver] = true;
   const whatsNew = showNew
     ? `<div class="lesson" style="text-align:left;margin-top:6px;border-color:rgba(234,181,67,.45)">
-        <b>What's new (${ver}):</b> After Home Patch a coop on the garden–orchard walk lets hens scratch pests and understory; off that walk, the beds miss the birds.
+        <b>What's new (${ver}):</b> After Home Patch a coop on the garden–orchard walk lets hens scratch pests and understory; fill that walk or seat the coop far and the beds miss the birds.
       </div>`
     : '';
   // CD — first About open literacy (in-modal; no toast spam)
