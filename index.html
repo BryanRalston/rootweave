@@ -1039,6 +1039,8 @@ const MEADOW_FORAGE_SET = 0.10; // cuttings / day on a bloom tile — meadow sta
 const MEADOW_AUTO_PICK = 1;    // light dawn trickle — tap can pick the rest
 const PADDOCK_MANURE_RATE = 0.20; // pile lots/day at 1 head; scales with sqrt(heads), stays a trickle
 const PADDOCK_MANURE_AUTO = 1;    // at most one dawn pile unit — bedding, not a crate crop
+const COOP_BEDDING_RATE = 0.12; // pile lots/day at 1 hen; scales with sqrt(hens), smaller than a paddock herd
+const COOP_BEDDING_AUTO = 1;    // at most one dawn pile unit — bedding, not a crate crop
 const WOODLOT_REGEN_DAYS = 8; // clear-cut stump returns as canopy; never an empty plant bed
 const WOODLOT_CLEAR_SOIL = {om:-3, erosion:-4, water:-2, microbial:-1}; // heavy cut nicks the fold
 const OVERGRAZE_RATES = {om:-0.45, structure:-0.35, nutrients:-0.15, water:0, microbial:-0.1, erosion:-0.5};
@@ -1325,6 +1327,51 @@ function tickCoopEggs(){
   if(typeof updateHUD==='function') updateHUD();
   return n;
 }
+function coopBeddingDailyRate(n){
+  n = Math.max(0, n|0);
+  if(n<=0) return 0;
+  return COOP_BEDDING_RATE * Math.sqrt(n);
+}
+function coopBeddingFloaterIdx(){
+  if(state && state.grid){
+    for(let i=0;i<state.grid.length;i++){
+      if(state.grid[i] && state.grid[i].terrain==='coop') return i;
+    }
+  }
+  if(typeof selected==='number' && selected>=0 && state && state.grid && state.grid[selected]) return selected;
+  return (typeof selected==='number' && selected>=0) ? selected : 0;
+}
+/** Homestead coop after Home, with hens. First session stays off. */
+function coopBeddingReady(){
+  if(!camp) return false;
+  if(typeof homePatchCleared==='function' && !homePatchCleared()) return false;
+  if(campChickenCount()<=0) return false;
+  if(typeof seatCoopIfHens==='function') seatCoopIfHens();
+  return homesteadHasCoop();
+}
+/** One sim dawn: modest coop bedding / droppings go to the leftover compost pile — not a crate lot. */
+function tickCoopBedding(){
+  if(!camp || !coopBeddingReady()) return 0;
+  const hens = campChickenCount();
+  if(hens<=0) return 0;
+  camp.coopBeddingAcc = Math.max(0, +camp.coopBeddingAcc || 0) + coopBeddingDailyRate(hens);
+  if(camp.coopBeddingAcc < 1) return 0;
+  const n = Math.min(COOP_BEDDING_AUTO, Math.floor(camp.coopBeddingAcc));
+  if(n<=0) return 0;
+  camp.coopBeddingAcc -= n;
+  if(typeof creditLeftoverCompost==='function') creditLeftoverCompost(n);
+  const fi = coopBeddingFloaterIdx();
+  if(typeof floater==='function' && state && state.grid && state.grid[fi]){
+    floater(fi, n>1 ? '🪣 pile ×'+n : '🪣 pile', '#d8c8a0', 16);
+  }
+  if(typeof toast==='function'){
+    toast('🪣 Bedding and droppings from the coop went to the compost pile. No birds, no feed.', {once:'coop_bedding_first', throttleMs:4000});
+  }
+  if(typeof buildPalette==='function') buildPalette();
+  if(typeof refreshNeighborStandIfOpen==='function') refreshNeighborStandIfOpen();
+  if(typeof updateHUD==='function') updateHUD();
+  return n;
+}
 /** Field under the player, or the parked orchard fold while they are in the yard. */
 function orchardFruitFarm(){
   if(typeof homesteadMode!=='undefined' && homesteadMode && typeof plotStateBackup!=='undefined'
@@ -1531,12 +1578,23 @@ function leftoverPileTier(){
   if(n<=5) return 2; // medium
   return 3; // large
 }
+function leftoverPileFeedBits(){
+  const bits = [];
+  if(typeof paddockManureReady==='function' && paddockManureReady()) bits.push('paddock bedding');
+  if(typeof coopBeddingReady==='function' && coopBeddingReady()) bits.push('coop bedding');
+  return bits;
+}
+function leftoverPileFeedAnd(){
+  const bits = leftoverPileFeedBits();
+  return bits.length ? ' and '+bits.join(' and ') : '';
+}
 function leftoverPileInspectLine(){
   const n = leftoverCompostStock();
   if(n<=0) return '';
   if(typeof homePatchCleared==='function' && !homePatchCleared()) return '';
-  const manure = typeof paddockManureReady==='function' && paddockManureReady();
-  return n+' leftover compost — paint 🪣'+(manure?' · paddock bedding feeds this pile':'');
+  const bits = leftoverPileFeedBits();
+  const feed = bits.length ? ' · '+bits.join(' and ')+' feed'+(bits.length===1?'s':'')+' this pile' : '';
+  return n+' leftover compost — paint 🪣'+feed;
 }
 function leftoverPileSpotOk(t){
   if(!t) return false;
@@ -2005,9 +2063,8 @@ function neighborStandHtml(opts){
       </div>`;
       }).join('')
     : `<div class="nstand-note">Crate is empty. Harvest wheat, sisters, orchard fruit, hay, woodlot firewood, or meadow forage, then bring it here.</div>`;
-  const manureReady = typeof paddockManureReady==='function' && paddockManureReady();
   const pileNote = pileN
-    ? `<div class="nstand-note">🪣 ${pileN} leftover compost ready — paint 🪣 Compost on the land (no coins). Crate leftovers${manureReady?' and paddock bedding':''} feed this pile.</div>`
+    ? `<div class="nstand-note">🪣 ${pileN} leftover compost ready — paint 🪣 Compost on the land (no coins). Crate leftovers${typeof leftoverPileFeedAnd==='function'?leftoverPileFeedAnd():''} feed this pile.</div>`
     : '';
   const leftoverNote = leftoverN
     ? `<div class="nstand-note">Leftovers sat a few lane days. Compost them — you skip today's lane coins for soil.</div>`
@@ -3688,10 +3745,11 @@ function defaultCamp(){
     herd: typeof emptyHerd==='function' ? emptyHerd() : {cattle:0, chicken:0, sheep:0, goat:0, pig:0, duckT:0},
     herdV: 2,
     crate: [], // last N harvests banked for the neighbor stand
-    compostStock: 0, // leftover crate / surplus bodies / paddock bedding returned to the pile
+    compostStock: 0, // leftover crate / surplus bodies / paddock bedding / coop bedding returned to the pile
     eggAcc: 0, // homestead coop → crate lots (fractional days)
     woodAcc: 0, // woodlot firewood dawn trickle (fractional days)
     manureAcc: 0, // leftover paddock bedding → pile lots (fractional days)
+    coopBeddingAcc: 0, // homestead coop droppings → pile lots (fractional days)
   };
   ensureParcelState(c);
   return c;
@@ -7564,6 +7622,7 @@ function simStep(dt){
     if(typeof tickWoodlotTimber==='function') tickWoodlotTimber();
     if(typeof tickMeadowForage==='function') tickMeadowForage();
     if(typeof tickPaddockManure==='function') tickPaddockManure();
+    if(typeof tickCoopBedding==='function') tickCoopBedding();
     if(typeof refreshNeighborStandIfOpen==='function') refreshNeighborStandIfOpen();
     updateQuests();
     maybeDustFlatsCoach();
@@ -9055,7 +9114,8 @@ function applyHomesteadTool(i){
     }else     if(t.terrain==='barn'){
       toast('🏠 The barn — leftover compost sits in the yard beside it.');
     }else if(t.terrain==='coop'){
-      toast('🐔 The coop — hens scratch the grass. Eggs go to the crate by the house.');
+      const coopReady = typeof coopBeddingReady==='function' && coopBeddingReady();
+      toast('🐔 The coop — hens scratch the grass. Eggs go to the crate by the house.'+(coopReady?' Bedding and droppings feed the compost pile.':''));
     }
     return true;
   }
@@ -11788,7 +11848,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.manurecopy';
+const SHIP_BUILD = '2026-08-22.coopbedding';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -16229,7 +16289,8 @@ function openInfo(refreshOnly){
       return;
     }
     const pileLine = (typeof leftoverPileInspectLine==='function') ? leftoverPileInspectLine() : '';
-    const manureReady = typeof paddockManureReady==='function' && paddockManureReady();
+    const coopReady = typeof coopBeddingReady==='function' && coopBeddingReady();
+    const pileFeedAnd = typeof leftoverPileFeedAnd==='function' ? leftoverPileFeedAnd() : '';
     const onPile = !!(typeof isLeftoverPileTile==='function' && isLeftoverPileTile(t) && pileLine);
     if(onPile || (t.terrain==='barn' && pileLine)){
       panel.innerHTML = `<div class="ititle">🪣 Compost pile</div>
@@ -16250,9 +16311,9 @@ function openInfo(refreshOnly){
          ${crateChip}
          <button type="button" class="mbtn wood" style="width:100%;margin-top:8px" id="btnGoInside">🚪 Peek Inside</button>`
       : (t.terrain==='barn'
-        ? `<div class="chiprow">The barn — leftover compost sits in the yard beside it. Crate leftovers${manureReady?' and paddock bedding':''} feed that pile.</div>`
+        ? `<div class="chiprow">The barn — leftover compost sits in the yard beside it. Crate leftovers${pileFeedAnd} feed that pile.</div>`
         : (t.terrain==='coop'
-          ? `<div class="chiprow">The coop — hens scratch the grass. Eggs trickle into the crate by the house.</div>
+          ? `<div class="chiprow">The coop — hens scratch the grass. Eggs trickle into the crate by the house.${coopReady?' Bedding and droppings feed the compost pile.':''}</div>
              ${crateChip}`
           : `<div class="chiprow">Bank 🪙${camp.bank|0}. Use 🚜 Clear to remove (free).</div>`));
     if(t.deco) body += `<div class="chiprow">🎀 ${t.deco.replace('deco_','')}</div>`;
@@ -16812,6 +16873,7 @@ function loadCamp(d){
   }
   camp.eggAcc = Math.max(0, +c.eggAcc || 0);
   camp.manureAcc = Math.max(0, +c.manureAcc || 0);
+  camp.coopBeddingAcc = Math.max(0, +c.coopBeddingAcc || 0);
   if(c.laneClock && typeof c.laneClock==='object'){
     camp.laneClock = {
       season: ((c.laneClock.season|0)%4+4)%4,
@@ -18373,8 +18435,9 @@ function buildJourney(){
   const mapHead = document.createElement('div');
   mapHead.className = 'jsub';
   mapHead.style.marginBottom = '8px';
+  const coopReadyMap = typeof coopBeddingReady==='function' && coopBeddingReady();
   mapHead.textContent = (typeof homePatchCleared==='function' && homePatchCleared())
-    ? 'Tap a field to walk it. Mist lifts as you heal neighbors. A coin price on the fog is a neighbor selling land. Paddock bedding feeds the compost pile.'
+    ? 'Tap a field to walk it. Mist lifts as you heal neighbors. A coin price on the fog is a neighbor selling land. Paddock bedding feeds the compost pile.'+(coopReadyMap?' Coop bedding feeds it too.':'')
     : 'Tap a field to walk it. Mist lifts as you heal the neighbors.';
   path.appendChild(mapHead);
   path.appendChild(buildValleyMapEl());
