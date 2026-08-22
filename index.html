@@ -3232,6 +3232,9 @@ function parcelUnlockHint(P){
     return 'Work the neighboring field, then this fold can change hands';
   }
   if(P && P.leftover){
+    if(typeof homePatchCleared==='function' && !homePatchCleared()){
+      return 'Home Patch comes first — this fold can wait';
+    }
     const line = leftoverNeighborHintLine(P);
     if(line) return line;
   }
@@ -11915,7 +11918,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.thirstscrub';
+const SHIP_BUILD = '2026-08-22.leftoverfirst';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -12065,7 +12068,7 @@ function openAboutCredits(){
   if(showNew) camp.tipsShown['whats_new_'+ver] = true;
   const whatsNew = showNew
     ? `<div class="lesson" style="text-align:left;margin-top:6px;border-color:rgba(234,181,67,.45)">
-        <b>What's new (${ver}):</b> Leftover Wet Meadow banks modest 🌼 cuttings into the harvest crate — edible flowers and forage herbs, not hay. Neighbors pay more in spring and summer bloom; leftovers still age to the pile. The meadow stays wet and flowery. Home Patch and non-meadow leftovers stay clean. Play stays free; no pay-to-revive.
+        <b>What's new (${ver}):</b> Fogged leftover folds now wait on Home Patch the same way coin-deed neighbors do. Before Home is cleared, leftover mist says the kitchen garden comes first — not “unlock by clearing Orchard Slope.” After Home, neighbor-clear / buy hints stay as they were. Play stays free; no pay-to-revive.
       </div>`
     : '';
   // CD — first About open literacy (in-modal; no toast spam)
