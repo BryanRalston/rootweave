@@ -1823,29 +1823,189 @@ function leftoverPlayGrid(w,h){
   const side = a && b ? Math.min(a,b) : (a||b||8);
   return Math.max(8, Math.min(14, side));
 }
-/** Thin leftover / bought-edge field: atlas crop + revive/heal. No tutorial script. */
+/** Land-tied leftover / bought-edge play. Specs on VALLEY_PARCELS; fallback from id. */
+function leftoverStampFeelFor(spec){
+  if(spec && spec.stampFeel) return spec.stampFeel;
+  const id = (spec && spec.id) || '';
+  if(id==='hay_field' || id==='south_lane') return 'hay';
+  if(id==='woodlot') return 'woodlot';
+  if(id==='wet_meadow' || id==='willow_bottom') return 'wet';
+  if(id==='north_folds' || id==='west_folds') return 'paddock';
+  if(id==='orchard_block') return 'orchard';
+  if(id==='dust_scrub') return 'dust';
+  if(id==='east_pasture') return 'dry_graze';
+  if(id==='south_reach') return 'river';
+  return 'heal';
+}
+function leftoverStampStory(feel, P){
+  const name = (P && P.name) || 'This fold';
+  const desc = (P && P.desc) ? String(P.desc).trim()+' ' : '';
+  const line = {
+    hay: 'Hay and cover — cut, feed, and rest this ground. Not a kitchen row.',
+    woodlot: 'Shade and brush. Restore the understory; leave the canopy.',
+    wet: 'Wet ground and reeds. Do not farm this like a dry garden.',
+    paddock: 'A grazing fold. Manure, rest, and stock water — not a kitchen garden.',
+    orchard: 'Trees and understory. Perennials, not corn rows.',
+    dust: 'Salt, dust, and sparse scrub. Soften it; do not pretend it is lush.',
+    dry_graze: 'Dry pasture at the quarter-section edge. Sparse graze, not a garden.',
+    river: 'The live stem and the wash. Keep the banks rooted.',
+    heal: 'Wake the leftover ground.'
+  }[feel] || 'Wake the leftover ground.';
+  return desc + line;
+}
+/** Distinct thin goals + tools for one leftover feel. No tutorial script. */
+function leftoverStampProfile(feel, grid, spec){
+  const name = (spec && spec.name) || 'this fold';
+  const g = grid|0 || 8;
+  const healN = Math.max(8, Math.round(g*g*0.14));
+  const base = ['select','compost','covercrop','clover','trees','bulldoze'];
+  if(feel==='hay'){
+    const hayN = Math.max(5, Math.round(g*0.55));
+    return {
+      tools: base.concat(['wheat','sisters']),
+      river: false, regen: 1.4, ovs: ['health','om'],
+      goalText: 'Cut hay and feed this cover ground.',
+      doneText: name+' is standing hay again.',
+      goals: [
+        {em:'🌾', desc:'Plant '+hayN+' cover or grain (clover, pioneers, wheat)', prog:()=>[Math.min(hayN, countHayPlanted()), hayN]},
+        {em:'💚', desc:'Bring '+healN+' tiles to 50+ health', prog:()=>[Math.min(healN, countHealthyTiles(50)), healN]},
+      ]
+    };
+  }
+  if(feel==='woodlot'){
+    const treeN = Math.max(5, Math.round(g*0.5));
+    const underN = Math.max(6, Math.round(g*0.55));
+    return {
+      tools: base,
+      river: false, regen: 1.2, ovs: ['health','bio'],
+      goalText: 'Restore the shade and the understory.',
+      doneText: name+' holds canopy again.',
+      goals: [
+        {em:'🌲', desc:'Tend '+treeN+' tree tiles', prog:()=>[Math.min(treeN, countTreeTiles()), treeN]},
+        {em:'🌿', desc:'Heal '+underN+' understory tiles (soil beside trees) to 50+', prog:()=>[Math.min(underN, countCanopyNeighborHealthy(50)), underN]},
+      ]
+    };
+  }
+  if(feel==='wet'){
+    const wetN = Math.max(4, Math.round(g*0.28));
+    const bankN = Math.max(5, Math.round(g*0.42));
+    const bufN = g>=10 ? 2 : 1;
+    return {
+      tools: base.concat(['wetland','pond']),
+      river: true, regen: 1.2, ovs: ['health','water'],
+      goalText: 'Keep this ground wet and breathing.',
+      doneText: name+' is a living wet meadow again.',
+      goals: [
+        {em:'🦢', desc:'Hold '+wetN+' wet tiles (water, pond, or reeds)', prog:()=>[Math.min(wetN, countWetTiles()), wetN]},
+        {em:'💚', desc:'Heal '+bankN+' wet-bank tiles to 50+', prog:()=>[Math.min(bankN, countWetBankHealthy(50)), bankN]},
+        {em:'🌳', desc:'Plant '+bufN+' trees by the water', prog:()=>[Math.min(bufN, (state.stats && state.stats.buffers)|0), bufN]},
+      ]
+    };
+  }
+  if(feel==='paddock'){
+    const grazeN = Math.max(2, Math.round(g*0.22));
+    const padHeal = Math.max(8, Math.round(g*0.55));
+    return {
+      tools: ['select','compost','covercrop','clover','cattle','chicken','pond','trees','bulldoze'],
+      river: false, regen: 1.35, ovs: ['health','om'],
+      goalText: 'Graze this fold and rest the pads.',
+      doneText: name+' is working pasture again.',
+      goals: [
+        {em:'🐄', desc:'Graze '+grazeN+' tiles (herd or flock)', prog:()=>[Math.min(grazeN, (state.stats && state.stats.grazes)|0), grazeN]},
+        {em:'💚', desc:'Bring '+padHeal+' pasture tiles to 50+ health', prog:()=>[Math.min(padHeal, countHealthyTiles(50)), padHeal]},
+      ]
+    };
+  }
+  if(feel==='orchard'){
+    const groveN = Math.max(4, Math.round(g*0.35));
+    const underN = Math.max(6, Math.round(g*0.45));
+    return {
+      tools: base.concat(['orchard','berrybush']),
+      river: false, regen: 1.3, ovs: ['health','bio'],
+      goalText: 'Bring the understory back under the trees.',
+      doneText: name+' is a grove again.',
+      goals: [
+        {em:'🍏', desc:'Tend '+groveN+' grove tiles (trees or orchard)', prog:()=>[Math.min(groveN, countGroveTiles()), groveN]},
+        {em:'🌿', desc:'Heal '+underN+' understory tiles to 50+', prog:()=>[Math.min(underN, countCanopyNeighborHealthy(50)), underN]},
+      ]
+    };
+  }
+  if(feel==='dust'){
+    const revive = Math.max(8, Math.round(g*0.7));
+    const saltN = Math.max(2, Math.round(g*0.18));
+    return {
+      tools: base.concat(['goat']),
+      river: false, regen: 1.0, ovs: ['health'],
+      goalText: 'Soften the dust without pretending it is a garden.',
+      doneText: name+' can hold a little life again.',
+      goals: [
+        {em:'🌅', desc:'Revive '+revive+' dead tiles (dead → soil)', prog:()=>[Math.min(revive, countRevived()), revive]},
+        {em:'🧂', desc:'Revive '+saltN+' salt-pan tiles', prog:()=>[Math.min(saltN, (state.stats && state.stats.saltRevived)|0), saltN]},
+      ]
+    };
+  }
+  if(feel==='dry_graze'){
+    const revive = Math.max(7, Math.round(g*0.6));
+    const grazeN = Math.max(2, Math.round(g*0.2));
+    return {
+      tools: ['select','compost','covercrop','clover','cattle','chicken','goat','trees','bulldoze'],
+      river: false, regen: 1.1, ovs: ['health','om'],
+      goalText: 'Sparse graze on dry edge pasture.',
+      doneText: name+' takes a light stocking again.',
+      goals: [
+        {em:'🐎', desc:'Graze '+grazeN+' tiles on this dry fold', prog:()=>[Math.min(grazeN, (state.stats && state.stats.grazes)|0), grazeN]},
+        {em:'🌅', desc:'Revive '+revive+' dead tiles (dead → soil)', prog:()=>[Math.min(revive, countRevived()), revive]},
+      ]
+    };
+  }
+  if(feel==='river'){
+    const bankN = Math.max(6, Math.round(g*0.45));
+    const bufN = 3;
+    return {
+      tools: base.concat(['wetland','pond']),
+      river: true, regen: 1.2, ovs: ['health','water','runoff'],
+      goalText: 'Root the banks where the stem and wash meet.',
+      doneText: name+' runs cleaner along the banks.',
+      goals: [
+        {em:'🌳', desc:'Plant '+bufN+' riverside buffers', prog:()=>[Math.min(bufN, (state.stats && state.stats.buffers)|0), bufN]},
+        {em:'💚', desc:'Heal '+bankN+' wet-bank tiles to 50+', prog:()=>[Math.min(bankN, countWetBankHealthy(50)), bankN]},
+      ]
+    };
+  }
+  const revive = Math.max(5, Math.round(g*0.65));
+  const heal = Math.max(8, Math.round(g*g*0.16));
+  return {
+    tools: base.concat(['sisters']),
+    river: !!(spec && spec.river), regen: 1.35, ovs: ['health'],
+    goalText: 'Wake '+name+' back to life.',
+    doneText: name+' is breathing again.',
+    goals: [
+      {em:'🌅', desc:'Revive '+revive+' dead tiles (dead → soil)', prog:()=>[Math.min(revive, countRevived()), revive]},
+      {em:'💚', desc:'Bring '+heal+' tiles to 50+ health', prog:()=>[Math.min(heal, countHealthyTiles(50)), heal]},
+    ]
+  };
+}
+/** Thin leftover / bought-edge field: atlas crop + land-tied goals. No tutorial script. */
 function leftoverStampLevel(spec){
   const grid = leftoverPlayGrid(spec.w, spec.h);
-  const revive = Math.max(5, Math.round(grid*0.65));
-  const heal = Math.max(8, Math.round(grid*grid*0.16));
+  const feel = leftoverStampFeelFor(spec);
+  const profile = leftoverStampProfile(feel, grid, spec);
   return {
     id: spec.id,
     name: spec.name,
     em: spec.em,
     leftover: !!spec.leftover,
     buyable: !!spec.buyable,
+    stampFeel: feel,
     grid, coins: spec.coins||50, parYears: 4,
     teaser: spec.teaser,
-    story: spec.story,
-    doneText: spec.doneText,
-    tools: ['select','compost','covercrop','sisters','clover','trees','bulldoze'],
-    shop: false, river: !!spec.river, events: false, startPaused: false, regen: 1.35,
-    ovs: ['health'],
-    goalText: spec.goalText || ('Wake '+spec.name+' back to life.'),
-    goals: [
-      {em:'🌅', desc:'Revive '+revive+' dead tiles (dead → soil)', prog:()=>[Math.min(revive, countRevived()), revive]},
-      {em:'💚', desc:'Bring '+heal+' tiles to 50+ health', prog:()=>[Math.min(heal, countHealthyTiles(50)), heal]},
-    ],
+    story: spec.story || leftoverStampStory(feel, spec),
+    doneText: spec.doneText || profile.doneText,
+    tools: profile.tools,
+    shop: false, river: !!profile.river, events: false, startPaused: false, regen: profile.regen,
+    ovs: profile.ovs,
+    goalText: spec.goalText || profile.goalText,
+    goals: profile.goals,
     gen: genLeftoverStamp,
     tut: []
   };
@@ -2107,59 +2267,59 @@ const VALLEY_PARCELS = [
    systemsTaught:['shop','regions','wildlife_full'], neighborParcels:['creek_bend','south_reach','marsh_finger'],
    unlockRules:{type:'parcel_cleared_all', parcelIds:['creek_bend','dust_flats']}, landmark:'unique_valley',
    desc:'Main river corridor — the same stem as Creek Bend.'},
-  {id:'north_folds', name:'North Folds', em:'🌿', kind:'plot', leftover:true, levelId:'north_folds', lvIndex:null,
+  {id:'north_folds', name:'North Folds', em:'🌿', kind:'plot', leftover:true, stampFeel:'paddock', levelId:'north_folds', lvIndex:null,
    origin:{c:8, r:16}, size:{w:18, h:16}, teaser:'herd',
    systemsTaught:[], neighborParcels:['back_paddock','wet_meadow'],
    unlockRules:{type:'parcel_cleared', parcelId:'back_paddock'}, landmark:'fence',
    desc:'More paddock folds north of the working herd.'},
-  {id:'west_folds', name:'West Folds', em:'🌿', kind:'plot', leftover:true, levelId:'west_folds', lvIndex:null,
+  {id:'west_folds', name:'West Folds', em:'🌿', kind:'plot', leftover:true, stampFeel:'paddock', levelId:'west_folds', lvIndex:null,
    origin:{c:4, r:40}, size:{w:16, h:12}, teaser:'herd',
    systemsTaught:[], neighborParcels:['back_paddock','homestead'],
    unlockRules:{type:'parcel_cleared', parcelId:'back_paddock'}, landmark:'fence',
    desc:'Lower paddock folds between the house and the herd.'},
-  {id:'wet_meadow', name:'Wet Meadow', em:'🦢', kind:'plot', leftover:true, levelId:'wet_meadow', lvIndex:null,
+  {id:'wet_meadow', name:'Wet Meadow', em:'🦢', kind:'plot', leftover:true, stampFeel:'wet', levelId:'wet_meadow', lvIndex:null,
    origin:{c:2, r:2}, size:{w:18, h:14}, teaser:'wetland',
    systemsTaught:[], neighborParcels:['marsh_finger'],
    unlockRules:{type:'parcel_cleared', parcelId:'marsh_finger'}, landmark:'heron',
    desc:'Wilder marsh headwaters on the north-west.'},
-  {id:'orchard_block', name:'Orchard Block', em:'🍏', kind:'plot', leftover:true, levelId:'orchard_block', lvIndex:null,
+  {id:'orchard_block', name:'Orchard Block', em:'🍏', kind:'plot', leftover:true, stampFeel:'orchard', levelId:'orchard_block', lvIndex:null,
    origin:{c:54, r:10}, size:{w:16, h:12}, teaser:'perennials',
    systemsTaught:[], neighborParcels:['orchard_slope','river_reach'],
    unlockRules:{type:'parcel_cleared', parcelId:'orchard_slope'}, landmark:'stump_rows',
    desc:'The larger orchard stand north of the playable slope.'},
-  {id:'hay_field', name:'Hay Field', em:'🌾', kind:'plot', leftover:true, levelId:'hay_field', lvIndex:null,
+  {id:'hay_field', name:'Hay Field', em:'🌾', kind:'plot', leftover:true, stampFeel:'hay', levelId:'hay_field', lvIndex:null,
    origin:{c:70, r:18}, size:{w:16, h:10}, teaser:'cover',
    systemsTaught:[], neighborParcels:['orchard_slope','market_cross'],
    unlockRules:{type:'parcel_cleared', parcelId:'orchard_slope'}, landmark:'cart',
    desc:'Hay and cover ground east of the orchard.'},
-  {id:'south_reach', name:'South Reach', em:'💧', kind:'plot', leftover:true, levelId:'south_reach', lvIndex:null,
+  {id:'south_reach', name:'South Reach', em:'💧', kind:'plot', leftover:true, stampFeel:'river', levelId:'south_reach', lvIndex:null,
    origin:{c:42, r:20}, size:{w:12, h:20}, teaser:'water',
    systemsTaught:[], neighborParcels:['river_reach','dust_flats'],
    unlockRules:{type:'parcel_cleared', parcelId:'dust_flats'}, landmark:'bridge_post',
    desc:'The long stem south of River Reach, where the wash arrives.'},
-  {id:'woodlot', name:'Woodlot', em:'🌲', kind:'plot', leftover:true, levelId:'woodlot', lvIndex:null,
+  {id:'woodlot', name:'Woodlot', em:'🌲', kind:'plot', leftover:true, stampFeel:'woodlot', levelId:'woodlot', lvIndex:null,
    origin:{c:70, r:2}, size:{w:14, h:10}, teaser:'weather',
    systemsTaught:[], neighborParcels:['wind_ridge'],
    unlockRules:{type:'parcel_cleared', parcelId:'wind_ridge'}, landmark:'wind',
    desc:'Evergreen woodlot on the ridge shoulder.'},
-  {id:'dust_scrub', name:'Dust Scrub', em:'🌵', kind:'plot', leftover:true, levelId:'dust_scrub', lvIndex:null,
+  {id:'dust_scrub', name:'Dust Scrub', em:'🌵', kind:'plot', leftover:true, stampFeel:'dust', levelId:'dust_scrub', lvIndex:null,
    origin:{c:66, r:44}, size:{w:24, h:16}, teaser:'salt',
    systemsTaught:[], neighborParcels:['dust_flats','east_pasture'],
    unlockRules:{type:'parcel_cleared', parcelId:'dust_flats'}, landmark:'ruin',
    desc:'The wider south-east scrub beyond the playable flats.'},
   // Coin-deed edge land — surrounding folds the painting already shows. Not leftover heal-unlocks.
-  {id:'willow_bottom', name:'Willow Bottom', em:'🌿', kind:'plot', buyable:true, levelId:'willow_bottom', lvIndex:null,
-   origin:{c:0, r:58}, size:{w:8, h:6}, teaser:'edge fold',
+  {id:'willow_bottom', name:'Willow Bottom', em:'🌿', kind:'plot', buyable:true, stampFeel:'wet', levelId:'willow_bottom', lvIndex:null,
+   origin:{c:0, r:58}, size:{w:8, h:6}, teaser:'wetland',
    systemsTaught:[], neighborParcels:['home_garden','homestead'],
    unlockRules:{type:'coin_deed', cost:38, neighborParcels:['home_garden','homestead']}, landmark:'shed_fence',
    desc:'A small willow fold west of the kitchen garden, last wet ground before the fence.'},
-  {id:'south_lane', name:'South Lane Fold', em:'🛤️', kind:'plot', buyable:true, levelId:'south_lane', lvIndex:null,
-   origin:{c:28, r:54}, size:{w:14, h:10}, teaser:'lane fold',
+  {id:'south_lane', name:'South Lane Fold', em:'🛤️', kind:'plot', buyable:true, stampFeel:'hay', levelId:'south_lane', lvIndex:null,
+   origin:{c:28, r:54}, size:{w:14, h:10}, teaser:'cover',
    systemsTaught:[], neighborParcels:['school_garden'],
    unlockRules:{type:'coin_deed', cost:56, neighborParcels:['school_garden']}, landmark:'bell',
    desc:'The lane-side fold south of the school garden — more kitchen ground along the road.'},
-  {id:'east_pasture', name:'East Pasture', em:'🐎', kind:'plot', buyable:true, levelId:'east_pasture', lvIndex:null,
-   origin:{c:86, r:28}, size:{w:10, h:16}, teaser:'edge block',
+  {id:'east_pasture', name:'East Pasture', em:'🐎', kind:'plot', buyable:true, stampFeel:'dry_graze', levelId:'east_pasture', lvIndex:null,
+   origin:{c:86, r:28}, size:{w:10, h:16}, teaser:'salt',
    systemsTaught:[], neighborParcels:['market_cross','dust_scrub'],
    unlockRules:{type:'coin_deed', cost:78, neighborParcels:['market_cross','dust_scrub']}, landmark:'cart',
    desc:'Open pasture east of the market yard, where the quarter-section runs out.'},
@@ -2179,22 +2339,17 @@ function attachLeftoverStampLevels(){
       P.lvIndex = LEVELS.indexOf(existing);
       return;
     }
-    const wet = P.id==='south_reach' || P.id==='wet_meadow';
     LEVELS.push(leftoverStampLevel({
       id: P.id,
       name: P.name,
       em: P.em,
       leftover: !!P.leftover,
       buyable: !!P.buyable,
+      stampFeel: P.stampFeel,
       w: P.size && P.size.w,
       h: P.size && P.size.h,
       teaser: P.teaser || P.desc,
-      story: P.buyable
-        ? (P.desc||P.name)+' Bought ground — the same atlas crop as every other field.'
-        : (P.desc||P.name)+' The same atlas crop as every other field — wake the leftover ground.',
-      doneText: P.name+' is breathing again.',
-      goalText: 'Wake '+P.name+' back to life.',
-      river: wet
+      story: leftoverStampStory(leftoverStampFeelFor(P), P)
     }));
     CLEAR_BONUS.push(45);
     P.levelId = P.id;
@@ -2940,6 +3095,7 @@ function campaignToolUnlocked(shopId){
       if(!camp.done[i]) continue;
       const L = LEVELS[i];
       if(!L) continue;
+      if(L.leftover || L.buyable) continue; // stamp-thin fields do not grant campaign tools
       if(L.grantUnlocks && L.grantUnlocks.indexOf(shopId)>=0) return true;
       const T = L.tools;
       if(Array.isArray(T) && T.indexOf(shopId)>=0) return true;
@@ -2995,7 +3151,7 @@ function recalc(t){
   t.health = SOIL_ATTRS.reduce((a,k)=>a+t.soil[k],0) / SOIL_ATTRS.length;
 }
 const DEFAULT_STATS = {planted:0, harvests:0, coinsEarned:0, synergy:0, cattle:0, chickens:0, ponds:0, trees:0,
-  composts:0, coverPlanted:0, revived:0, buffers:0, grazes:0, sistersPlanted:0, buildings:0, decos:0, saltRevived:0};
+  composts:0, coverPlanted:0, wheatPlanted:0, revived:0, buffers:0, grazes:0, sistersPlanted:0, buildings:0, decos:0, saltRevived:0};
 function playGridForLevel(lv){
   const L = LEVELS[lv];
   const P = typeof valleyParcelByLvIndex==='function' ? valleyParcelByLvIndex(lv) : null;
@@ -3333,10 +3489,204 @@ function genMarketCross(s){
 function genSchoolGarden(s){
   sowAtlasCrop(s, 'school_garden');
 }
-/** Leftover land: same atlas crop / stamp path, no custom campaign gen. */
+function leftoverStampOpen(t){
+  if(!t) return false;
+  if(t.terrain==='water' || t.terrain==='pond' || t.terrain==='riverbed') return false;
+  if(t.terrain==='barn' || t.terrain==='coop' || t.terrain==='house') return false;
+  if(t.feature==='path' || t.feature==='swale') return false;
+  return true;
+}
+function leftoverStampLand(t){
+  return leftoverStampOpen(t) && (t.terrain==='soil' || t.terrain==='dead');
+}
+function leftoverWetNear(s, t){
+  const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+  for(let i=0;i<dirs.length;i++){
+    const c = t.c+dirs[i][0], r = t.r+dirs[i][1];
+    if(!inGrid(c,r)) continue;
+    const n = s.grid[idx(c,r)];
+    if(n && (n.terrain==='water' || n.terrain==='pond' || n.terrain==='wetland')) return true;
+  }
+  return false;
+}
+function leftoverCanopyNear(s, t){
+  const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+  for(let i=0;i<dirs.length;i++){
+    const c = t.c+dirs[i][0], r = t.r+dirs[i][1];
+    if(!inGrid(c,r)) continue;
+    const n = s.grid[idx(c,r)];
+    if(n && (n.terrain==='trees' || n.terrain==='orchard' || n.terrain==='berrybush')) return true;
+  }
+  return false;
+}
+/** Thin land-tied starting mix on top of the atlas crop. Does not invent a new river. */
+function dressLeftoverStamp(s, P){
+  if(!s || !s.grid || !P) return;
+  const feel = leftoverStampFeelFor(P);
+  const tiles = s.grid;
+  const roll = (t, k)=> sr(((t.c+3)*19 + (t.r+7)*41 + (k||0)*13 + (P.id||'').length*8));
+  if(feel==='hay'){
+    let planted = 0, bales = 0;
+    tiles.forEach(t=>{
+      if(!leftoverStampLand(t)) return;
+      if(t.terrain==='dead' && roll(t,1)<0.74){
+        seedSoil(t, 38 + roll(t,2)*10, 8);
+      }
+      if(t.terrain==='soil'){
+        t.soil.om = Math.min(100, (t.soil.om||30)+10);
+        t.soil.erosion = Math.min(100, (t.soil.erosion||30)+12);
+        t.soil.nutrients = Math.min(100, (t.soil.nutrients||30)+6);
+        recalc(t);
+        if(planted<2 && roll(t,3)>0.52 && roll(t,3)<0.72){
+          t.crop = {type:'clover', growth:0.38, days:3};
+          planted++;
+        } else if(bales<2 && roll(t,4)>0.84){
+          t.deco = 'deco_haybales';
+          bales++;
+        }
+      }
+    });
+    return;
+  }
+  if(feel==='woodlot'){
+    const wantTrees = Math.max(3, Math.round(GRID*0.26));
+    let trees = tiles.filter(t=>t.terrain==='trees').length;
+    tiles.forEach(t=>{
+      if(!leftoverStampLand(t)) return;
+      if(trees<wantTrees && roll(t,1)<0.42){
+        t.terrain = 'trees'; carveClear(t);
+        trees++;
+        return;
+      }
+      if(t.terrain==='soil' && roll(t,2)<0.58){
+        makeDead(t);
+        t.deco = roll(t,3)<0.45 ? 'deco_deadtree' : 'deco_stump';
+      } else if(t.terrain==='soil'){
+        t.soil.nutrients = Math.min(t.soil.nutrients||30, 24);
+        t.soil.water = Math.min(100, (t.soil.water||30)+8);
+        recalc(t);
+      } else if(t.terrain==='dead' && !t.deco){
+        t.deco = roll(t,4)<0.5 ? 'deco_stump' : 'deco_deadtree';
+      }
+    });
+    return;
+  }
+  if(feel==='wet'){
+    const wantWet = Math.max(3, Math.round(GRID*0.2));
+    let wet = tiles.filter(t=>t.terrain==='water' || t.terrain==='pond' || t.terrain==='wetland').length;
+    tiles.forEach(t=>{
+      if(!leftoverStampLand(t)) return;
+      const marshy = t.atlasBiome==='marsh' || t.atlasBiome==='riparian';
+      if(wet<wantWet && (leftoverWetNear(s,t) || marshy || roll(t,1)<0.18)){
+        t.terrain = (wet%2===0) ? 'wetland' : 'pond';
+        carveClear(t);
+        wet++;
+        return;
+      }
+      if(t.terrain==='soil'){
+        t.soil.water = Math.min(100, (t.soil.water||30)+22);
+        t.soil.om = Math.min(100, (t.soil.om||30)+4);
+        recalc(t);
+      }
+    });
+    if(P.id==='willow_bottom'){
+      let willows = 0;
+      tiles.forEach(t=>{
+        if(willows>=2 || t.terrain!=='soil' || !leftoverStampOpen(t)) return;
+        if(leftoverWetNear(s,t) || roll(t,5)<0.35){
+          t.terrain = 'trees'; carveClear(t);
+          willows++;
+        }
+      });
+    }
+    return;
+  }
+  if(feel==='paddock'){
+    let ponds = tiles.filter(t=>t.terrain==='pond' || t.terrain==='water').length;
+    if(ponds<1){
+      const open = tiles.filter(leftoverStampLand);
+      const mid = open[Math.floor(open.length*0.45)];
+      if(mid){ mid.terrain = 'pond'; carveClear(mid); }
+    }
+    tiles.forEach(t=>{
+      if(!leftoverStampLand(t)) return;
+      if(t.terrain==='dead' && roll(t,1)<0.48){
+        seedSoil(t, 36, 8);
+      }
+      if(t.terrain==='soil'){
+        t.soil.om = Math.min(100, (t.soil.om||30)+8);
+        recalc(t);
+      }
+    });
+    if(!tiles.some(t=>t.deco==='deco_rock')){
+      const soil = tiles.find(t=>t.terrain==='soil' && leftoverStampOpen(t));
+      if(soil) soil.deco = 'deco_rock';
+    }
+    return;
+  }
+  if(feel==='orchard'){
+    const wantGrove = Math.max(3, Math.round(GRID*0.22));
+    let grove = tiles.filter(t=>t.terrain==='trees' || t.terrain==='orchard').length;
+    tiles.forEach(t=>{
+      if(!leftoverStampLand(t)) return;
+      if(grove<wantGrove && ((t.c+t.r)%2===0) && roll(t,1)<0.55){
+        t.terrain = 'trees'; carveClear(t);
+        grove++;
+        return;
+      }
+      if(t.terrain==='dead' || (t.terrain==='soil' && roll(t,2)<0.32)){
+        if(t.terrain==='soil') makeDead(t);
+        t.deco = 'deco_deadtree';
+      } else if(t.terrain==='soil'){
+        t.soil.om = Math.min(100, (t.soil.om||30)+4);
+        recalc(t);
+      }
+    });
+    return;
+  }
+  if(feel==='dust'){
+    tiles.forEach(t=>{
+      if(!leftoverStampLand(t)) return;
+      if(t.terrain==='soil' && roll(t,1)<0.74) makeDead(t);
+      if(t.terrain==='dead' && roll(t,2)<0.3) t.feature = 'saltflat';
+      else if(t.terrain==='dead' && roll(t,2)>0.88) t.feature = 'gully';
+    });
+    return;
+  }
+  if(feel==='dry_graze'){
+    let ponds = tiles.filter(t=>t.terrain==='pond' || t.terrain==='water').length;
+    tiles.forEach(t=>{
+      if(!leftoverStampLand(t)) return;
+      if(t.terrain==='soil' && roll(t,1)<0.52) makeDead(t);
+      else if(t.terrain==='dead' && roll(t,1)>0.78) seedSoil(t, 28, 8);
+      if(t.terrain==='dead' && roll(t,2)<0.16) t.feature = 'saltflat';
+    });
+    if(ponds<1){
+      const cand = tiles.find(t=>leftoverStampLand(t));
+      if(cand){ cand.terrain = 'pond'; carveClear(cand); }
+    }
+    return;
+  }
+  if(feel==='river'){
+    tiles.forEach(t=>{
+      if(!leftoverStampLand(t)) return;
+      if(leftoverWetNear(s,t)){
+        if(t.terrain==='dead') seedSoil(t, 20, 8);
+        if(t.terrain==='soil'){
+          t.soil.water = Math.min(100, (t.soil.water||30)+16);
+          recalc(t);
+        }
+      }
+    });
+  }
+}
+/** Leftover / bought-edge land: atlas crop, then a thin land-tied dress. */
 function genLeftoverStamp(s){
   const P = valleyParcelByLvIndex(s.lv);
-  if(P) sowAtlasCrop(s, P.id);
+  if(P){
+    sowAtlasCrop(s, P.id);
+    dressLeftoverStamp(s, P);
+  }
 }
 function soilTiles(){ return state.grid.filter(t=>t.terrain==='soil'); }
 function isWaterT(t){ return t.terrain==='pond' || t.terrain==='water'; }
@@ -3393,6 +3743,45 @@ function countHealthyTiles(threshold){
   let n = 0;
   state.grid.forEach(t=>{
     if(t.terrain==='soil' && t.health >= thr) n++;
+  });
+  return n;
+}
+function countHayPlanted(){
+  if(!state || !state.grid) return 0;
+  const live = state.grid.filter(t=>t.crop && (t.crop.type==='clover' || t.crop.type==='covercrop' || t.crop.type==='wheat')).length;
+  const cover = (state.stats && state.stats.coverPlanted)|0;
+  const wheat = (state.stats && state.stats.wheatPlanted)|0;
+  return Math.max(live, cover + wheat);
+}
+function countTreeTiles(){
+  if(!state || !state.grid) return 0;
+  return state.grid.filter(t=>t.terrain==='trees').length;
+}
+function countGroveTiles(){
+  if(!state || !state.grid) return 0;
+  return state.grid.filter(t=>t.terrain==='trees' || t.terrain==='orchard' || t.terrain==='berrybush').length;
+}
+function countWetTiles(){
+  if(!state || !state.grid) return 0;
+  return state.grid.filter(t=>t.terrain==='water' || t.terrain==='pond' || t.terrain==='wetland').length;
+}
+function countWetBankHealthy(threshold){
+  if(!state || !state.grid) return 0;
+  const thr = threshold == null ? 50 : threshold;
+  let n = 0;
+  state.grid.forEach(t=>{
+    if(t.terrain!=='soil' || t.health<thr) return;
+    if(typeof leftoverWetNear==='function' ? leftoverWetNear(state, t) : false) n++;
+  });
+  return n;
+}
+function countCanopyNeighborHealthy(threshold){
+  if(!state || !state.grid) return 0;
+  const thr = threshold == null ? 50 : threshold;
+  let n = 0;
+  state.grid.forEach(t=>{
+    if(t.terrain!=='soil' || t.health<thr) return;
+    if(typeof leftoverCanopyNear==='function' ? leftoverCanopyNear(state, t) : false) n++;
   });
   return n;
 }
@@ -7824,6 +8213,7 @@ function applyTool(i){
     if(tool==='clover'){ t.soil.om+=2.5; t.soil.microbial+=3; t.soil.erosion+=3; }
     if(tool==='covercrop'){ t.soil.om+=2; t.soil.microbial+=2; t.soil.erosion+=3.5; t.soil.structure+=1.5; }
     if(tool==='clover' || tool==='covercrop') state.stats.coverPlanted = (state.stats.coverPlanted|0) + 1;
+    if(tool==='wheat') state.stats.wheatPlanted = (state.stats.wheatPlanted|0) + 1;
     SOIL_ATTRS.forEach(k=>t.soil[k]=clamp(t.soil[k]));
     recalc(t);
     state.stats.planted = (state.stats.planted|0) + 1;
@@ -8481,7 +8871,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.land-deeds';
+const SHIP_BUILD = '2026-08-22.leftover-feel';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
