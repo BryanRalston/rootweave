@@ -2108,7 +2108,7 @@ function leftoverStampFeelFor(spec){
   const id = (spec && spec.id) || '';
   if(id==='hay_field' || id==='south_lane') return 'hay';
   if(id==='woodlot') return 'woodlot';
-  if(id==='wet_meadow' || id==='willow_bottom') return 'wet';
+  if(id==='wet_meadow' || id==='willow_bottom' || id==='marsh_finger') return 'wet';
   if(id==='north_folds' || id==='west_folds') return 'paddock';
   if(id==='orchard_block') return 'orchard';
   if(id==='dust_scrub') return 'dust';
@@ -2120,8 +2120,7 @@ function leftoverStampFeelFor(spec){
 function leftoverOpenFieldFeel(spec){
   const feel = leftoverStampFeelFor(spec);
   if(feel==='hay' || feel==='paddock' || feel==='orchard' || feel==='dry_graze' || feel==='meadow') return true;
-  const id = (spec && spec.id) || '';
-  return id==='wet_meadow';
+  return false;
 }
 function leftoverStampStory(feel, P){
   const name = (P && P.name) || 'This fold';
@@ -2178,7 +2177,7 @@ function leftoverStampProfile(feel, grid, spec){
     const bufN = g>=10 ? 2 : 1;
     return {
       tools: base.concat(['wetland','pond']),
-      river: true, regen: 1.2, ovs: ['health','water'],
+      river: true, regen: 1.2, ovs: ['health','water','runoff'],
       goalText: 'Keep this ground wet and breathing.',
       doneText: name+' is a living wet meadow again.',
       goals: [
@@ -3849,6 +3848,12 @@ function genOrchardSlope(s){
 }
 function genMarshFinger(s){
   sowAtlasCrop(s, 'marsh_finger');
+  const P = typeof valleyParcel==='function' ? valleyParcel('marsh_finger') : null;
+  if(P){
+    if(typeof dressLeftoverStamp==='function') dressLeftoverStamp(s, P);
+    if(typeof ensureMarshPondKeep==='function') ensureMarshPondKeep(s, P);
+    if(typeof ensureAtlasLaneOnCrop==='function') ensureAtlasLaneOnCrop(s, P.id);
+  }
 }
 function genWindRidge(s){
   sowAtlasCrop(s, 'wind_ridge');
@@ -3951,6 +3956,62 @@ function isHighPondT(t){
   if(!t || t.terrain!=='pond') return false;
   if(t.highPond) return true;
   return t.atlasWater==='pond_site' && t.atlasBiome==='ridge';
+}
+/** Painted atlas marsh pond — filters runoff before the main stem. Not the garden pond. */
+function isMarshPondT(t){
+  if(!t || t.terrain!=='pond') return false;
+  if(t.highPond) return false;
+  if(t.atlasBiome==='garden' || t.atlasBiome==='ridge' || t.atlasBiome==='pasture') return false;
+  if(t.marshPond) return true;
+  return t.atlasWater==='pond_site' && t.atlasBiome==='marsh';
+}
+function leftoverPlayOrParcelBox(P){
+  if(typeof leftoverPlayBox==='function'){
+    const box = leftoverPlayBox(P);
+    if(box) return box;
+  }
+  if(!P || !P.origin || !P.size) return null;
+  return {c:P.origin.c|0, r:P.origin.r|0, w:P.size.w|0, h:P.size.h|0};
+}
+function parcelHasAtlasMarshPonds(P){
+  const box = leftoverPlayOrParcelBox(P);
+  if(!box || typeof atlasGet!=='function') return false;
+  for(let r=box.r; r<box.r+box.h; r++){
+    for(let c=box.c; c<box.c+box.w; c++){
+      const A = atlasGet(c, r);
+      if(A && A.water==='pond_site' && A.biome==='marsh') return true;
+    }
+  }
+  return false;
+}
+/** Ortho bank of a marsh pond — wet soil that feeds the filter. */
+function marshPondFeedAdj(t, s){
+  s = s || (typeof state!=='undefined' ? state : null);
+  if(!t || !s || !s.grid) return false;
+  if(typeof isMarshPondT==='function' && isMarshPondT(t)) return false;
+  const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+  for(let i=0;i<dirs.length;i++){
+    const c = (t.c|0)+dirs[i][0], r = (t.r|0)+dirs[i][1];
+    if(typeof inGrid==='function' && !inGrid(c,r)) continue;
+    const n = s.grid[typeof idx==='function' ? idx(c,r) : (r*(s.gridSize||GRID||0)+c)];
+    if(typeof isMarshPondT==='function' ? isMarshPondT(n) : false) return true;
+  }
+  return false;
+}
+/** Tile sits in a marsh pond's small catchment — sheds toward the pond, not straight to the river. */
+function shedsTowardMarshPond(t, s){
+  s = s || (typeof state!=='undefined' ? state : null);
+  if(!t || !s || !s.grid) return false;
+  if(typeof isMarshPondT==='function' && isMarshPondT(t)) return false;
+  if(t.terrain==='water') return false;
+  for(let dr=-2; dr<=2; dr++) for(let dc=-2; dc<=2; dc++){
+    if(!dc && !dr) continue;
+    const c = (t.c|0)+dc, r = (t.r|0)+dr;
+    if(typeof inGrid==='function' && !inGrid(c,r)) continue;
+    const n = s.grid[typeof idx==='function' ? idx(c,r) : (r*(s.gridSize||GRID||0)+c)];
+    if(typeof isMarshPondT==='function' ? isMarshPondT(n) : false) return true;
+  }
+  return false;
 }
 /** Tile sits downhill (south, toward the fields) of a ridge high pond — a little more hold, no meter. */
 function highPondDownhillAdj(t, s){
@@ -4120,7 +4181,7 @@ function agentStepOntoPath(a){
 }
 function leftoverStampOpen(t){
   if(!t) return false;
-  if(t.terrain==='water' || t.terrain==='pond' || t.terrain==='riverbed') return false;
+  if(t.terrain==='water' || t.terrain==='pond' || t.terrain==='riverbed' || t.terrain==='wetland') return false;
   if(t.terrain==='barn' || t.terrain==='coop' || t.terrain==='house') return false;
   if(t.terrain==='trees' || t.terrain==='orchard' || t.terrain==='berrybush') return false;
   if(t.feature==='path' || t.feature==='swale') return false;
@@ -4325,23 +4386,66 @@ function dressLeftoverStamp(s, P){
     return;
   }
   if(feel==='wet'){
-    const wantWet = Math.max(3, Math.round(GRID*0.2));
-    let wet = tiles.filter(t=>t.terrain==='water' || t.terrain==='pond' || t.terrain==='wetland').length;
-    tiles.forEach(t=>{
-      if(!leftoverStampLand(t)) return;
+    if(typeof ensureMarshPondKeep==='function') ensureMarshPondKeep(s, P);
+    const atlasPonds = tiles.filter(t=>t.terrain==='pond' && (t.atlasWater==='pond_site' || (typeof isMarshPondT==='function' && isMarshPondT(t)))).length;
+    const liveWater = tiles.filter(t=>t.terrain==='water').length;
+    // Invent a pond only when this fold has no painted water or pond (willow-like). Never a second river.
+    if(!atlasPonds && !liveWater && !tiles.some(t=>t.terrain==='pond')){
+      const wantWet = Math.max(3, Math.round(GRID*0.2));
+      let wet = tiles.filter(t=>t.terrain==='water' || t.terrain==='pond' || t.terrain==='wetland').length;
+      tiles.forEach(t=>{
+        if(!leftoverStampLand(t) || wet>=wantWet) return;
+        if(leftoverWetNear(s,t) || roll(t,1)<0.18){
+          t.terrain = (wet%2===0) ? 'wetland' : 'pond';
+          carveClear(t);
+          wet++;
+        }
+      });
+    }
+    const campaignMarsh = P && (P.id==='marsh_finger' || P.levelId==='marsh') && !P.leftover && !P.buyable;
+    const wantReed = campaignMarsh ? 0 : ((atlasPonds || liveWater) ? Math.max(4, Math.round(GRID*0.4)) : 0);
+    let reeds = tiles.filter(t=>t.terrain==='wetland').length;
+    const scoreReed = (t)=>{
+      let n = 0;
+      if(typeof leftoverWetNear==='function' && leftoverWetNear(s, t)) n += 8;
+      if(t.atlasBiome==='marsh') n += 5;
+      if(t.atlasBiome==='riparian') n += 3;
+      if(typeof marshPondFeedAdj==='function' && marshPondFeedAdj(t, s)) n += 6;
+      n += roll(t, 1) * 1.4;
+      return n;
+    };
+    tiles.filter(t=>leftoverStampLand(t)).slice().sort((a,b)=>scoreReed(b)-scoreReed(a)).forEach(t=>{
+      if(reeds>=wantReed) return;
       const marshy = t.atlasBiome==='marsh' || t.atlasBiome==='riparian';
-      if(wet<wantWet && (leftoverWetNear(s,t) || marshy || roll(t,1)<0.18)){
-        t.terrain = (wet%2===0) ? 'wetland' : 'pond';
-        carveClear(t);
-        wet++;
-        return;
-      }
-      if(t.terrain==='soil'){
-        t.soil.water = Math.min(100, (t.soil.water||30)+22);
+      if(!(leftoverWetNear(s,t) || marshy || (typeof marshPondFeedAdj==='function' && marshPondFeedAdj(t, s)))) return;
+      t.terrain = 'wetland';
+      carveClear(t);
+      reeds++;
+    });
+    if(!campaignMarsh){
+      tiles.forEach(t=>{
+        if(!t || t.terrain!=='soil') return;
+        const marshy = t.atlasBiome==='marsh' || t.atlasBiome==='riparian';
+        const bank = typeof leftoverWetNear==='function' && leftoverWetNear(s, t);
+        const feed = typeof marshPondFeedAdj==='function' && marshPondFeedAdj(t, s);
+        if(!(marshy || bank || feed)) return;
+        t.soil.water = Math.min(100, (t.soil.water||30)+(feed?28:22));
         t.soil.om = Math.min(100, (t.soil.om||30)+4);
         recalc(t);
-      }
-    });
+      });
+    }
+    if(!campaignMarsh){
+      tiles.forEach(t=>{
+        if(!t || t.terrain!=='dead' || !leftoverStampLand(t)) return;
+        const marshy = t.atlasBiome==='marsh' || t.atlasBiome==='riparian';
+        if(!(leftoverWetNear(s,t) || marshy)) return;
+        if(roll(t,6)<0.42){
+          seedSoil(t, 20, 8);
+          t.soil.water = Math.min(100, (t.soil.water||30)+26);
+          recalc(t);
+        }
+      });
+    }
     if(P.id==='willow_bottom'){
       let willows = 0;
       tiles.forEach(t=>{
@@ -4584,6 +4688,23 @@ function ensureRidgeWoodlotKeep(s, P){
     if(t.terrain==='trees' && !t.farmEdge) t.farmEdge = 'woodlot';
   });
 }
+/** Keep painted atlas marsh ponds on marsh / wet crops. Do not invent a river. Home Patch stays off. */
+function ensureMarshPondKeep(s, P){
+  if(!s || !s.grid) return;
+  if(P && (P.id==='home_garden' || P.lvIndex===0)) return;
+  s.grid.forEach(t=>{
+    if(!t) return;
+    const A = (typeof atlasGet==='function' && t.atlasC!=null) ? atlasGet(t.atlasC, t.atlasR) : null;
+    if(A && A.water==='pond_site' && A.biome==='marsh'){
+      t.terrain = 'pond';
+      if(typeof carveClear==='function') carveClear(t);
+      t.atlasWater = 'pond_site';
+      t.atlasBiome = 'marsh';
+      t.marshPond = true;
+      t.highPond = false;
+    }
+  });
+}
 /** Leftover / bought-edge land: atlas crop, then a thin land-tied dress, then farm edges. */
 function genLeftoverStamp(s){
   const P = valleyParcelByLvIndex(s.lv);
@@ -4591,6 +4712,7 @@ function genLeftoverStamp(s){
     sowAtlasCrop(s, P.id);
     dressLeftoverStamp(s, P);
     if(typeof ensureRidgeWoodlotKeep==='function') ensureRidgeWoodlotKeep(s, P);
+    if(typeof ensureMarshPondKeep==='function') ensureMarshPondKeep(s, P);
     seatLeftoverFarmEdges(s, P);
     if(typeof ensureAtlasLaneOnCrop==='function') ensureAtlasLaneOnCrop(s, P.id);
   }
@@ -5684,7 +5806,10 @@ function computeWaterTarget(){
   let score = 50, buffers = 0, risk = 0;
   state.grid.forEach(t=>{
     if(t.terrain==='trees' || t.terrain==='orchard'){ if(waterAdj(t)) buffers++; return; }
-    if(t.terrain==='pond'){ score += 2; return; }
+    if(t.terrain==='pond'){
+      score += (typeof isMarshPondT==='function' && isMarshPondT(t)) ? 3 : 2; // marsh ponds filter a little before the stem
+      return;
+    }
     if(t.terrain==='wetland'){ score += waterAdj(t) ? 8 : 4; return; }   // nature's kidney
     if(t.terrain==='raintank'){ score += 1; return; }
     if(t.terrain==='dead'){
@@ -5700,14 +5825,17 @@ function computeWaterTarget(){
     if(t.health>70) score += 0.25;                          // spongy soil holds its ground
     if(t.soil.erosion<30) score -= 0.15;
     if(typeof riparianAdj==='function' && riparianAdj(t)) score += 0.4; // beds behind the buffer filter a little
+    const marshFeed = typeof marshPondFeedAdj==='function' && marshPondFeedAdj(t);
+    const marshShed = typeof shedsTowardMarshPond==='function' && shedsTowardMarshPond(t);
+    if(marshFeed || marshShed) score += marshFeed ? 0.22 : 0.10; // catchment settles in the pond first
     if(waterAdj(t)){                                        // the riparian zone matters most
-      if(t.graze && t.graze.kind!=='duckT') risk += 1;      // hooves on the bank (ducks belong)
+      const liveBank = typeof atlasWaterAdjLocal==='function' && atlasWaterAdjLocal(state, t.c, t.r);
+      if(t.graze && t.graze.kind!=='duckT') risk += marshFeed ? 0.45 : 1;      // hooves on the bank (ducks belong)
       if(t.graze && t.graze.kind==='duckT') score += 1;
-      if(t.crop && !CROPS[t.crop.type].diverse) risk += 0.5;
-      if(!t.crop && !t.graze && t.health<40) risk += 0.6;   // mud sliding straight in
-      if(typeof atlasWaterAdjLocal==='function' && atlasWaterAdjLocal(state, t.c, t.r)
-         && !t.crop && !t.graze){
-        risk += 0.22;                                      // bare soil right on the live bank
+      if(t.crop && !CROPS[t.crop.type].diverse) risk += marshFeed ? 0.25 : 0.5;
+      if(!t.crop && !t.graze && t.health<40) risk += marshFeed ? 0.28 : 0.6;   // mud sliding straight in
+      if(liveBank && !t.crop && !t.graze){
+        risk += marshFeed ? 0.10 : 0.22;                 // bare soil right on the live bank
       }
     }
   });
@@ -5932,6 +6060,9 @@ function simStep(dt){
       }
       if(typeof highPondDownhillAdj==='function' && highPondDownhillAdj(t)){
         if(k==='water') d += 0.05;                   // ridge high pond feeds the downhill fields
+      }
+      if(typeof marshPondFeedAdj==='function' && marshPondFeedAdj(t)){
+        if(k==='erosion') d += 0.04;                 // pond bank holds a little dirt out of the river
       }
       if(k==='microbial' && nearWorm) d += 0.12;     // the worm army
       if((k==='om'||k==='microbial') && nearMush) d += 0.07;  // fungal threads
@@ -9225,6 +9356,8 @@ function soilStoryLine(t){
     return '💧 The filter — trees on the bank hold soil and drink the runoff. Clean water is a crop you grow.';
   }
   if(t.terrain==='pond'){
+    if(typeof isMarshPondT==='function' && isMarshPondT(t))
+      return '🌾 Marsh pond — runoff settles here before it reaches the main river.';
     return '💧 Water held on the land — a pond keeps neighbors moist.';
   }
   if(t.terrain==='trees'){
@@ -10134,7 +10267,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.riparian';
+const SHIP_BUILD = '2026-08-22.marshpond';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -10735,7 +10868,10 @@ function tileRunoffScore(t){
     return 92;
   }
   if(t.terrain==='wetland') return 96;
-  if(t.terrain==='pond') return 80;
+  if(t.terrain==='pond'){
+    if(typeof isMarshPondT==='function' && isMarshPondT(t)) return 94;
+    return 80;
+  }
   if(isWaterT(t)) return state.waterQuality;
   if(t.terrain==='dead') return 18;
   if(t.terrain==='riverbed') return 25;
@@ -10745,8 +10881,11 @@ function tileRunoffScore(t){
   else if(!t.graze && t.health<40) v -= 12;
   if(t.graze && waterAdj(t)) v -= 22;
   if(typeof riparianAdj==='function' && riparianAdj(t)) v += 12;  // buffer neighbors filter a little
+  if(typeof marshPondFeedAdj==='function' && marshPondFeedAdj(t)) v += 16; // pond bank filters
+  else if(typeof shedsTowardMarshPond==='function' && shedsTowardMarshPond(t)) v += 12;
   if(state && typeof atlasWaterAdjLocal==='function' && atlasWaterAdjLocal(state, t.c, t.r)
-     && !t.crop && !(typeof isRiparianT==='function' && isRiparianT(t))){
+     && !t.crop && !(typeof isRiparianT==='function' && isRiparianT(t))
+     && !(typeof marshPondFeedAdj==='function' && marshPondFeedAdj(t))){
     v -= 14;                                                 // bare bank sheds more than a rooted bank
   }
   return clamp(v);
@@ -14650,6 +14789,8 @@ function openInfo(refreshOnly){
     if(!t.crop && !t.graze) chips.push('💤 resting & regenerating');
     if(t.feature==='swale') chips.push('〰️ contour — holds water for the beds below');
     if(typeof highPondDownhillAdj==='function' && highPondDownhillAdj(t)) chips.push('💧 downhill of the high pond — holds a little water');
+    if(typeof marshPondFeedAdj==='function' && marshPondFeedAdj(t)) chips.push('🌾 feeds a marsh pond — runoff filters before the river');
+    else if(typeof shedsTowardMarshPond==='function' && shedsTowardMarshPond(t)) chips.push('🌾 sheds toward a marsh pond — cleaner than a bare drain');
     if(typeof riparianAdj==='function' && riparianAdj(t)) chips.push('🌳 bank buffer nearby — roots filter a little runoff');
     else if(state && typeof atlasWaterAdjLocal==='function' && atlasWaterAdjLocal(state, t.c, t.r))
       chips.push('🟤 bare bank — mud slides into the water');
@@ -14668,8 +14809,11 @@ function openInfo(refreshOnly){
       <div id="sciBox" class="${sciOpen?'show':''}"></div>`;
   }else if(t.terrain==='pond'){
     const high = typeof isHighPondT==='function' && isHighPondT(t);
+    const marsh = typeof isMarshPondT==='function' && isMarshPondT(t);
     body = high
       ? `<div class="chiprow">A high pond on the ridge — downhill fields hold a little more water and wilt a little less. Not a plant bed.</div>`
+      : marsh
+        ? `<div class="chiprow">A marsh pond — runoff settles here before it reaches the main river. Reeds and wet soil feed it. Not a kitchen bed.</div>`
       : `<div class="chiprow">Stores rain, waters nearby soil, and keeps the farm safe in droughts. Dragonflies love it.</div>`;
   }else if(t.terrain==='water'){
     const wq = Math.round(state.waterQuality);
