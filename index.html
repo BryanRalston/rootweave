@@ -2056,11 +2056,12 @@ const LEVELS = [
 ];
 // Clear bonuses by level index (home…flats, orchard…school, valley). Leftover stamps append 45.
 const CLEAR_BONUS = [40, 60, 80, 100, 70, 75, 80, 90, 55, 150];
-/** Square crop that fits inside a leftover parcel. Caps at the valley board. */
+/** Square crop that fits inside a leftover parcel. Caps at the valley board.
+ *  Never larger than the parcel — Willow Bottom is 8×6; a floor of 8 invented two rows. */
 function leftoverPlayGrid(w,h){
   const a = w|0, b = h|0;
   const side = a && b ? Math.min(a,b) : (a||b||8);
-  return Math.max(8, Math.min(14, side));
+  return Math.max(1, Math.min(14, side));
 }
 /** Land-tied leftover / bought-edge play. Specs on VALLEY_PARCELS; fallback from id. */
 function leftoverStampFeelFor(spec){
@@ -9168,7 +9169,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.leftover-feel';
+const SHIP_BUILD = '2026-08-22.stamp-fit';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -9318,7 +9319,7 @@ function openAboutCredits(){
   if(showNew) camp.tipsShown['whats_new_'+ver] = true;
   const whatsNew = showNew
     ? `<div class="lesson" style="text-align:left;margin-top:6px;border-color:rgba(234,181,67,.45)">
-        <b>What's new (${ver}):</b> Surrounding edge land can be bought with coins — a farm deal on the fogged neighbor, not a padlock. Home Patch stays free. Play stays free; no pay-to-revive.
+        <b>What's new (${ver}):</b> Bought leftover folds play a crop that fits the atlas parcel — Willow Bottom no longer invents two extra rows. Home Patch stays free. Play stays free; no pay-to-revive.
       </div>`
     : '';
   // CD — first About open literacy (in-modal; no toast spam)
