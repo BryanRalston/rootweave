@@ -14559,7 +14559,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.mapherd';
+const SHIP_BUILD = '2026-08-22.mapherdfix';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -14709,7 +14709,7 @@ function openAboutCredits(){
   if(showNew) camp.tipsShown['whats_new_'+ver] = true;
   const whatsNew = showNew
     ? `<div class="lesson" style="text-align:left;margin-top:6px;border-color:rgba(234,181,67,.45)">
-        <b>What's new (${ver}):</b> Owned cattle, hens, and ducks now show as living marks on the journey map — paddocks, the yard coop, and marsh — after Home Patch. Fogged land and the first-session garden stay empty. Play stays free; no pay-to-revive.
+        <b>What's new (${ver}):</b> Owned cattle, hens, and ducks now show as living marks on the journey map — paddocks, the yard coop, and marsh — after Home Patch. A surplus sale or pile thins those marks with the herd. Fogged land and the first-session garden stay empty. Play stays free; no pay-to-revive.
       </div>`
     : '';
   // CD — first About open literacy (in-modal; no toast spam)
@@ -20735,7 +20735,10 @@ let _mapHerd = {cv:null, agents:[], raf:0, last:0};
 function herdMapVisibleN(kind){
   const n = (camp && camp.herd && (camp.herd[kind]|0)) || 0;
   if(n<=0) return 0;
-  return Math.max(1, Math.min(3, n));
+  // Surplus meat only sells above the healthy floor (4, or 3 pigs). A 3-cap
+  // never thins after a legal sale — track the living count up to the herd max.
+  const max = (typeof HERD_MAX==='object' && HERD_MAX[kind]) ? (HERD_MAX[kind]|0) : 6;
+  return Math.max(1, Math.min(max, n));
 }
 function parcelShowsHerd(P, c){
   if(!P) return false;
