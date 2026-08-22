@@ -1911,7 +1911,7 @@ const LEVELS = [
    teaser:'Bring in the animals — hooves, beaks & manure.',
    story:'The grazing folds behind the garden, around the stock pond. Buy cattle one head at a time — more mouths work the soil harder and tire a pad faster. Move them so the land can rest, then send chickens through for team graze.',
    doneText:'The Back Field hums with life — you\'ve mastered the grazing dance!',
-   tools:['select','compost','covercrop','sisters','clover','cattle','chicken','bulldoze'],
+   tools:['select','compost','covercrop','sisters','clover','cattle','chicken','pond','bulldoze'],
    shop:false, river:false, events:false, startPaused:false, regen:1.5,
    ovs:['health','om'],
    goalText:'Heal the Back Field with the help of the herd.',
@@ -2180,10 +2180,11 @@ function leftoverStampProfile(feel, grid, spec){
     return {
       tools: ['select','compost','covercrop','clover','cattle','chicken','pond','trees','bulldoze'],
       river: false, regen: 1.35, ovs: ['health','om'],
-      goalText: 'Graze this fold and rest the pads.',
+      goalText: 'Graze this fold, keep stock water, and rest the pads.',
       doneText: name+' is working pasture again.',
       goals: [
         {em:'🐄', desc:'Graze '+grazeN+' tiles (herd or flock)', prog:()=>[Math.min(grazeN, (state.stats && state.stats.grazes)|0), grazeN]},
+        {em:'💧', desc:'Keep stock water the herd can stand beside', prog:()=>[stockDrinkReachable(state)?1:0, 1]},
         {em:'💚', desc:'Bring '+padHeal+' pasture tiles to 50+ health', prog:()=>[Math.min(padHeal, countHealthyTiles(50)), padHeal]},
       ]
     };
@@ -2220,9 +2221,9 @@ function leftoverStampProfile(feel, grid, spec){
     const revive = Math.max(7, Math.round(g*0.6));
     const grazeN = Math.max(2, Math.round(g*0.2));
     return {
-      tools: ['select','compost','covercrop','clover','cattle','chicken','goat','trees','bulldoze'],
+      tools: ['select','compost','covercrop','clover','cattle','chicken','goat','pond','trees','bulldoze'],
       river: false, regen: 1.1, ovs: ['health','om'],
-      goalText: 'Sparse graze on dry edge pasture.',
+      goalText: 'Sparse graze on dry edge pasture — keep a drink.',
       doneText: name+' takes a light stocking again.',
       goals: [
         {em:'🐎', desc:'Graze '+grazeN+' tiles on this dry fold', prog:()=>[Math.min(grazeN, (state.stats && state.stats.grazes)|0), grazeN]},
@@ -3648,6 +3649,7 @@ function stampAtlasParcel(s, parcelId){
     t.atlasC = oc+c; t.atlasR = or+r;
     const A = atlasGet(oc+c, or+r) || {water:'none', biome:'wild'};
     t.atlasBiome = A.biome || t.atlasBiome || 'wild';
+    if(A.landmark) t.atlasLandmark = A.landmark;
     if(A.water==='main' || A.water==='creek'){
       t.terrain = 'water'; carveClear(t);
     } else if(A.water==='wash'){
@@ -3674,7 +3676,10 @@ function stampAtlasParcel(s, parcelId){
     if(A.landmark==='house'){ t.terrain='house'; carveClear(t); }
     if(A.landmark==='compost'){ if(t.terrain==='dead') seedSoil(t, 42, 8); t.deco='deco_stump'; }
     if(A.landmark==='shed'){ if(t.terrain==='dead') seedSoil(t,36,8); t.deco='deco_stump'; }
-    if(A.landmark==='trough'){ if(t.terrain==='dead') seedSoil(t,40,8); t.deco='deco_rock'; }
+    if(A.landmark==='trough'){
+      // Stream-fed trough: a working drink, not a rock sticker.
+      t.terrain = 'pond'; carveClear(t);
+    }
     if(A.landmark==='bridge'){ if(t.terrain==='dead') seedSoil(t,38,8); t.deco='deco_boulder'; }
     if(A.landmark==='ruin'){ t.deco='deco_bones'; if(!t.feature) t.feature='gully'; }
     if(A.landmark==='stump'){ t.deco='deco_deadtree'; }
@@ -3725,6 +3730,7 @@ function genHomePatch(s){
 // LEVEL 2 — Back Paddock: pasture folds + stock pond from the atlas
 function genBackField(s){
   sowAtlasCrop(s, 'back_paddock');
+  ensureReachableStockWater(s);
 }
 // LEVEL 3 — Creek Bend: same creek that leaves the east edge into River Reach
 function genCreek(s){
@@ -3771,6 +3777,105 @@ function leftoverStampOpen(t){
 }
 function leftoverStampLand(t){
   return leftoverStampOpen(t) && (t.terrain==='soil' || t.terrain==='dead');
+}
+const STOCK_DRINK_DIRS = [[1,0],[-1,0],[0,1],[0,-1]];
+/** Working paddock drink. Pond only — river, wash, and riverbed are not stock water. */
+function isStockDrinkT(t){
+  return !!(t && t.terrain==='pond');
+}
+function stockDrinkOrtho(s, t){
+  const out = [];
+  if(!s || !s.grid || !t) return out;
+  for(let i=0;i<STOCK_DRINK_DIRS.length;i++){
+    const c = (t.c|0)+STOCK_DRINK_DIRS[i][0], r = (t.r|0)+STOCK_DRINK_DIRS[i][1];
+    if(typeof inGrid==='function' && !inGrid(c,r)) continue;
+    out.push(s.grid[typeof idx==='function' ? idx(c,r) : (r*(GRID||0)+c)]);
+  }
+  return out;
+}
+function stockStandOk(t){
+  return !!(t && t.terrain==='soil' && leftoverStampOpen(t));
+}
+/** True when a pond has open soil the herd can stand on — not on the water. */
+function stockDrinkReachable(s){
+  if(!s || !s.grid) return false;
+  for(let i=0;i<s.grid.length;i++){
+    const t = s.grid[i];
+    if(!isStockDrinkT(t)) continue;
+    const nbs = stockDrinkOrtho(s, t);
+    for(let j=0;j<nbs.length;j++) if(stockStandOk(nbs[j])) return true;
+  }
+  return false;
+}
+function openStockDrinkBank(s, drink){
+  if(!drink) return null;
+  const nbs = stockDrinkOrtho(s, drink);
+  for(let i=0;i<nbs.length;i++){
+    if(stockStandOk(nbs[i])) return nbs[i];
+  }
+  for(let i=0;i<nbs.length;i++){
+    const n = nbs[i];
+    if(!n) continue;
+    if(n.terrain==='barn' || n.terrain==='coop' || n.terrain==='house') continue;
+    if(n.terrain==='water' || n.terrain==='pond' || n.terrain==='riverbed') continue;
+    if(n.terrain==='dead' || n.terrain==='soil'){
+      seedSoil(n, 40, 8);
+      if(n.feature==='path' || n.feature==='swale') n.feature = null;
+      return n;
+    }
+  }
+  for(let i=0;i<nbs.length;i++){
+    const n = nbs[i];
+    if(!n) continue;
+    if(n.terrain!=='trees' && n.terrain!=='orchard') continue;
+    seedSoil(n, 40, 8);
+    return n;
+  }
+  return null;
+}
+/** Prefer atlas pond / trough already on the crop. Stamp one small pond only if none. Never a river. */
+function ensureReachableStockWater(s){
+  if(!s || !s.grid) return;
+  if(stockDrinkReachable(s)) return;
+  const drinks = s.grid.filter(isStockDrinkT);
+  for(let i=0;i<drinks.length;i++){
+    if(openStockDrinkBank(s, drinks[i])) return;
+  }
+  const trough = s.grid.find(t=>t && t.atlasLandmark==='trough');
+  if(trough && trough.terrain!=='water' && trough.terrain!=='riverbed'
+     && trough.terrain!=='barn' && trough.terrain!=='coop' && trough.terrain!=='house'){
+    trough.terrain = 'pond';
+    if(typeof carveClear==='function') carveClear(trough);
+    if(openStockDrinkBank(s, trough) || stockDrinkReachable(s)) return;
+  }
+  const land = s.grid.filter(t=>{
+    if(!leftoverStampLand(t)) return false;
+    return stockDrinkOrtho(s, t).some(n=>n && leftoverStampLand(n));
+  });
+  const preferSoil = land.filter(t=>t.terrain==='soil');
+  const pool = preferSoil.length ? preferSoil : land;
+  if(!pool.length) return;
+  const mid = pool[Math.floor(pool.length*0.45)] || pool[0];
+  mid.terrain = 'pond';
+  if(typeof carveClear==='function') carveClear(mid);
+  openStockDrinkBank(s, mid);
+}
+/** Bias walkers toward the water edge of their grass tile — never onto the pond. */
+function agentStockDrinkPull(a){
+  if(!state || !state.grid || !a || a.tile==null) return null;
+  const t = state.grid[a.tile];
+  if(!t || isStockDrinkT(t)) return null;
+  const nbs = stockDrinkOrtho(state, t);
+  for(let i=0;i<nbs.length;i++){
+    if(!isStockDrinkT(nbs[i])) continue;
+    const dc = (nbs[i].c|0) - (t.c|0);
+    const dr = (nbs[i].r|0) - (t.r|0);
+    return {
+      u: dc>0 ? 0.82 : dc<0 ? 0.18 : 0.50,
+      v: dr>0 ? 0.78 : dr<0 ? 0.22 : 0.50
+    };
+  }
+  return null;
 }
 function leftoverWetNear(s, t){
   const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
@@ -3875,12 +3980,6 @@ function dressLeftoverStamp(s, P){
     return;
   }
   if(feel==='paddock'){
-    let ponds = tiles.filter(t=>t.terrain==='pond' || t.terrain==='water').length;
-    if(ponds<1){
-      const open = tiles.filter(leftoverStampLand);
-      const mid = open[Math.floor(open.length*0.45)];
-      if(mid){ mid.terrain = 'pond'; carveClear(mid); }
-    }
     tiles.forEach(t=>{
       if(!leftoverStampLand(t)) return;
       if(t.terrain==='dead' && roll(t,1)<0.48){
@@ -3891,8 +3990,9 @@ function dressLeftoverStamp(s, P){
         recalc(t);
       }
     });
+    ensureReachableStockWater(s);
     if(!tiles.some(t=>t.deco==='deco_rock')){
-      const soil = tiles.find(t=>t.terrain==='soil' && leftoverStampOpen(t));
+      const soil = tiles.find(t=>t.terrain==='soil' && leftoverStampOpen(t) && !isStockDrinkT(t));
       if(soil) soil.deco = 'deco_rock';
     }
     return;
@@ -3927,17 +4027,13 @@ function dressLeftoverStamp(s, P){
     return;
   }
   if(feel==='dry_graze'){
-    let ponds = tiles.filter(t=>t.terrain==='pond' || t.terrain==='water').length;
     tiles.forEach(t=>{
       if(!leftoverStampLand(t)) return;
       if(t.terrain==='soil' && roll(t,1)<0.52) makeDead(t);
       else if(t.terrain==='dead' && roll(t,1)>0.78) seedSoil(t, 28, 8);
       if(t.terrain==='dead' && roll(t,2)<0.16) t.feature = 'saltflat';
     });
-    if(ponds<1){
-      const cand = tiles.find(t=>leftoverStampLand(t));
-      if(cand){ cand.terrain = 'pond'; carveClear(cand); }
-    }
+    ensureReachableStockWater(s);
     return;
   }
   if(feel==='river'){
@@ -6187,11 +6283,14 @@ function spawnHomesteadYardWalkers(){
   const garden = grid.find(t=>t && (t.deco==='deco_vegbox' || t.deco==='deco_herb' || t.deco==='deco_flowerbed')) || null;
   const henDirs = [[0,1],[-1,1],[1,1],[-1,0],[0,2],[1,2],[-1,2],[0,3],[-2,1],[1,0],[2,2]];
   const stockDirs = [[-1,0],[0,1],[-1,1],[0,-1],[-1,-1],[1,1],[1,0],[1,-1],[0,2],[-2,0],[2,0]];
+  const drink = grid.find(t=>t && (typeof isStockDrinkT==='function' ? isStockDrinkT(t) : t.terrain==='pond')) || null;
+  const drinkDirs = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1],[0,2],[2,0],[-2,0]];
   const henPool = homesteadYardSeatsNear(grid, coop, henDirs)
     .concat(homesteadYardSeatsNear(grid, garden, henDirs))
     .concat(homesteadYardSeatsNear(grid, house, henDirs))
     .concat(homesteadYardAnyGrass(grid));
-  const stockPool = homesteadYardSeatsNear(grid, barn, stockDirs)
+  const stockPool = homesteadYardSeatsNear(grid, drink, drinkDirs)
+    .concat(homesteadYardSeatsNear(grid, barn, stockDirs))
     .concat(homesteadYardSeatsNear(grid, house, [[2,0],[3,0],[2,1],[3,1],[2,2],[1,2],[4,1]]))
     .concat(homesteadYardAnyGrass(grid));
   const place = (kind, pool)=>{
@@ -11993,11 +12092,17 @@ function updateAgents(simDt){
       if(a.peckT>0) a.peckT -= dt;
       // new target after idle pause
       if(a.idleT > 0.9 + Math.random()*1.4 && a.grazeT<=0){
-        const ang0 = a.slotAng != null ? a.slotAng : Math.atan2((a.v||0.5)-0.5, (a.u||0.5)-0.5);
-        const ang = ang0 + (Math.random()-0.5)*0.95;
-        const rad = 0.22 + Math.random()*0.16;
-        a.tu = clampUV(0.5 + Math.cos(ang)*rad, 0.10, 0.90);
-        a.tv = clampUV(0.5 + Math.sin(ang)*rad*0.82, 0.14, 0.86);
+        const pull = (typeof agentStockDrinkPull==='function') ? agentStockDrinkPull(a) : null;
+        if(pull && Math.random()<0.72){
+          a.tu = clampUV(pull.u + (Math.random()-0.5)*0.14, 0.10, 0.90);
+          a.tv = clampUV(pull.v + (Math.random()-0.5)*0.14, 0.14, 0.86);
+        }else{
+          const ang0 = a.slotAng != null ? a.slotAng : Math.atan2((a.v||0.5)-0.5, (a.u||0.5)-0.5);
+          const ang = ang0 + (Math.random()-0.5)*0.95;
+          const rad = 0.22 + Math.random()*0.16;
+          a.tu = clampUV(0.5 + Math.cos(ang)*rad, 0.10, 0.90);
+          a.tv = clampUV(0.5 + Math.sin(ang)*rad*0.82, 0.14, 0.86);
+        }
         a.idleT = 0;
       }
     }else{
