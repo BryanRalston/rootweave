@@ -1087,6 +1087,8 @@ const COOP_BEDDING_RATE = 0.12; // pile lots/day at 1 hen; scales with sqrt(hens
 const COOP_BEDDING_AUTO = 1;    // at most one dawn pile unit — bedding, not a crate crop
 const COOP_CORRIDOR_HOLD_SOIL = {om:0.35, microbial:0.4}; // hens scratch pests / orchard understory
 const COOP_CORRIDOR_NICK_SOIL = {om:-0.3, microbial:-0.25}; // pests linger when the walk is empty
+const HEDGE_CORRIDOR_HOLD_SOIL = {om:0.2, microbial:0.28}; // mild pest / pollinator hold along a between-field seam
+const HEDGE_CORRIDOR_NICK_SOIL = {om:-0.18, microbial:-0.16}; // mild miss when that corridor is cleared
 const COOP_CORRIDOR_PATH_MUL = 1.12; // eggs / bedding walk is a touch smoother on the corridor
 const COOP_CORRIDOR_RIPEN_MUL = 1.08; // understory scratch helps the hang a little
 const COOP_CORRIDOR_SEATS = [[2,3],[3,3],[2,4],[3,4],[4,3],[1,3],[4,2],[4,4]]; // locked garden–orchard walk
@@ -8611,6 +8613,13 @@ function leftoverWantsWindbreak(P){
   if(P.id==='home_garden' || P.lvIndex===0) return false;
   return leftoverOpenFieldFeel(P);
 }
+/** Leftover / bought / paddock folds that can sit a between-field hedge. Home stays off. */
+function leftoverWantsHedgeCorridor(P){
+  if(!P || P.kind!=='plot') return false;
+  if(P.id==='home_garden' || P.lvIndex===0) return false;
+  if(P.leftover || P.buyable) return true;
+  return typeof leftoverIsPaddockFold==='function' && leftoverIsPaddockFold(P);
+}
 function farmEdgeSeatOk(t){
   if(!t || !leftoverStampLand(t)) return false;
   if(t.terrain==='barn' || t.terrain==='coop' || t.terrain==='house' || t.terrain==='nstand') return false;
@@ -8860,7 +8869,7 @@ function windShelterStory(t, opts){
   if(!ready && !mark && !live) return '';
   if(!ready && !edge) return '';
   if(opts.needOnly && !need) return '';
-  if(edge || mark || (live && t && (t.farmEdge==='windbreak' || t.farmEdge==='hedgerow' || t.farmEdge==='woodlot'))){
+  if(edge){
     if(live)
       return need
         ? '🌬️ Weather-side break is thin — wind still nicks the beds. Keep trees on this edge.'
@@ -8911,6 +8920,258 @@ function tickWindShelterWork(){
   }
   if(typeof toast==='function'){
     toast('🌬️ The weather-side break is gone — wind nicks the beds. Keep trees on that edge.', {once:'wind_shelter_need_first', throttleMs:4000});
+  }
+  return tiles.length;
+}
+/** Field under the player, or the parked leftover fold while they are in the yard. */
+function hedgeCorridorFarm(){
+  if(typeof homesteadMode!=='undefined' && homesteadMode && typeof plotStateBackup!=='undefined'
+     && plotStateBackup && plotStateBackup.grid && !plotStateBackup.homesteadView){
+    return plotStateBackup;
+  }
+  if(state && !state.homesteadView) return state;
+  return null;
+}
+function currentHedgeCorridorParcel(s){
+  s = s || (typeof hedgeCorridorFarm==='function' ? hedgeCorridorFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s) return null;
+  if(s.homesteadView) return null;
+  const L = (typeof LEVELS!=='undefined' && LEVELS[s.lv]) ? LEVELS[s.lv] : null;
+  if(L && L.id==='home') return null;
+  const P = typeof valleyParcelByLvIndex==='function' ? valleyParcelByLvIndex(s.lv) : null;
+  if(P && (P.id==='home_garden' || P.lvIndex===0)) return null;
+  return P || null;
+}
+/** Leftover fields / paddock folds after Home. Weather-side windbreak stays a separate seat. */
+function currentHedgeCorridorFold(s){
+  s = s || (typeof hedgeCorridorFarm==='function' ? hedgeCorridorFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || s.homesteadView) return false;
+  const L = (typeof LEVELS!=='undefined' && LEVELS[s.lv]) ? LEVELS[s.lv] : null;
+  if(L && L.id==='home') return false;
+  const P = typeof currentHedgeCorridorParcel==='function' ? currentHedgeCorridorParcel(s) : null;
+  if(typeof leftoverWantsHedgeCorridor==='function' && leftoverWantsHedgeCorridor(P || L)) return true;
+  return !!(P && typeof leftoverIsPaddockFold==='function' && leftoverIsPaddockFold(P));
+}
+function leftoverHedgeNeighborOk(N){
+  if(!N || N.kind!=='plot') return false;
+  if(N.id==='home_garden' || N.lvIndex===0) return false;
+  if(N.leftover || N.buyable) return true;
+  return typeof leftoverIsPaddockFold==='function' && leftoverIsPaddockFold(N);
+}
+function hedgeCorridorGridSide(s){
+  return (s && (s.gridSize|0)) || (typeof GRID==='number' ? GRID : 0);
+}
+function hedgeCorridorCell(s, c, r){
+  const g = hedgeCorridorGridSide(s);
+  if(!s || !s.grid || g<=0 || c<0 || r<0 || c>=g || r>=g) return null;
+  return s.grid[r*g+c] || null;
+}
+/** Shared leftover / paddock sides — not Home, not the weather-side windbreak edge. */
+function hedgeCorridorShareSides(P){
+  const out = [];
+  if(!P || typeof VALLEY_PARCELS==='undefined') return out;
+  VALLEY_PARCELS.forEach(N=>{
+    if(!N || N.id===P.id || !leftoverHedgeNeighborOk(N)) return;
+    const side = typeof parcelsShareDir==='function' ? parcelsShareDir(P, N) : null;
+    if(!side) return;
+    if(out.indexOf(side)<0) out.push(side);
+  });
+  return out;
+}
+function hedgeCorridorSeamTiles(s, P){
+  const out = [];
+  s = s || (typeof hedgeCorridorFarm==='function' ? hedgeCorridorFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return out;
+  P = P || (typeof currentHedgeCorridorParcel==='function' ? currentHedgeCorridorParcel(s) : null);
+  const g = hedgeCorridorGridSide(s);
+  if(g<=0) return out;
+  const sides = hedgeCorridorShareSides(P);
+  const seen = {};
+  const push = (c, r)=>{
+    const t = hedgeCorridorCell(s, c, r);
+    if(!t) return;
+    if(typeof windShelterWeatherEdgeAt==='function' && windShelterWeatherEdgeAt(t, s)) return;
+    const k = (t.c|0)+','+(t.r|0);
+    if(seen[k]) return;
+    seen[k] = 1;
+    out.push(t);
+  };
+  sides.forEach(side=>{
+    const cells = typeof leftoverPlayEdgeCells==='function' ? leftoverPlayEdgeCells(g, side) : [];
+    cells.forEach(cell=> push(cell.c, cell.r));
+  });
+  return out;
+}
+function hedgeCorridorSeamAt(t, s){
+  if(!t) return false;
+  const seam = hedgeCorridorSeamTiles(s);
+  for(let i=0;i<seam.length;i++) if(seam[i]===t) return true;
+  return false;
+}
+function isHedgeCorridorMarkT(t){
+  if(!t) return false;
+  if(t.farmEdge==='hedgerow' || t.atlasFeature==='hedgerow') return true;
+  return false;
+}
+function isHedgeCorridorLiveT(t){
+  if(!t || t.terrain!=='trees') return false;
+  if(t.hedgeRegen!=null) return false;
+  if(t.farmEdge==='windbreak' || t.farmEdge==='woodlot' || t.farmEdge==='willow' || t.farmEdge==='orchard' || t.farmEdge==='riparian') return false;
+  if(typeof isRiparianT==='function' && isRiparianT(t)) return false;
+  if(typeof isWoodlotT==='function' && isWoodlotT(t)) return false;
+  if(typeof isWillowT==='function' && isWillowT(t)) return false;
+  if(typeof isOrchardT==='function' && isOrchardT(t)) return false;
+  return !!(t.farmEdge==='hedgerow' || t.atlasFeature==='hedgerow' || (typeof isHedgerowT==='function' && isHedgerowT(t)));
+}
+function hedgeCorridorCoverCount(s){
+  let live = 0, marked = 0;
+  hedgeCorridorSeamTiles(s).forEach(t=>{
+    const living = isHedgeCorridorLiveT(t);
+    if(living || isHedgeCorridorMarkT(t)) marked++;
+    if(living) live++;
+  });
+  return {live, marked};
+}
+function rememberHedgeCorridorMark(t){
+  if(!t) return;
+  if(t.farmEdge==='hedgerow' || t.farmEdge==='windbreak' || t.farmEdge==='woodlot') return;
+  if(typeof homePatchCleared==='function' && !homePatchCleared()) return;
+  if(typeof currentHedgeCorridorFold==='function' && !currentHedgeCorridorFold()) return;
+  if(typeof windShelterWeatherEdgeAt==='function' && windShelterWeatherEdgeAt(t)) return;
+  if(typeof hedgeCorridorSeamAt==='function' && !hedgeCorridorSeamAt(t)) return;
+  t.farmEdge = t.farmEdge || 'hedgerow';
+  t.atlasFeature = t.atlasFeature || 'hedgerow';
+}
+function hedgeCorridorReady(s){
+  if(!camp) return false;
+  if(typeof homePatchCleared==='function' && !homePatchCleared()) return false;
+  s = s || (typeof hedgeCorridorFarm==='function' ? hedgeCorridorFarm() : (typeof state!=='undefined' ? state : null));
+  if(!currentHedgeCorridorFold(s)) return false;
+  return hedgeCorridorCoverCount(s).marked > 0;
+}
+function hedgeCorridorUsable(s){
+  if(!hedgeCorridorReady(s)) return false;
+  const n = hedgeCorridorCoverCount(s);
+  return n.live >= Math.max(1, Math.ceil(n.marked * 0.5));
+}
+function hedgeCorridorNeed(s){
+  return !!(hedgeCorridorReady(s) && !hedgeCorridorUsable(s));
+}
+/** Working beds along the shared hedge edge — not the living corridor, not the weather-side lee. */
+function hedgeCorridorSoilTiles(s){
+  const tiles = [];
+  s = s || (typeof hedgeCorridorFarm==='function' ? hedgeCorridorFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return tiles;
+  const g = (s.gridSize|0) || (typeof GRID==='number' ? GRID : 0);
+  const seam = hedgeCorridorSeamTiles(s);
+  const marked = seam.filter(t=> isHedgeCorridorLiveT(t) || isHedgeCorridorMarkT(t));
+  const seen = {};
+  const add = (t, i)=>{
+    if(!t || !t.soil) return;
+    if(t.terrain!=='soil' && t.terrain!=='dead') return;
+    if(t.feature==='path' || t.feature==='swale' || t.feature==='saltflat') return;
+    if(typeof isHedgeCorridorLiveT==='function' && isHedgeCorridorLiveT(t)) return;
+    if(typeof windShelterWeatherEdgeAt==='function' && windShelterWeatherEdgeAt(t, s)) return;
+    if(!t.crop && !t.graze && !(typeof leftoverIsPastureCoverT==='function' && leftoverIsPastureCoverT(t))) return;
+    const k = (t.c|0)+','+(t.r|0);
+    if(seen[k]) return;
+    seen[k] = 1;
+    tiles.push({t, i});
+  };
+  marked.forEach(edge=>{
+    if(g<=0) return;
+    for(let k=0;k<4;k++){
+      const dc = k===0?1:k===1?-1:0, dr = k===2?1:k===3?-1:0;
+      const c = (edge.c|0)+dc, r = (edge.r|0)+dr;
+      if(c<0 || r<0 || c>=g || r>=g) continue;
+      add(s.grid[r*g+c], r*g+c);
+    }
+  });
+  return tiles;
+}
+function hedgeCorridorFloaterIdx(s){
+  s = s || (typeof hedgeCorridorFarm==='function' ? hedgeCorridorFarm() : (typeof state!=='undefined' ? state : null));
+  if(state && state.grid && s && s.grid && state.grid===s.grid){
+    const seam = hedgeCorridorSeamTiles(s);
+    for(let i=0;i<seam.length;i++){
+      if(isHedgeCorridorMarkT(seam[i]) && !isHedgeCorridorLiveT(seam[i])){
+        const k = state.grid.indexOf(seam[i]);
+        if(k>=0) return k;
+      }
+    }
+    const beds = hedgeCorridorSoilTiles(s);
+    if(beds.length && beds[0] && beds[0].i>=0) return beds[0].i;
+    for(let i=0;i<s.grid.length;i++){
+      if(s.grid[i] && (s.grid[i].crop || s.grid[i].graze)) return i;
+    }
+  }
+  if(typeof selected==='number' && selected>=0 && state && state.grid && state.grid[selected]) return selected;
+  return (typeof selected==='number' && selected>=0) ? selected : 0;
+}
+function hedgeCorridorStory(t, opts){
+  opts = opts || {};
+  const ready = typeof hedgeCorridorReady==='function' && hedgeCorridorReady();
+  const need = typeof hedgeCorridorNeed==='function' && hedgeCorridorNeed();
+  const hold = ready && !need;
+  const seam = typeof hedgeCorridorSeamAt==='function' && hedgeCorridorSeamAt(t);
+  const mark = typeof isHedgeCorridorMarkT==='function' && isHedgeCorridorMarkT(t);
+  const live = typeof isHedgeCorridorLiveT==='function' && isHedgeCorridorLiveT(t);
+  const weather = typeof windShelterWeatherEdgeAt==='function' && windShelterWeatherEdgeAt(t);
+  if(weather) return '';
+  const bed = !!(t && (t.crop || t.graze || (typeof leftoverIsPastureCoverT==='function' && leftoverIsPastureCoverT(t))));
+  const along = !!(bed && t && hedgeCorridorSoilTiles().some(x=>x.t===t));
+  if(!ready && !mark && !live) return '';
+  if(!ready && !seam) return '';
+  if(opts.needOnly && !need) return '';
+  if(live)
+    return need
+      ? '🌿 Hedge between the fields is thin — pests still nick the edge beds. Keep this seam living.'
+      : '🌿 Hedge between the fields — pests stay down and pollinators work this edge. Clear it and the beds miss.';
+  if(bed && (along || seam || mark)){
+    if(need) return '🦗 Open seam — pests nick this edge. Keep the hedge between the fields.';
+    if(hold && !opts.needOnly) return '🌿 Beside the hedge corridor — pests stay down a little.';
+  }
+  if(seam || mark){
+    return need
+      ? '🦗 The hedge between the fields is gone — pests nick the edge beds. Plant the corridor again.'
+      : '🌿 Hedge seat between the fields — plant here so the edge beds keep their pest hold.';
+  }
+  return '';
+}
+/** One sim dawn: living between-field hedges hold edge beds; a cleared seam nicks them. First session stays off. */
+function tickHedgeCorridorWork(){
+  if(!camp || !hedgeCorridorReady()) return 0;
+  const s = typeof hedgeCorridorFarm==='function' ? hedgeCorridorFarm() : (typeof state!=='undefined' ? state : null);
+  if(!s || !s.grid) return 0;
+  const tiles = hedgeCorridorSoilTiles(s);
+  if(!tiles.length) return 0;
+  const open = hedgeCorridorUsable(s);
+  if(open){
+    const b = (typeof HEDGE_CORRIDOR_HOLD_SOIL!=='undefined') ? HEDGE_CORRIDOR_HOLD_SOIL : {om:0.2, microbial:0.28};
+    tiles.forEach(({t})=>{
+      if(!t || !t.soil) return;
+      if((t.soil.om||0) < 74) t.soil.om = clamp((t.soil.om||0) + (b.om||0));
+      if((t.soil.microbial||0) < 76) t.soil.microbial = clamp((t.soil.microbial||0) + (b.microbial||0));
+      if(typeof recalc==='function') recalc(t);
+    });
+    if(typeof toast==='function'){
+      toast('🌿 The hedge between the fields holds pests and pollinators — keep that corridor living.', {once:'hedge_corridor_hold_first', throttleMs:4000});
+    }
+    return tiles.length;
+  }
+  const b = (typeof HEDGE_CORRIDOR_NICK_SOIL!=='undefined') ? HEDGE_CORRIDOR_NICK_SOIL : {om:-0.18, microbial:-0.16};
+  tiles.forEach(({t})=>{
+    if(!t || !t.soil) return;
+    t.soil.om = clamp((t.soil.om||0) + (b.om||0));
+    t.soil.microbial = clamp((t.soil.microbial||0) + (b.microbial||0));
+    if(typeof recalc==='function') recalc(t);
+  });
+  const fi = hedgeCorridorFloaterIdx(s);
+  if(typeof floater==='function' && state && state.grid && state.grid[fi]){
+    floater(fi, 'pests', '#c9a070');
+  }
+  if(typeof toast==='function'){
+    toast('🦗 The hedge between the fields is gone — pests nick the edge beds. Keep the corridor.', {once:'hedge_corridor_need_first', throttleMs:4000});
   }
   return tiles.length;
 }
@@ -10611,6 +10872,7 @@ function simStep(dt){
     if(typeof tickPaddockStockThirst==='function') tickPaddockStockThirst();
     if(typeof tickPaddockWindShelter==='function') tickPaddockWindShelter();
     if(typeof tickWindShelterWork==='function') tickWindShelterWork();
+    if(typeof tickHedgeCorridorWork==='function') tickHedgeCorridorWork();
     if(typeof tickDustWashWork==='function') tickDustWashWork();
     if(typeof tickHighPondWork==='function') tickHighPondWork();
     if(typeof tickHomeWaterWork==='function') tickHomeWaterWork();
@@ -14146,6 +14408,10 @@ function soilStoryLine(t){
       const ws = windShelterStory(t, {needOnly:true});
       if(ws) return ws;
     }
+    if(typeof hedgeCorridorStory==='function'){
+      const hc = hedgeCorridorStory(t, {needOnly:true});
+      if(hc) return hc;
+    }
     if(typeof dustWashNeed==='function' && dustWashNeed())
       return '🏜️ Dry wash is blocked — drought nicks these flats. Keep the bed open so rare water can move.';
     return '💀 Sleeping soil — the living community is gone until you feed it.';
@@ -14196,6 +14462,10 @@ function soilStoryLine(t){
       const ws = windShelterStory(t);
       if(ws) return ws;
     }
+    if(typeof hedgeCorridorStory==='function'){
+      const hc = hedgeCorridorStory(t);
+      if(hc) return hc;
+    }
     if(typeof waterAdj==='function' && waterAdj(t))
       return '🌳 The filter — roots hold the bank and drink the runoff.';
     return '🌳 Living hedge — windbreak, shade, and a home for bees.';
@@ -14244,6 +14514,10 @@ function soilStoryLine(t){
       const ws = windShelterStory(t);
       if(ws) return ws+' '+tier;
     }
+    if(typeof hedgeCorridorStory==='function'){
+      const hc = hedgeCorridorStory(t);
+      if(hc) return hc+' '+tier;
+    }
     if(g.kind==='team' || g.synergy) return '🐄🐔 Follow the herd — hooves open the sod; chickens follow. That\'s how prairie stayed fertile. '+tier;
     if(g.kind==='cattle' || g.kind==='cow') return '🐄 Cattle remaking this pad — send 🐔 chickens next. '+tier;
     if(g.kind==='chicken') return '🐔 Chickens working the surface. '+tier;
@@ -14257,23 +14531,25 @@ function soilStoryLine(t){
   if(t.crop && CROPS[t.crop.type]){
     const c = CROPS[t.crop.type];
     const windNeed = (typeof windShelterStory==='function') ? windShelterStory(t, {needOnly:true}) : '';
+    const hedgeNeed = (!windNeed && typeof hedgeCorridorStory==='function') ? hedgeCorridorStory(t, {needOnly:true}) : '';
+    const edgeNeed = windNeed || hedgeNeed;
     if(t.crop.type==='sisters')
-      return (windNeed?windNeed+' ':'')+'🌽 The guild — corn is the pole, beans feed nitrogen, squash shades weeds. A team feeds the soil. '+tier;
+      return (edgeNeed?edgeNeed+' ':'')+'🌽 The guild — corn is the pole, beans feed nitrogen, squash shades weeds. A team feeds the soil. '+tier;
     if(typeof leftoverIsHayCutT==='function' && leftoverIsHayCutT(t))
-      return (windNeed?windNeed+' ':'')+(typeof hayCutStory==='function' ? hayCutStory(tier) : '🌾 Standing hay for the crate. '+tier);
+      return (edgeNeed?edgeNeed+' ':'')+(typeof hayCutStory==='function' ? hayCutStory(tier) : '🌾 Standing hay for the crate. '+tier);
     if(typeof hayFoldForageWheat==='function' && hayFoldForageWheat(t))
-      return (windNeed?windNeed+' ':'')+(typeof hayCutStory==='function' ? hayCutStory(tier) : '🌾 Standing hay — a forage cut for the crate, not a kitchen till. Neighbors pay more in winter feed season. '+tier);
+      return (edgeNeed?edgeNeed+' ':'')+(typeof hayCutStory==='function' ? hayCutStory(tier) : '🌾 Standing hay — a forage cut for the crate, not a kitchen till. Neighbors pay more in winter feed season. '+tier);
     if(typeof leftoverIsMeadowForageT==='function' && leftoverIsMeadowForageT(t))
-      return (windNeed?windNeed+' ':'')+(typeof meadowForageStory==='function' ? meadowForageStory(tier) : '🌼 Wild meadow cuttings for the crate. '+tier);
+      return (edgeNeed?edgeNeed+' ':'')+(typeof meadowForageStory==='function' ? meadowForageStory(tier) : '🌼 Wild meadow cuttings for the crate. '+tier);
     if(t.crop.type==='wheat' || (!c.diverse && !c.cover)){
       const days = t.crop.days||0;
       if(days >= 1)
-        return (windNeed?windNeed+' ':'')+'🌾 The lonely crop — this stand is charging the soil a fee. Fast coins, thinner ground. '+tier;
-      return (windNeed?windNeed+' ':'')+'🌾 The lonely crop — one species, one appetite. Fast coins if it pays. '+tier;
+        return (edgeNeed?edgeNeed+' ':'')+'🌾 The lonely crop — this stand is charging the soil a fee. Fast coins, thinner ground. '+tier;
+      return (edgeNeed?edgeNeed+' ':'')+'🌾 The lonely crop — one species, one appetite. Fast coins if it pays. '+tier;
     }
-    if(c.cover || c.pioneer) return (windNeed?windNeed+' ':'')+(c.em||'🌿')+' Living roots pump carbon down and crack the crust. '+tier;
-    if(c.diverse) return (windNeed?windNeed+' ':'')+(c.em||'🌽')+' Diverse crop growing. '+tier;
-    return (windNeed?windNeed+' ':'')+(c.em||'🌾')+' Crop in the ground. '+tier;
+    if(c.cover || c.pioneer) return (edgeNeed?edgeNeed+' ':'')+(c.em||'🌿')+' Living roots pump carbon down and crack the crust. '+tier;
+    if(c.diverse) return (edgeNeed?edgeNeed+' ':'')+(c.em||'🌽')+' Diverse crop growing. '+tier;
+    return (edgeNeed?edgeNeed+' ':'')+(c.em||'🌾')+' Crop in the ground. '+tier;
   }
   if(typeof isHayStubbleT==='function' && isHayStubbleT(t))
     return '🌾 Stubble after a strip — the hay returns; soil thins and graze waits until then. '+tier;
@@ -14303,6 +14579,10 @@ function soilStoryLine(t){
   if(typeof windShelterStory==='function'){
     const ws = windShelterStory(t);
     if(ws) return ws+' '+tier;
+  }
+  if(typeof hedgeCorridorStory==='function'){
+    const hc = hedgeCorridorStory(t);
+    if(hc) return hc+' '+tier;
   }
   if(typeof dustWashNeed==='function' && dustWashNeed())
     return '🏜️ Dry wash is blocked — drought nicks these flats. Keep the bed open so rare water can move. '+tier;
@@ -14542,6 +14822,7 @@ function applyTool(i){
     else if(t.terrain==='pond' || t.terrain==='trees') did = ()=>{
       if(typeof rememberRiparianMark==='function') rememberRiparianMark(t);
       if(typeof rememberWeatherEdgeMark==='function') rememberWeatherEdgeMark(t);
+      if(typeof rememberHedgeCorridorMark==='function') rememberHedgeCorridorMark(t);
       if(typeof rememberHomeWaterMarks==='function') rememberHomeWaterMarks(t);
       if(typeof rememberHighPondMark==='function') rememberHighPondMark(t);
       if(typeof rememberAtlasLaneMark==='function') rememberAtlasLaneMark(t);
@@ -14891,6 +15172,13 @@ function applyTool(i){
        && typeof windShelterWeatherEdgeAt==='function' && windShelterWeatherEdgeAt(t)
        && typeof currentWindShelterFold==='function' && currentWindShelterFold()){
       t.farmEdge = 'windbreak';
+    }else if(!t.farmEdge && typeof homePatchCleared==='function' && homePatchCleared()
+       && typeof hedgeCorridorSeamAt==='function' && hedgeCorridorSeamAt(t)
+       && typeof currentHedgeCorridorFold==='function' && currentHedgeCorridorFold()){
+      t.farmEdge = 'hedgerow';
+      t.atlasFeature = t.atlasFeature || 'hedgerow';
+      t.hedgeReady = false;
+      t.hedgeSet = 0;
     }else if(!t.farmEdge && typeof homePatchCleared==='function' && homePatchCleared()
        && typeof currentPaddockFold==='function' && currentPaddockFold()){
       t.farmEdge = 'hedgerow';
@@ -15521,7 +15809,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.windbreak';
+const SHIP_BUILD = '2026-08-26.hedgerow';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -15671,7 +15959,7 @@ function openAboutCredits(){
   if(showNew) camp.tipsShown['whats_new_'+ver] = true;
   const whatsNew = showNew
     ? `<div class="lesson" style="text-align:left;margin-top:6px;border-color:rgba(234,181,67,.45)">
-        <b>What's new (${ver}):</b> After Home Patch a weather-side windbreak or hedge holds garden and paddock beds; clear that edge and a mild wind nick dries the exposed soil.
+        <b>What's new (${ver}):</b> After Home Patch a living hedge between leftover fields holds pests and pollinators on the edge beds; clear that corridor and a mild nick shows.
       </div>`
     : '';
   // CD — first About open literacy (in-modal; no toast spam)
@@ -20141,6 +20429,7 @@ function openInfo(refreshOnly){
       ${homeNeedLine && homeNeedLine!==feat?`<div class="chiprow">${homeNeedLine}</div>`:''}
       ${(typeof riparianBufferStory==='function' && riparianBufferStory(t))?`<div class="chiprow">${riparianBufferStory(t)}</div>`:''}
       ${(typeof windShelterStory==='function' && windShelterStory(t,{needOnly:true}))?`<div class="chiprow">${windShelterStory(t,{needOnly:true})}</div>`:''}
+      ${(typeof hedgeCorridorStory==='function' && hedgeCorridorStory(t,{needOnly:true}))?`<div class="chiprow">${hedgeCorridorStory(t,{needOnly:true})}</div>`:''}
       ${washLine?`<div class="chiprow">${washLine}</div>`:''}
       ${t.compost>0?`<div class="chiprow">🪣 compost working — ${t.compost.toFixed(0)}d left</div>`:''}
       ${t.crop?`<div class="chiprow">🌿 pioneers cracking the crust — ${Math.round(Math.min(1,t.crop.growth)*100)}%</div>`:''}
@@ -20260,6 +20549,10 @@ function openInfo(refreshOnly){
       const wsLine = (typeof windShelterStory==='function') ? windShelterStory(t) : '';
       if(wsLine) chips.push(wsLine);
     }
+    {
+      const hcLine = (typeof hedgeCorridorStory==='function') ? hedgeCorridorStory(t) : '';
+      if(hcLine) chips.push(hcLine);
+    }
     if(typeof highPondNeed==='function' && highPondNeed() && typeof isHighPondFillT==='function' && isHighPondFillT(t))
       chips.push('💧 this filled the high pond — runoff nicks downhill soil');
     else if(typeof highPondNeed==='function' && highPondNeed() && typeof highPondDownhillOfMarked==='function' && highPondDownhillOfMarked(t))
@@ -20349,13 +20642,17 @@ function openInfo(refreshOnly){
             : 'Living orchard — tap when fruit is ready, or wait for a dawn trickle. The tree stays. Not firewood.'))
       : t.farmEdge==='hedgerow' || (typeof isHedgerowT==='function' && isHedgerowT(t))
         ? ((t.hedgeRegen!=null)
-          ? 'A stump after a strip — soil and shelter thin until the hedge returns. Not an open plant bed.'
+          ? ((typeof hedgeCorridorStory==='function' && hedgeCorridorStory(t))
+            || 'A stump after a strip — soil and shelter thin until the hedge returns. Not an open plant bed.')
           : (typeof isHedgerowBerryT==='function' && isHedgerowBerryT(t)
             ? (typeof hedgeBerryTileReady==='function' && hedgeBerryTileReady(t)
-              ? 'Living hedgerow — berries are ready. Tap for a crate lot; the hedge stays. Shelter still counts. Not willow, not firewood.'
-              : ((typeof windShelterStory==='function' && windShelterStory(t))
+              ? ((typeof hedgeCorridorStory==='function' && hedgeCorridorStory(t))
+                || 'Living hedgerow — berries are ready. Tap for a crate lot; the hedge stays. Shelter still counts. Not willow, not firewood.')
+              : ((typeof hedgeCorridorStory==='function' && hedgeCorridorStory(t))
+              || (typeof windShelterStory==='function' && windShelterStory(t))
               || 'Living hedgerow — tap when berries are ready, or wait for a dawn trickle. The hedge stays. Shelter from wind. Not willow, not firewood.'))
-            : ((typeof windShelterStory==='function' && windShelterStory(t))
+            : ((typeof hedgeCorridorStory==='function' && hedgeCorridorStory(t))
+              || (typeof windShelterStory==='function' && windShelterStory(t))
               || 'A hedgerow seam from the painting — shelter for the next fold, and the herd walks around it.')))
         : (typeof isWillowCutT==='function' && isWillowCutT(t)) || t.farmEdge==='willow'
           ? ((t.willowRegen!=null)
