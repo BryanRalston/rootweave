@@ -1021,6 +1021,11 @@ const STAND_EGG_SEASON   = [0.94, 0.88, 1.02, 1.14]; // hens lay in the warm mon
 const STAND_MULT_MIN = 0.80, STAND_MULT_MAX = 1.22;
 const COOP_EGG_LOT = 3;   // modest crate lot — well under a wheat cut
 const COOP_EGG_RATE = 0.22; // lots/day at 1 hen; scales with sqrt(heads), stays a trickle
+const STAND_FRUIT_SEASON = [1.08, 0.92, 0.86, 1.14]; // last jars in spring; fall glut; winter table
+const ORCHARD_FRUIT_LOT = 4;   // modest crate lot — a touch over eggs, well under a wheat cut
+const ORCHARD_FRUIT_SET = 0.09; // ripen / day on a mature tree (not winter)
+const ORCHARD_GROW_DAYS = 8;    // player-planted saplings settle before they fruit
+const ORCHARD_AUTO_PICK = 1;    // light dawn trickle — tap can pick the rest
 const OVERGRAZE_RATES = {om:-0.45, structure:-0.35, nutrients:-0.15, water:0, microbial:-0.1, erosion:-0.5};
 function emptyHerd(){ return {cattle:0, chicken:0, sheep:0, goat:0, pig:0, duckT:0}; }
 function ensureHerd(c){
@@ -1304,6 +1309,134 @@ function tickCoopEggs(){
   if(typeof updateHUD==='function') updateHUD();
   return n;
 }
+/** Field under the player, or the parked orchard fold while they are in the yard. */
+function orchardFruitFarm(){
+  if(typeof homesteadMode!=='undefined' && homesteadMode && typeof plotStateBackup!=='undefined'
+     && plotStateBackup && plotStateBackup.grid && !plotStateBackup.homesteadView){
+    return plotStateBackup;
+  }
+  if(state && !state.homesteadView) return state;
+  return null;
+}
+function leftoverIsOrchardFold(P){
+  if(!P) return false;
+  if(P.id==='home_garden' || P.lvIndex===0) return false;
+  const feel = typeof leftoverStampFeelFor==='function' ? leftoverStampFeelFor(P) : (P.stampFeel||'');
+  return feel==='orchard' || P.id==='orchard_block';
+}
+/** Leftover / buyable orchard folds, plus campaign Orchard Slope once the player plants. Home Patch stays off. */
+function currentOrchardFold(s){
+  s = s || (typeof orchardFruitFarm==='function' ? orchardFruitFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s) return false;
+  const L = (typeof LEVELS!=='undefined' && LEVELS[s.lv]) ? LEVELS[s.lv] : null;
+  if(L && L.id==='home') return false;
+  if(L && (L.id==='orchard' || L.stampFeel==='orchard')) return true;
+  const P = typeof valleyParcelByLvIndex==='function' ? valleyParcelByLvIndex(s.lv) : null;
+  return leftoverIsOrchardFold(P);
+}
+function orchardTreeMature(t){
+  if(!t || t.terrain!=='orchard') return false;
+  if(t.orchardAge==null) return true; // leftover dress rows are already a grove
+  return (t.orchardAge|0) >= ORCHARD_GROW_DAYS;
+}
+function orchardTileReady(t){
+  return orchardTreeMature(t) && !!(t && t.fruitReady);
+}
+/** Stagger the first hang so some leftover apples are ready, the rest set. */
+function leftoverSeedOrchardFruit(t){
+  if(!t || t.terrain!=='orchard') return;
+  if(t.fruitSet!=null || t.fruitReady) return;
+  const u = sr(((t.c|0)*19 + (t.r|0)*41 + 27));
+  t.fruitReady = u >= 0.72;
+  t.fruitSet = t.fruitReady ? 0 : u;
+}
+function orchardHiveNear(s, t){
+  if(!s || !s.grid || !t) return false;
+  const g = (s.gridSize|0) || (typeof GRID==='number' ? GRID : 0);
+  if(g<=0) return false;
+  for(let dr=-2; dr<=2; dr++) for(let dc=-2; dc<=2; dc++){
+    const c = (t.c|0)+dc, r = (t.r|0)+dr;
+    if(c<0 || r<0 || c>=g || r>=g) continue;
+    const n = s.grid[r*g+c];
+    if(n && n.terrain==='beehive') return true;
+  }
+  return false;
+}
+function orchardRipenRate(s, t){
+  let r = ORCHARD_FRUIT_SET;
+  if(orchardHiveNear(s, t)) r *= 1.15;
+  const season = (s && (s.season|0)) || 0;
+  if(season===2) r *= 1.12; // fall hang
+  if(season===0) r *= 0.88; // spring blossom
+  return r;
+}
+function orchardFloaterIdx(s, i){
+  if(state && state.grid && s && s.grid && state.grid===s.grid && state.grid[i]) return i;
+  if(typeof selected==='number' && selected>=0 && state && state.grid && state.grid[selected]) return selected;
+  if(state && state.grid){
+    for(let k=0;k<state.grid.length;k++){
+      if(state.grid[k] && (state.grid[k].terrain==='nstand' || state.grid[k].terrain==='house' || state.grid[k].terrain==='coop')) return k;
+    }
+  }
+  return (typeof selected==='number' && selected>=0) ? selected : 0;
+}
+function orchardFruitReady(){
+  if(!camp) return false;
+  if(typeof homePatchCleared==='function' && !homePatchCleared()) return false;
+  return currentOrchardFold();
+}
+function harvestOrchardTile(t, i, opts){
+  const o = opts || {};
+  if(!t || t.terrain!=='orchard') return false;
+  if(!orchardFruitReady()) return false;
+  if(!orchardTileReady(t)) return false;
+  const s = o.farm || orchardFruitFarm() || state;
+  t.fruitReady = false;
+  t.fruitSet = 0;
+  if(typeof bankHarvestLot==='function') bankHarvestLot({type:'fruit', em:'🍎', name:'Fruit', coins:ORCHARD_FRUIT_LOT});
+  const fi = orchardFloaterIdx(s, i);
+  if(typeof floater==='function' && state && state.grid && state.grid[fi]){
+    floater(fi, '🍎 crate', '#ffd45e', 16);
+  }
+  if(typeof burst==='function' && state && state.grid && state.grid[fi]) burst(fi, '#e8d4a0', 6);
+  if(typeof SND!=='undefined' && SND && typeof SND.place==='function') SND.place();
+  if(typeof toast==='function'){
+    toast('🍎 Fruit in the crate by the house. Neighbors pay by the season — or let it sit for the pile.', {once:'orchard_fruit_first', throttleMs:4000});
+  }
+  if(typeof refreshNeighborStandIfOpen==='function') refreshNeighborStandIfOpen();
+  if(typeof updateHUD==='function') updateHUD();
+  return true;
+}
+function tickOrchardFruitGrow(s){
+  if(!s || !s.grid) return;
+  const winter = ((s.season|0)%4)===3;
+  s.grid.forEach(t=>{
+    if(!t || t.terrain!=='orchard') return;
+    if(t.orchardAge!=null) t.orchardAge = (t.orchardAge|0) + 1;
+    if(!orchardTreeMature(t) || winter) return;
+    if(t.fruitReady) return;
+    t.fruitSet = Math.max(0, +t.fruitSet || 0) + orchardRipenRate(s, t);
+    if(t.fruitSet >= 1){
+      t.fruitReady = true;
+      t.fruitSet = 0;
+    }
+  });
+}
+/** One sim dawn: a ready orchard tree may bank a small fruit lot into the crate. */
+function tickOrchardFruit(){
+  if(!camp || !orchardFruitReady()) return 0;
+  const s = orchardFruitFarm();
+  if(!s || !s.grid) return 0;
+  tickOrchardFruitGrow(s);
+  const ready = [];
+  s.grid.forEach((t,i)=>{ if(orchardTileReady(t)) ready.push(i); });
+  if(!ready.length) return 0;
+  let n = 0;
+  for(let k=0;k<Math.min(ORCHARD_AUTO_PICK, ready.length);k++){
+    if(harvestOrchardTile(s.grid[ready[k]], ready[k], {farm:s, auto:true})) n++;
+  }
+  return n;
+}
 /** Remember the live field calendar so homestead (frozen spring) still pays today's lane. */
 function rememberLaneClock(src){
   if(!camp) return;
@@ -1520,20 +1653,26 @@ function standLaneWobble(){
 }
 function standPriceMult(kind){
   const clk = standClock();
-  const table = kind==='meat' ? STAND_MEAT_SEASON : (kind==='egg' ? STAND_EGG_SEASON : STAND_GRAIN_SEASON);
+  const table = kind==='meat' ? STAND_MEAT_SEASON
+    : (kind==='egg' ? STAND_EGG_SEASON
+    : (kind==='fruit' ? STAND_FRUIT_SEASON : STAND_GRAIN_SEASON));
   const base = table[clk.season] || 1;
   const m = base * standLaneWobble();
   return Math.max(STAND_MULT_MIN, Math.min(STAND_MULT_MAX, m));
 }
 function crateLotBase(lot){ return Math.max(1, (lot && lot.coins)|0); }
-function crateLotPriceKind(lot){ return (lot && lot.type)==='egg' ? 'egg' : 'grain'; }
+function crateLotPriceKind(lot){
+  if((lot && lot.type)==='egg') return 'egg';
+  if((lot && lot.type)==='fruit') return 'fruit';
+  return 'grain';
+}
 function crateLotSellPrice(lot){
   const base = crateLotBase(lot);
   const kind = crateLotPriceKind(lot);
   const mult = standPriceMult(kind);
   let n = Math.max(1, Math.round(base * mult));
-  // 🪙3 egg lots round back to 3 across the modest band — keep cheap/dear as a 1-coin step.
-  if(kind==='egg'){
+  // Modest 🪙3–4 lots round flat across the band — keep cheap/dear as a 1-coin step.
+  if(kind==='egg' || kind==='fruit'){
     if(mult<=0.94 && n>=base) n = Math.max(1, base-1);
     if(mult>=1.08 && n<=base) n = base+1;
   }
@@ -1835,7 +1974,7 @@ function neighborStandHtml(opts){
         </span>
       </div>`;
       }).join('')
-    : `<div class="nstand-note">Crate is empty. Harvest wheat or sisters, then bring it here.</div>`;
+    : `<div class="nstand-note">Crate is empty. Harvest wheat, sisters, or orchard fruit, then bring it here.</div>`;
   const pileNote = pileN
     ? `<div class="nstand-note">🪣 ${pileN} leftover compost ready — paint 🪣 Compost on the land (no coins). You already skipped the stand coins.</div>`
     : '';
@@ -1928,7 +2067,7 @@ const TOOLS = [
   {id:'raintank',em:'🛢️', name:'RainTank',cost:10, group:'Build',   paint:false, shopId:'raintank',  tip:'Catches storms, waters neighbors through droughts.'},
   {id:'greenhouse',em:'🪴',name:'Grnhouse',cost:20,group:'Build',   paint:false, shopId:'greenhouse',tip:'Plant beside it even in WINTER; crops nearby grow faster.'},
   {id:'silo',    em:'🌾', name:'Silo',    cost:15, group:'Build',   paint:false, shopId:'silo',      tip:'Grain storage — every harvest sells +15%.'},
-  {id:'orchard', em:'🍎', name:'Orchard', cost:14, group:'Build',   paint:true,  shopId:'orchard',   tip:'A perennial food forest — fruit coins every season.'},
+  {id:'orchard', em:'🍎', name:'Orchard', cost:14, group:'Build',   paint:true,  shopId:'orchard',   tip:'A perennial food forest — fruit to the crate when it ripens.'},
   {id:'berrybush',em:'🫐',name:'Berries', cost:8,  group:'Build',   paint:true,  shopId:'berrybush', tip:'Berry hedges — snacks for you, blossoms for the bees.'},
   {id:'wormfarm',em:'🪱', name:'WormFarm',cost:10, group:'Build',   paint:false, shopId:'wormfarm',  tip:'A worm army that supercharges soil life nearby.'},
   {id:'birdhouse',em:'🐦',name:'Birdhouse',cost:6, group:'Build',   paint:true,  shopId:'birdhouse', tip:'Songbirds move in — and eat the pests for free.'},
@@ -1955,7 +2094,7 @@ const SHOP = [
   {id:'raintank',   em:'🛢️', name:'Rain Tank',       cost:30, cat:'Build',   desc:'Catches rain, waters neighbors in dry spells.'},
   {id:'greenhouse', em:'🪴', name:'Greenhouse',      cost:70, cat:'Build',   desc:'Grow beside it all WINTER, +faster crops.'},
   {id:'silo',       em:'🌾', name:'Grain Silo',      cost:55, cat:'Build',   desc:'Every harvest sells for +15%.'},
-  {id:'orchard',    em:'🍎', name:'Orchard',         cost:45, cat:'Build',   desc:'Perennial food forest — fruit every season.'},
+  {id:'orchard',    em:'🍎', name:'Orchard',         cost:45, cat:'Build',   desc:'Perennial food forest — fruit to the crate when it ripens.'},
   {id:'berrybush',  em:'🫐', name:'Berry Bushes',    cost:20, cat:'Build',   desc:'Berries + blossoms the pollinators adore.'},
   {id:'wormfarm',   em:'🪱', name:'Worm Farm',       cost:35, cat:'Build',   desc:'Compost drops to 2🪙 & soil life blooms nearby.'},
   {id:'birdhouse',  em:'🐦', name:'Birdhouses',      cost:25, cat:'Build',   desc:'Songbirds eat the pests for free.'},
@@ -2136,7 +2275,7 @@ const LEVELS = [
    ]},
   // —— side parcels (atlas branches; unlock features for homestead + shop forever)
   {id:'orchard', name:'Orchard Slope', em:'🍎', grid:8, coins:55, parYears:5,
-   teaser:'Perennials — fruit every season.',
+   teaser:'Perennials — fruit to the crate.',
    story:'Old stump rows climb the east slope. Plant orchards and berry hedges; bees will follow.',
    doneText:'The slope blooms again — perennial food is a gift that keeps giving.',
    tools:['select','compost','covercrop','sisters','clover','trees','orchard','berrybush','beehive','bulldoze'],
@@ -2151,7 +2290,7 @@ const LEVELS = [
    ],
    gen:genOrchardSlope,
    tut:[
-     {html:'🍎 <b>Orchard Slope.</b> Perennials beat one-shot crops — <b>Orchard</b> and <b>Berries</b> pay every season. <b>Beehives</b> boost nearby yields.', btn:'Plant the slope'},
+     {html:'🍎 <b>Orchard Slope.</b> Perennials beat one-shot crops — <b>Orchard</b> fruit goes to the crate; <b>Berries</b> still pay on the tile. <b>Beehives</b> hurry the hang.', btn:'Plant the slope'},
    ],
    grantUnlocks:['orchard','berrybush','beehive']},
   {id:'marsh', name:'Marsh Finger', em:'🦩', grid:8, coins:60, parYears:5,
@@ -5143,6 +5282,9 @@ function dressLeftoverStamp(s, P){
       if(typeof carveClear==='function') carveClear(t);
       grove++;
     });
+    tiles.forEach(t=>{
+      if(t && t.terrain==='orchard' && typeof leftoverSeedOrchardFruit==='function') leftoverSeedOrchardFruit(t);
+    });
     // Light understory in the alleys — clover / pioneers / flowers / soil the player can still work.
     tiles.forEach(t=>{
       if(!leftoverStampLand(t)) return;
@@ -6938,6 +7080,7 @@ function simStep(dt){
     dailyIncome();
     if(typeof rememberLaneClock==='function') rememberLaneClock();
     if(typeof tickCoopEggs==='function') tickCoopEggs();
+    if(typeof tickOrchardFruit==='function') tickOrchardFruit();
     if(typeof refreshNeighborStandIfOpen==='function') refreshNeighborStandIfOpen();
     updateQuests();
     maybeDustFlatsCoach();
@@ -7052,12 +7195,11 @@ function advanceSeason(){
   }else{
     SND.season();
   }
-  // perennials pay every season (except deep winter)
+  // berries still pay on the tile; orchard fruit now goes through the crate
   if(state.season!==3){
     let per = 0;
     state.grid.forEach((t,i)=>{
-      if(t.terrain==='orchard'){ per += 6; floater(i, '+🪙6 🍎', '#ffd45e', 13); }
-      else if(t.terrain==='berrybush'){ per += 3; floater(i, '+🪙3 🫐', '#ffd45e', 12); }
+      if(t.terrain==='berrybush'){ per += 3; floater(i, '+🪙3 🫐', '#ffd45e', 12); }
     });
     if(per>0){ state.coins += per; state.stats.coinsEarned += per; SND.coin(); }
   }
@@ -7428,7 +7570,7 @@ function checkLevelComplete(){
     else if(L.id==='field') plotRecap = `<div class="lesson">🐄 <b>Grazing dance learned</b> — cattle then chickens on the same tile. Carry that team-graze habit to every paddock ahead.</div>`;
     else if(L.id==='creek') plotRecap = `<div class="lesson">🏞️ <b>Buffers filter runoff</b> — trees and living banks clean water. Carry that to every stream ahead.</div>`;
     else if(L.id==='flats') plotRecap = `<div class="lesson">🏜️ <b>Hard land learned</b> — salt pans need extra feed, goats browse dead scrub, and every revived tile weakens the dust. Patience + compost wins.</div>`;
-    else if(L.id==='orchard') plotRecap = `<div class="lesson">🍎 <b>Perennials pay seasons</b> — orchards and berries fruit again and again; beehives boost nearby yields. Plant for the long haul.</div>`;
+    else if(L.id==='orchard') plotRecap = `<div class="lesson">🍎 <b>Perennials fill the crate</b> — orchards ripen fruit for the stand (or the pile); berries still pay on the tile. Beehives hurry the hang. Plant for the long haul.</div>`;
     else if(L.id==='marsh') plotRecap = `<div class="lesson">🦩 <b>Living filters</b> — wetlands and ducks clean water at the edge of the stem. Keep wet ground connected to the main river.</div>`;
     else if(L.id==='wind') plotRecap = `<div class="lesson">🌬️ <b>Weather harnessed</b> — windmills and solar pay daily; rain tanks and wells steady droughts. Stack clean power on high ground.</div>`;
     else if(L.id==='market') plotRecap = `<div class="lesson">🏪 <b>Trade corner built</b> — market stands trickle coins, silos punch harvests, sheep and pigs join the toolkit. Economy meets the herd.</div>`;
@@ -10309,6 +10451,11 @@ function applyTool(i){
       ringAt(i, '#ffe89a'); SND.pop();
       return true;
     }
+    if(t.terrain==='orchard' && typeof harvestOrchardTile==='function' && harvestOrchardTile(t, i)){
+      openInfo();
+      ringAt(i, '#ffe89a');
+      return true;
+    }
     openInfo();
     ringAt(i, '#ffe89a'); SND.pop();
     return true;
@@ -10622,11 +10769,16 @@ function applyTool(i){
     }
     if(!spend(td.cost)) return false;
     t.terrain = tool; t.deco = null; t.feature = null; t.crop = null;
+    if(tool==='orchard'){
+      t.orchardAge = 0;
+      t.fruitReady = false;
+      t.fruitSet = 0;
+    }
     state.stats.buildings++;
     // AH/BJ — first orchard / market / power / berry tips
     if(tool==='orchard'){
       if(typeof ringAt==='function') ringAt(i, '#8fce6e');
-      toast('🍎 Orchard planted — fruit coins each season (not winter). Add 🫐 berries and a 🐝 hive nearby.', {once:'first_orchard', throttleMs:4000});
+      toast('🍎 Orchard planted — fruit goes to the crate when it ripens (not winter). Add 🫐 berries and a 🐝 hive nearby.', {once:'first_orchard', throttleMs:4000});
     }
     if(tool==='berrybush'){
       toast('🫐 Berry hedge — seasonal coins + blossoms for pollinators. Pair with orchards and a beehive.', {once:'first_berrybush', throttleMs:4000});
@@ -11104,7 +11256,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.egglane';
+const SHIP_BUILD = '2026-08-22.orchfruit';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -11254,7 +11406,7 @@ function openAboutCredits(){
   if(showNew) camp.tipsShown['whats_new_'+ver] = true;
   const whatsNew = showNew
     ? `<div class="lesson" style="text-align:left;margin-top:6px;border-color:rgba(234,181,67,.45)">
-        <b>What's new (${ver}):</b> Paddock folds play as graze land — clover and cover by the stock pond, herd tools, not a kitchen row. Home Patch stays a dead garden. Play stays free; no pay-to-revive.
+        <b>What's new (${ver}):</b> Orchard Block fruit trees fill the harvest crate — tap a ripe tree or let a dawn trickle bank a modest 🍎 lot. Sell at the stand by the season, or let leftover fruit go to the pile. Home Patch stays a dead garden with no fruit. Play stays free; no pay-to-revive.
       </div>`
     : '';
   // CD — first About open literacy (in-modal; no toast spam)
@@ -15589,7 +15741,7 @@ function openInfo(refreshOnly){
     market:'Sells your produce every day: +3🪙.', silo:'Every harvest sells +15%.',
     greenhouse:'Nearby tiles can be planted even in winter, and crops grow faster.',
     beehive:'Nearby crops yield +20% — and the air hums with bees.',
-    orchard:'A perennial food forest — fruit coins every season, roots that hold the bank.',
+    orchard:'A perennial food forest — fruit goes to the crate when it ripens, then sell or compost.',
     raintank:'Keeps nearby soil moist through droughts.', wetland:'Filters runoff before it reaches the river. Frogs approve.',
     stable:'A gentle horse watches over the fields.', wormfarm:'Soil life blooms nearby — and compost gets cheap.',
     birdhouse:'Songbirds eat pests for free.', well:'Sweet groundwater for the soil beside it.',
@@ -15638,6 +15790,14 @@ function openInfo(refreshOnly){
     }
   }else if(BUILD_SET.has(t.terrain)){
     body = `<div class="chiprow">${BUILD_INFO[t.terrain]||''}</div>`;
+    if(t.terrain==='orchard'){
+      if(typeof orchardTileReady==='function' && orchardTileReady(t))
+        body += `<div class="chiprow">🍎 fruit ready — tap to pick into the crate</div>`;
+      else if(typeof orchardTreeMature==='function' && orchardTreeMature(t))
+        body += `<div class="chiprow">🍎 fruit is setting — a crate lot trickles at dawn, or tap when ready</div>`;
+      else
+        body += `<div class="chiprow">🍎 sapling — fruit after it settles in</div>`;
+    }
   }else if(t.terrain==='soil'){
     const chips = [];
     if(t.crop){
