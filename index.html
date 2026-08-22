@@ -1039,6 +1039,8 @@ const MEADOW_FORAGE_SET = 0.10; // cuttings / day on a bloom tile — meadow sta
 const MEADOW_AUTO_PICK = 1;    // light dawn trickle — tap can pick the rest
 const PADDOCK_MANURE_RATE = 0.20; // pile lots/day at 1 head; scales with sqrt(heads), stays a trickle
 const PADDOCK_MANURE_AUTO = 1;    // at most one dawn pile unit — bedding, not a crate crop
+const PADDOCK_THIRST_SOIL = {water:-2.5, om:-0.8, erosion:-0.8}; // dawn nick when the fold is dry
+const PADDOCK_DRINK_SOIL = {water:1, om:0.25}; // tiny recover when the drink is usable
 const COOP_BEDDING_RATE = 0.12; // pile lots/day at 1 hen; scales with sqrt(hens), smaller than a paddock herd
 const COOP_BEDDING_AUTO = 1;    // at most one dawn pile unit — bedding, not a crate crop
 const WOODLOT_REGEN_DAYS = 8; // clear-cut stump returns as canopy; never an empty plant bed
@@ -1159,8 +1161,9 @@ function grazeInspectLine(g){
   const rest = grazeRestDays(g);
   const stay = g.stay||0;
   const manure = typeof paddockManureReady==='function' && paddockManureReady() ? ' · bedding to the pile' : '';
-  if(stay >= rest) return who+' · no yield while this pad is tired — move them.'+manure;
-  return who+' · '+yBit+' · here '+stay.toFixed(0)+'d · move before '+Math.round(rest)+'d'+(g.synergy?' ✨':'')+manure;
+  const thirst = typeof paddockStockThirstNeed==='function' && paddockStockThirstNeed() ? ' · dry — herd needs a drink' : '';
+  if(stay >= rest) return who+' · no yield while this pad is tired — move them.'+manure+thirst;
+  return who+' · '+yBit+' · here '+stay.toFixed(0)+'d · move before '+Math.round(rest)+'d'+(g.synergy?' ✨':'')+manure+thirst;
 }
 function tickGrazeStay(g, dd){
   if(!g) return;
@@ -5049,6 +5052,66 @@ function tickPaddockManure(){
   if(typeof updateHUD==='function') updateHUD();
   return n;
 }
+/** Pond / trough / drinkstand the herd can stand beside — existing stock-water markers only. */
+function paddockStockWaterUsable(s){
+  s = s || (typeof paddockManureFarm==='function' ? paddockManureFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return false;
+  return typeof stockDrinkReachable==='function' && stockDrinkReachable(s);
+}
+/** Same gate as manurecopy: Home cleared, paddock fold in play, herd walking. */
+function paddockStockThirstReady(s){
+  return typeof paddockManureReady==='function' && paddockManureReady(s);
+}
+/** Inspect / floater mention the need only when the herd is walking a dry fold. */
+function paddockStockThirstNeed(s){
+  if(!paddockStockThirstReady(s)) return false;
+  return !paddockStockWaterUsable(s);
+}
+function paddockStockThirstTiles(s){
+  const tiles = [];
+  if(!s || !s.grid) return tiles;
+  s.grid.forEach((t, i)=>{
+    if(t && t.graze && t.soil && t.terrain==='soil') tiles.push({t, i});
+  });
+  return tiles;
+}
+/** One sim dawn: dry fold nicks walking graze; a usable drink skips the nick (tiny recover). */
+function tickPaddockStockThirst(){
+  if(!camp || !paddockStockThirstReady()) return 0;
+  const s = typeof paddockManureFarm==='function' ? paddockManureFarm() : (typeof state!=='undefined' ? state : null);
+  if(!s || !s.grid) return 0;
+  const tiles = paddockStockThirstTiles(s);
+  if(!tiles.length) return 0;
+  const wet = paddockStockWaterUsable(s);
+  tiles.forEach(({t})=>{
+    if(wet){
+      const b = PADDOCK_DRINK_SOIL;
+      if((t.soil.water||0) < 70) t.soil.water = clamp((t.soil.water||0) + (b.water||0));
+      if((t.soil.om||0) < 70) t.soil.om = clamp((t.soil.om||0) + (b.om||0));
+    }else{
+      const b = PADDOCK_THIRST_SOIL;
+      t.soil.water = clamp((t.soil.water||0) + (b.water||0));
+      t.soil.om = clamp((t.soil.om||0) + (b.om||0));
+      t.soil.erosion = clamp((t.soil.erosion||0) + (b.erosion||0));
+      if(t.graze){
+        t.graze.stay = (t.graze.stay||0) + 0.15;
+        const rest = typeof grazeRestDays==='function' ? grazeRestDays(t.graze) : (t.graze.total||0);
+        t.graze.total = rest;
+        t.graze.days = Math.max(0, rest - (t.graze.stay||0));
+      }
+    }
+    if(typeof recalc==='function') recalc(t);
+  });
+  if(wet) return 0;
+  const fi = typeof paddockManureFloaterIdx==='function' ? paddockManureFloaterIdx(s) : 0;
+  if(typeof floater==='function' && state && state.grid && state.grid[fi]){
+    floater(fi, 'thirst', '#c9a070');
+  }
+  if(typeof toast==='function'){
+    toast('💧 The fold is dry — the herd needs stock water they can stand beside.', {once:'paddock_thirst_first', throttleMs:4000});
+  }
+  return tiles.length;
+}
 /** Interior leftover land that can take clover / flowers. Leave creek, reeds, and riparian trees. */
 function leftoverMeadowSeatOk(t, g){
   if(!t || !leftoverStampLand(t)) return false;
@@ -7622,6 +7685,7 @@ function simStep(dt){
     if(typeof tickWoodlotTimber==='function') tickWoodlotTimber();
     if(typeof tickMeadowForage==='function') tickMeadowForage();
     if(typeof tickPaddockManure==='function') tickPaddockManure();
+    if(typeof tickPaddockStockThirst==='function') tickPaddockStockThirst();
     if(typeof tickCoopBedding==='function') tickCoopBedding();
     if(typeof refreshNeighborStandIfOpen==='function') refreshNeighborStandIfOpen();
     updateQuests();
@@ -10900,6 +10964,8 @@ function soilStoryLine(t){
     const g = t.graze;
     if((g.stay||0) >= grazeRestDays(g))
       return '⚠️ This pad is tired — move the herd. '+tier;
+    if(typeof paddockStockThirstNeed==='function' && paddockStockThirstNeed())
+      return '💧 Dry fold — the herd needs stock water they can stand beside. '+tier;
     if(g.kind==='team' || g.synergy) return '🐄🐔 Follow the herd — hooves open the sod; chickens follow. That\'s how prairie stayed fertile. '+tier;
     if(g.kind==='cattle' || g.kind==='cow') return '🐄 Cattle remaking this pad — send 🐔 chickens next. '+tier;
     if(g.kind==='chicken') return '🐔 Chickens working the surface. '+tier;
@@ -11848,7 +11914,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.beddingcopy';
+const SHIP_BUILD = '2026-08-22.stockthirst';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -16410,6 +16476,8 @@ function openInfo(refreshOnly){
     if(t.graze){
       chips.push(grazeInspectLine(t.graze));
     }
+    if(t.atlasLandmark==='trough' && typeof paddockStockThirstNeed==='function' && paddockStockThirstNeed())
+      chips.push('💧 dry trough — the herd needs a drink they can stand beside');
     if(!t.crop && !t.graze) chips.push('💤 resting & regenerating');
     if(t.feature==='swale') chips.push('〰️ contour — holds water for the beds below');
     if(typeof highPondDownhillAdj==='function' && highPondDownhillAdj(t)) chips.push('💧 downhill of the high pond — holds a little water');
@@ -16440,12 +16508,13 @@ function openInfo(refreshOnly){
     const marsh = typeof isMarshPondT==='function' && isMarshPondT(t);
     const paddockDrink = typeof currentPaddockFold==='function' && currentPaddockFold();
     const manureReady = typeof paddockManureReady==='function' && paddockManureReady();
+    const thirstNeed = typeof paddockStockThirstNeed==='function' && paddockStockThirstNeed();
     body = high
       ? `<div class="chiprow">A high pond on the ridge — downhill fields hold a little more water and wilt a little less. Not a plant bed.</div>`
       : marsh
         ? `<div class="chiprow">A marsh pond — runoff settles here before it reaches the main river. Reeds and wet soil feed it. Not a kitchen bed.</div>`
       : paddockDrink
-        ? `<div class="chiprow">Stock water the herd stands beside.${manureReady?' Bedding and droppings from this fold feed the compost pile.':''} Not a kitchen pond.</div>`
+        ? `<div class="chiprow">${thirstNeed?'The stand is blocked — the herd cannot drink. ':'Stock water the herd stands beside.'}${manureReady?' Bedding and droppings from this fold feed the compost pile.':''} Not a kitchen pond.</div>`
         : `<div class="chiprow">Stores rain, waters nearby soil, and keeps the farm safe in droughts. Dragonflies love it.</div>`;
   }else if(t.terrain==='water'){
     const wq = Math.round(state.waterQuality);
