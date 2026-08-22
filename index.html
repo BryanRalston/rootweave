@@ -1021,6 +1021,9 @@ const STAND_EGG_SEASON   = [0.94, 0.88, 1.02, 1.14]; // hens lay in the warm mon
 const STAND_MULT_MIN = 0.80, STAND_MULT_MAX = 1.22;
 const COOP_EGG_LOT = 3;   // modest crate lot — well under a wheat cut
 const COOP_EGG_RATE = 0.22; // lots/day at 1 hen; scales with sqrt(heads), stays a trickle
+const DUCK_EGG_LOT = 3;   // modest crate lot — same size as coop eggs, distinct type
+const DUCK_EGG_RATE = 0.16; // lots/day at 1 walking duck; scales with sqrt(heads), stays a trickle
+const DUCK_EGG_AUTO = 1;    // at most one dawn lot — pest patrol first, eggs second
 const STAND_FRUIT_SEASON = [1.08, 0.92, 0.86, 1.14]; // last jars in spring; fall glut; winter table
 const ORCHARD_FRUIT_LOT = 4;   // modest crate lot — a touch over eggs, well under a wheat cut
 const ORCHARD_FRUIT_SET = 0.09; // ripen / day on a mature tree (not winter)
@@ -1187,8 +1190,9 @@ function grazeInspectLine(g){
   const manure = typeof paddockManureReady==='function' && paddockManureReady() ? ' · bedding to the pile' : '';
   const thirst = typeof paddockStockThirstNeed==='function' && paddockStockThirstNeed() ? ' · dry — herd needs a drink' : '';
   const wind = typeof paddockWindShelterNeed==='function' && paddockWindShelterNeed() ? ' · open to the wind — herd needs a windbreak' : '';
-  if(stay >= rest) return who+' · no yield while this pad is tired — move them.'+manure+thirst+wind;
-  return who+' · '+yBit+' · here '+stay.toFixed(0)+'d · move before '+Math.round(rest)+'d'+(g.synergy?' ✨':'')+manure+thirst+wind;
+  const duckEggs = (g.kind==='duckT' && typeof marshDuckEggReady==='function' && marshDuckEggReady()) ? ' · duck eggs to the crate' : '';
+  if(stay >= rest) return who+' · no yield while this pad is tired — move them.'+manure+thirst+wind+duckEggs;
+  return who+' · '+yBit+' · here '+stay.toFixed(0)+'d · move before '+Math.round(rest)+'d'+(g.synergy?' ✨':'')+manure+thirst+wind+duckEggs;
 }
 function tickGrazeStay(g, dd){
   if(!g) return;
@@ -1771,7 +1775,7 @@ function standPriceMult(kind){
 }
 function crateLotBase(lot){ return Math.max(1, (lot && lot.coins)|0); }
 function crateLotPriceKind(lot){
-  if((lot && lot.type)==='egg') return 'egg';
+  if((lot && lot.type)==='egg' || (lot && lot.type)==='duckegg') return 'egg';
   if((lot && lot.type)==='fruit') return 'fruit';
   if((lot && lot.type)==='hay') return 'hay';
   if((lot && lot.type)==='timber') return 'timber';
@@ -2099,7 +2103,7 @@ function neighborStandHtml(opts){
         </span>
       </div>`;
       }).join('')
-    : `<div class="nstand-note">Crate is empty. Harvest wheat, sisters, orchard fruit, hay, woodlot firewood, meadow forage, willow cuttings, hedgerow berries, or marsh reed cuttings, then bring it here.</div>`;
+    : `<div class="nstand-note">Crate is empty. Harvest wheat, sisters, orchard fruit, hay, woodlot firewood, meadow forage, willow cuttings, hedgerow berries, or marsh reed cuttings${typeof marshDuckEggReady==='function' && marshDuckEggReady()?', or marsh duck eggs':''}, then bring it here.</div>`;
   const pileNote = pileN
     ? `<div class="nstand-note">🪣 ${pileN} leftover compost ready — paint 🪣 Compost on the land (no coins). Crate leftovers${typeof leftoverPileFeedAnd==='function'?leftoverPileFeedAnd():''} feed this pile.</div>`
     : '';
@@ -3791,6 +3795,7 @@ function defaultCamp(){
     crate: [], // last N harvests banked for the neighbor stand
     compostStock: 0, // leftover crate / surplus bodies / paddock bedding / coop bedding returned to the pile
     eggAcc: 0, // homestead coop → crate lots (fractional days)
+    duckEggAcc: 0, // marsh ducks walking a fold → crate lots (fractional days)
     woodAcc: 0, // woodlot firewood dawn trickle (fractional days)
     willowAcc: 0, // willow withies dawn trickle (fractional days)
     hedgeAcc: 0, // living hedgerow berries dawn trickle (fractional days)
@@ -5354,6 +5359,78 @@ function tickMarshReed(){
     if(harvestMarshReedTile(s.grid[ready[k]], ready[k], {farm:s, auto:true})) n++;
   }
   if(n) camp.reedAcc -= n;
+  return n;
+}
+/** Field under the player, or the parked marsh fold while they are in the yard. */
+function marshDuckFarm(){
+  return typeof marshReedFarm==='function' ? marshReedFarm() : (typeof state!=='undefined' && state && !state.homesteadView ? state : null);
+}
+/** Ducks actually walking this marsh fold — owned herd or water critters do not count. */
+function marshDuckHeads(s){
+  s = s || (typeof marshDuckFarm==='function' ? marshDuckFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return 0;
+  let n = 0;
+  s.grid.forEach(t=>{
+    if(!t || !t.graze) return;
+    if(typeof grazeHasKind==='function' ? !grazeHasKind(t.graze, 'duckT') : t.graze.kind!=='duckT') return;
+    n += (typeof grazeKindHeads==='function') ? grazeKindHeads(t.graze, 'duckT') : Math.max(1, t.graze.n|0);
+  });
+  return n;
+}
+function marshDuckEggDailyRate(n){
+  n = Math.max(0, n|0);
+  if(n<=0) return 0;
+  return DUCK_EGG_RATE * Math.sqrt(n);
+}
+function marshDuckEggFloaterIdx(s){
+  if(state && state.grid && s && s.grid && state.grid===s.grid){
+    for(let i=0;i<s.grid.length;i++){
+      const g = state.grid[i] && state.grid[i].graze;
+      if(g && (typeof grazeHasKind==='function' ? grazeHasKind(g,'duckT') : g.kind==='duckT')) return i;
+    }
+  }
+  if(typeof selected==='number' && selected>=0 && state && state.grid && state.grid[selected]) return selected;
+  if(state && state.grid){
+    for(let k=0;k<state.grid.length;k++){
+      if(state.grid[k] && (state.grid[k].terrain==='nstand' || state.grid[k].terrain==='house' || state.grid[k].terrain==='coop')) return k;
+    }
+  }
+  return (typeof selected==='number' && selected>=0) ? selected : 0;
+}
+/** Home cleared, this fold is marsh, and ducks are walking it. First session and empty folds stay off. */
+function marshDuckEggReady(s){
+  if(!camp) return false;
+  if(typeof homePatchCleared==='function' && !homePatchCleared()) return false;
+  s = s || (typeof marshDuckFarm==='function' ? marshDuckFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return false;
+  if(typeof marshFoldReady==='function' ? !marshFoldReady(s) : true) return false;
+  return marshDuckHeads(s) > 0;
+}
+/** One sim dawn: ducks walking a marsh fold may bank a small egg lot into the crate. Not coop eggs. */
+function tickMarshDuckEggs(){
+  if(!camp || !marshDuckEggReady()) return 0;
+  const s = marshDuckFarm();
+  if(!s || !s.grid) return 0;
+  const ducks = marshDuckHeads(s);
+  if(ducks<=0) return 0;
+  camp.duckEggAcc = Math.max(0, +camp.duckEggAcc || 0) + marshDuckEggDailyRate(ducks);
+  if(camp.duckEggAcc < 1) return 0;
+  const n = Math.min(DUCK_EGG_AUTO, Math.floor(camp.duckEggAcc));
+  if(n<=0) return 0;
+  camp.duckEggAcc -= n;
+  for(let i=0;i<n;i++){
+    if(typeof bankHarvestLot==='function') bankHarvestLot({type:'duckegg', em:'🦆', name:'Duck eggs', coins:DUCK_EGG_LOT});
+  }
+  if(!camp.tipsShown) camp.tipsShown = {};
+  const fi = marshDuckEggFloaterIdx(s);
+  if(typeof floater==='function' && state && state.grid && state.grid[fi]){
+    floater(fi, n>1 ? '🦆 crate ×'+n : '🦆 crate', '#ffe0b0', 16);
+  }
+  if(typeof toast==='function'){
+    toast('🦆 Duck eggs in the crate by the house. Neighbors pay by the season — or let them sit for the pile. Not the coop\'s 🥚.', {once:'marsh_duck_egg_first', throttleMs:4000});
+  }
+  if(typeof refreshNeighborStandIfOpen==='function') refreshNeighborStandIfOpen();
+  if(typeof updateHUD==='function') updateHUD();
   return n;
 }
 function isSwaleT(t){
@@ -8448,6 +8525,7 @@ function simStep(dt){
     if(typeof tickWillowCut==='function') tickWillowCut();
     if(typeof tickHedgeBerry==='function') tickHedgeBerry();
     if(typeof tickMarshReed==='function') tickMarshReed();
+    if(typeof tickMarshDuckEggs==='function') tickMarshDuckEggs();
     if(typeof tickMeadowForage==='function') tickMeadowForage();
     if(typeof tickPaddockManure==='function') tickPaddockManure();
     if(typeof tickPaddockStockThirst==='function') tickPaddockStockThirst();
@@ -11744,6 +11822,11 @@ function soilStoryLine(t){
     if(g.kind==='team' || g.synergy) return '🐄🐔 Follow the herd — hooves open the sod; chickens follow. That\'s how prairie stayed fertile. '+tier;
     if(g.kind==='cattle' || g.kind==='cow') return '🐄 Cattle remaking this pad — send 🐔 chickens next. '+tier;
     if(g.kind==='chicken') return '🐔 Chickens working the surface. '+tier;
+    if(g.kind==='duckT'){
+      if(typeof marshDuckEggReady==='function' && marshDuckEggReady())
+        return '🦆 Ducks on this marsh fold — eggs trickle into the crate. Not coop eggs, not reed cuttings. '+tier;
+      return '🦆 Ducks on patrol. '+tier;
+    }
     return '🐾 Grazers on this tile. '+tier;
   }
   if(t.crop && CROPS[t.crop.type]){
@@ -12787,7 +12870,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.reedstump';
+const SHIP_BUILD = '2026-08-22.duckeggs';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -12937,7 +13020,7 @@ function openAboutCredits(){
   if(showNew) camp.tipsShown['whats_new_'+ver] = true;
   const whatsNew = showNew
     ? `<div class="lesson" style="text-align:left;margin-top:6px;border-color:rgba(234,181,67,.45)">
-        <b>What's new (${ver}):</b> A stripped reed bed stays a returning wetland — ducks and the herd no longer sit on that soil as if it were a pad. Regen no longer grows the stand through a parked flock. Pioneers / leftover wet tools already refused. Play stays free; no pay-to-revive.
+        <b>What's new (${ver}):</b> Marsh ducks trickle eggs into the crate when they walk a marsh fold after Home — sell or compost, same seasonal egg lane as coop eggs, a distinct 🦆 lot so they do not double-count. No ducks, no feed. Reed beds still refuse a returning stump. Play stays free; no pay-to-revive.
       </div>`
     : '';
   // CD — first About open literacy (in-modal; no toast spam)
@@ -17843,6 +17926,7 @@ function loadCamp(d){
     camp.compostStock = Math.max(0, (+c.compostStock||0)|0);
   }
   camp.eggAcc = Math.max(0, +c.eggAcc || 0);
+  camp.duckEggAcc = Math.max(0, +c.duckEggAcc || 0);
   camp.manureAcc = Math.max(0, +c.manureAcc || 0);
   camp.coopBeddingAcc = Math.max(0, +c.coopBeddingAcc || 0);
   if(c.laneClock && typeof c.laneClock==='object'){
@@ -19410,8 +19494,11 @@ function buildJourney(){
   const feedLine = feedBits.length
     ? ' '+feedBits.join(' and ')+(feedBits.length===1?' feeds':' feed')+' the compost pile.'
     : '';
+  const duckEggLine = (typeof marshDuckEggReady==='function' && marshDuckEggReady())
+    ? ' Marsh ducks trickle eggs into the crate.'
+    : '';
   mapHead.textContent = (typeof homePatchCleared==='function' && homePatchCleared())
-    ? 'Tap a field to walk it. Mist lifts as you heal neighbors. A coin price on the fog is a neighbor selling land.'+feedLine
+    ? 'Tap a field to walk it. Mist lifts as you heal neighbors. A coin price on the fog is a neighbor selling land.'+feedLine+duckEggLine
     : 'Tap a field to walk it. Mist lifts as you heal the neighbors.';
   path.appendChild(mapHead);
   path.appendChild(buildValleyMapEl());
