@@ -1006,6 +1006,9 @@ const HERD_LABEL = {cattle:'cattle', chicken:'chickens', sheep:'sheep', goat:'go
 // Surplus meat at the neighbor stand — more than grain, costs a head. Keep one breeder.
 const HERD_MEAT = {cattle:34, chicken:16, sheep:24, goat:22, pig:28, duckT:18};
 const HERD_MEAT_EM = {cattle:'🐄', chicken:'🐔', sheep:'🐑', goat:'🐐', pig:'🐖', duckT:'🦆'};
+// Stripping toward the last breeder nicks paddock graze / soil. Healthy surplus stays clean.
+const MEAT_STRIP_HEALTHY = 3; // extra heads still on the farm after the sale
+const MEAT_STRIP_SOIL = {om:-2, erosion:-2, microbial:-1}; // at the floor (pressure 1)
 const CRATE_MAX = 12;
 const CRATE_HARD = 16; // overflow still becomes compost, never silent vanish
 const CRATE_LEFTOVER_DAYS = 4; // a few lane days; standClock so frozen yard spring does not age it
@@ -1222,6 +1225,14 @@ function herdSurplus(kind){
   if(!kind || !camp) return 0;
   ensureHerd(camp);
   return Math.max(0, (camp.herd[kind]|0) - herdBreederMin(kind));
+}
+/** 0 when 3+ extra heads remain. 1 when the sale leaves only the last breeder. */
+function herdStripPressure(kind, afterHeads){
+  const keep = herdBreederMin(kind);
+  const after = Math.max(0, afterHeads|0);
+  const surplusLeft = Math.max(0, after - keep);
+  if(surplusLeft >= MEAT_STRIP_HEALTHY) return 0;
+  return (MEAT_STRIP_HEALTHY - surplusLeft) / MEAT_STRIP_HEALTHY;
 }
 function ensureCrate(c){
   const dest = c || camp;
@@ -1582,11 +1593,12 @@ function compostSurplusMeat(kind){
   camp.herd[kind] = have - 1;
   creditLeftoverCompost(2);
   syncHerdAfterMeatSale(kind);
+  const nicked = applyMeatStripSoil(kind, camp.herd[kind]|0);
   const skipped = meatSellPrice(kind);
   const em = HERD_MEAT_EM[kind] || '🪣';
   floater(selected>=0?selected:0, em+' 🪣 pile', '#d8c8a0', 16);
   SND.place();
-  toast(em+' Surplus returned to the pile — skipped 🪙'+skipped+' for soil. Herd is '+(camp.herd[kind]|0)+' '+(HERD_LABEL[kind]||kind)+'. Weaker graze now.');
+  toast(em+' Surplus returned to the pile — skipped 🪙'+skipped+' for soil. Herd is '+(camp.herd[kind]|0)+' '+(HERD_LABEL[kind]||kind)+'. '+(nicked?'Fold thins — less manure, more bare soil.':'Weaker graze now.'));
   afterCrateCompost();
   return true;
 }
@@ -1655,6 +1667,48 @@ function syncHerdAfterMeatSale(kind){
     }
   }
 }
+/** Current graze pads of this kind, or open soil on a paddock fold if none are walking. */
+function meatStripSoilTiles(kind){
+  const grazed = [];
+  const open = [];
+  eachFarmGrid((t, i)=>{
+    if(!t || !t.soil) return;
+    if(t.graze && grazeHasKind(t.graze, kind)) grazed.push({t, i});
+  });
+  if(grazed.length) return grazed;
+  const s = (typeof state!=='undefined') ? state : null;
+  if(!s || !s.grid) return open;
+  if(typeof currentPaddockFold==='function' && !currentPaddockFold(s)) return open;
+  s.grid.forEach((t, i)=>{
+    if(!t || !t.soil || t.terrain!=='soil') return;
+    if(t.crop || t.graze) return;
+    if(t.feature==='path' || t.feature==='swale') return;
+    if(typeof isStockDrinkT==='function' && isStockDrinkT(t)) return;
+    if(typeof leftoverStampOpen==='function' && !leftoverStampOpen(t)) return;
+    open.push({t, i});
+  });
+  return open.slice(0, 6);
+}
+/** Light OM / cover nick when a sale leaves the herd thin. Healthy surplus is a no-op. */
+function applyMeatStripSoil(kind, afterHeads){
+  const p = herdStripPressure(kind, afterHeads);
+  if(p <= 0) return 0;
+  const tiles = meatStripSoilTiles(kind);
+  if(!tiles.length) return 0;
+  const b = MEAT_STRIP_SOIL;
+  tiles.forEach(({t})=>{
+    t.soil.om = clamp((t.soil.om||0) + b.om * p);
+    t.soil.erosion = clamp((t.soil.erosion||0) + b.erosion * p);
+    t.soil.microbial = clamp((t.soil.microbial||0) + b.microbial * p);
+    if(typeof recalc==='function') recalc(t);
+  });
+  const onBoard = tiles.find(({t,i})=>state && state.grid && state.grid[i]===t);
+  const fi = onBoard ? onBoard.i : (typeof selected==='number' && selected>=0 ? selected : 0);
+  if(typeof floater==='function' && state && state.grid && state.grid[fi]){
+    floater(fi, p>=0.99 ? 'thin graze' : 'soil thins', '#c9a070');
+  }
+  return tiles.length;
+}
 function sellSurplusMeat(kind){
   if(!neighborStandUnlocked()){ toast('🧺 The neighbor stand opens after Home Patch.'); SND.uhoh(); return false; }
   if(!kind || HERD_MEAT[kind]==null) return false;
@@ -1668,11 +1722,12 @@ function sellSurplusMeat(kind){
   }
   camp.herd[kind] = have - 1;
   syncHerdAfterMeatSale(kind);
+  const nicked = applyMeatStripSoil(kind, camp.herd[kind]|0);
   const n = creditStandCoins(meatSellPrice(kind));
   const em = HERD_MEAT_EM[kind] || '🥩';
   floater(selected>=0?selected:0, em+' +🪙'+n, '#ffd45e', 16);
   SND.coin();
-  toast(em+' Surplus sold for 🪙'+n+' — herd is '+(camp.herd[kind]|0)+' '+(HERD_LABEL[kind]||kind)+'. Weaker graze now.');
+  toast(em+' Surplus sold for 🪙'+n+' — herd is '+(camp.herd[kind]|0)+' '+(HERD_LABEL[kind]||kind)+'. '+(nicked?'Fold thins — less manure, more bare soil.':'Weaker graze now.'));
   if(typeof buildPalette==='function') buildPalette();
   if(typeof updateHUD==='function') updateHUD();
   save();
@@ -1728,7 +1783,7 @@ function neighborStandHtml(opts){
     </div>`;
   }).filter(Boolean).join('');
   const meatBlock = meatRows
-    ? `<div class="nstand-note">Surplus meat only. Selling a head shrinks the herd — fewer mouths, weaker graze and less soil help. Last of a kind stays. A surplus you do not sell can return to the pile — compost, not a slaughterhouse.</div>${meatRows}`
+    ? `<div class="nstand-note">Surplus meat only. Selling a head shrinks the herd — fewer mouths, weaker graze and less soil help. Selling down toward the last breeder thins the fold. Last of a kind stays. A surplus you do not sell can return to the pile — compost, not a slaughterhouse.</div>${meatRows}`
     : `<div class="nstand-keep">No herd to sell. Grow extra heads first — keep a breeder of each kind.</div>`;
   return harvestBlock + meatBlock;
 }
@@ -10914,7 +10969,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.pilesoil';
+const SHIP_BUILD = '2026-08-22.herdstrip';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
