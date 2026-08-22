@@ -11544,7 +11544,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.woodtimber';
+const SHIP_BUILD = '2026-08-22.woodinspect';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -16152,9 +16152,11 @@ function openInfo(refreshOnly){
         : t.farmEdge==='woodlot' || (typeof isWoodlotT==='function' && isWoodlotT(t))
           ? ((t.woodRegen!=null)
             ? 'A stump after a heavy cut — soil and shelter thin until the canopy returns. Not an open plant bed.'
-            : (typeof woodlotTileReady==='function' && woodlotTileReady(t)
-              ? 'Ridge woodlot — a careful thinning is ready. Tap for firewood; the tree stays. Neighbors hold soil. Not an open plant bed.'
-              : 'Ridge woodlot — tap when a limb is ready, or wait for a dawn trickle. Neighbors hold soil. The herd walks around the canopy. Not an open plant bed.'))
+            : (typeof isWoodlotTimberT==='function' && isWoodlotTimberT(t)
+              ? (typeof woodlotTileReady==='function' && woodlotTileReady(t)
+                ? 'Ridge woodlot — a careful thinning is ready. Tap for firewood; the tree stays. Neighbors hold soil. Not an open plant bed.'
+                : 'Ridge woodlot — tap when a limb is ready, or wait for a dawn trickle. Neighbors hold soil. The herd walks around the canopy. Not an open plant bed.')
+              : 'Ridge woodlot — neighbors hold soil and shrug dust. The herd walks around the canopy. Not an open plant bed.'))
         : t.farmEdge==='riparian' || (typeof isRiparianT==='function' && isRiparianT(t))
           ? 'A riparian buffer — roots filter runoff before it reaches the river. The herd walks around the bank. Keep bare soil off the water.'
         : 'A living hedgerow — shelter from wind and rain for neighbors, and a home for bees, butterflies and songbirds.';
