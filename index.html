@@ -6494,6 +6494,10 @@ function dustWashNeed(s){
   if(!dustWashDrySeason(s)) return false;
   return !dustWashUsable(s);
 }
+/** Pond / trees / wetland on the painted wash are a plug, not a second river. */
+function isDustWashFillT(t){
+  return !!(t && typeof isDustWashMarkedT==='function' && isDustWashMarkedT(t));
+}
 function dustWashSoilTiles(s){
   const tiles = [];
   if(!s || !s.grid) return tiles;
@@ -11988,6 +11992,10 @@ function soilStoryLine(t){
   if(t.terrain==='trees'){
     if(typeof isWillowCutT==='function' && isWillowCutT(t))
       return (typeof willowCutStory==='function' ? willowCutStory('') : '🌿 Living willow rods for the crate. The tree stays.');
+    if(typeof isDustWashFillT==='function' && isDustWashFillT(t))
+      return (typeof dustWashNeed==='function' && dustWashNeed())
+        ? '🏜️ This tree filled the dry wash — drought nicks the flats. Clear it to open the bed.'
+        : '🏜️ This tree sits in the dry wash. Clear it to open the bed. Not a second river.';
     if(typeof waterAdj==='function' && waterAdj(t))
       return '🌳 The filter — roots hold the bank and drink the runoff.';
     return '🌳 Living hedge — windbreak, shade, and a home for bees.';
@@ -11995,6 +12003,10 @@ function soilStoryLine(t){
   if(t.terrain==='wetland'){
     if(typeof isMarshReedT==='function' && isMarshReedT(t))
       return (typeof marshReedStory==='function' ? marshReedStory('') : '🌾 Living marsh reeds for the crate. The stand stays wet and filtering.');
+    if(typeof isDustWashFillT==='function' && isDustWashFillT(t))
+      return (typeof dustWashNeed==='function' && dustWashNeed())
+        ? '🏜️ This wetland filled the dry wash — drought nicks the flats. Clear it to open the bed.'
+        : '🏜️ This wetland sits in the dry wash. Clear it to open the bed. Not a second river.';
     return '🌾 A living filter — reeds clean runoff before it reaches the river.';
   }
   if(t.terrain!=='soil') return '';
@@ -12448,8 +12460,9 @@ function applyTool(i){
     }
     state.stats.trees++;
     floater(i, '🌳 hedgerow!', '#c8f0a0'); burst(i, '#6fae5f', 12); SND.place();
-    if(waterAdj(t)){
+    if(waterAdj(t) && !(typeof isDustWashFillT==='function' && isDustWashFillT(t))){
       // riparian buffer! the key clean-water move — make cause→effect obvious
+      // Painted wash fills are a plug, not a second river — no buffer / WQ credit.
       if(typeof atlasWaterAdjLocal==='function' && state && atlasWaterAdjLocal(state, t.c, t.r)){
         t.farmEdge = t.farmEdge || 'riparian';
       }
@@ -12622,7 +12635,7 @@ function applyTool(i){
       solar:'☀️ plugged in!', mushroom:'🍄 mycelium!', berrybush:'🫐 berries!'};
     floater(i, bWords[tool]||'built!', '#ffe0b0'); burst(i, '#e8c87a', 12); SND.place();
     if(tool==='stable') spawnAnimals(i, 'horse', 1);
-    if(tool==='wetland' && waterAdj(t)){
+    if(tool==='wetland' && waterAdj(t) && !(typeof isDustWashFillT==='function' && isDustWashFillT(t))){
       state.waterQuality = clamp(state.waterQuality + 5);
       setTimeout(()=>floater(i, '💧 filtering the river!', '#bfe3ff', 15), 350);
     }
@@ -13073,7 +13086,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.dustwashwork';
+const SHIP_BUILD = '2026-08-22.washnoriver';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -17625,8 +17638,10 @@ function openInfo(refreshOnly){
         + `<div class="chiprow">${ready
           ? 'Living reeds — cuttings are ready. Tap for a crate lot; the stand stays wet and filtering. Not meadow forage, not willow.'
           : 'Living reeds — tap when a cutting is ready, or wait for a dawn trickle. The marsh stays wet and filtering. Not meadow forage, not willow.'}</div>`;
-    }else if(t.terrain==='wetland' && typeof dustWashNeed==='function' && dustWashNeed() && typeof isDustWashMarkedT==='function' && isDustWashMarkedT(t)){
-      body = `<div class="chiprow">This wetland filled the dry wash — drought nicks the flats. Clear it to open the bed again. Not a second river.</div>`;
+    }else if(t.terrain==='wetland' && typeof isDustWashFillT==='function' && isDustWashFillT(t)){
+      body = (typeof dustWashNeed==='function' && dustWashNeed())
+        ? `<div class="chiprow">This wetland filled the dry wash — drought nicks the flats. Clear it to open the bed again. Not a second river.</div>`
+        : `<div class="chiprow">This wetland sits in the dry wash. Clear it to open the bed again. Not a second river.</div>`;
     }
     if(t.terrain==='orchard'){
       if(typeof orchardTileReady==='function' && orchardTileReady(t))
@@ -17695,13 +17710,14 @@ function openInfo(refreshOnly){
     const paddockDrink = typeof currentPaddockFold==='function' && currentPaddockFold();
     const manureReady = typeof paddockManureReady==='function' && paddockManureReady();
     const thirstNeed = typeof paddockStockThirstNeed==='function' && paddockStockThirstNeed();
-    const washFilled = typeof dustWashNeed==='function' && dustWashNeed() && typeof isDustWashMarkedT==='function' && isDustWashMarkedT(t);
+    const washFilled = typeof isDustWashFillT==='function' && isDustWashFillT(t);
+    const washNeed = typeof dustWashNeed==='function' && dustWashNeed();
     body = high
       ? `<div class="chiprow">A high pond on the ridge — downhill fields hold a little more water and wilt a little less. Not a plant bed.</div>`
       : marsh
         ? `<div class="chiprow">A marsh pond — runoff settles here before it reaches the main river. Reeds and wet soil feed it. Not a kitchen bed.</div>`
       : washFilled
-        ? `<div class="chiprow">This pond filled the dry wash — drought nicks the flats. Clear it to open the bed again. Not a second river.</div>`
+        ? `<div class="chiprow">${washNeed?'This pond filled the dry wash — drought nicks the flats. Clear it to open the bed again. Not a second river.':'This pond sits in the dry wash. Clear it to open the bed again. Not a second river.'}</div>`
       : paddockDrink
         ? `<div class="chiprow">${thirstNeed?'The stand is blocked — the herd cannot drink. ':'Stock water the herd stands beside.'}${manureReady?' Bedding and droppings from this fold feed the compost pile.':''} Not a kitchen pond.</div>`
         : `<div class="chiprow">Stores rain, waters nearby soil, and keeps the farm safe in droughts. Dragonflies love it.</div>`;
@@ -17743,8 +17759,10 @@ function openInfo(refreshOnly){
               : 'Ridge woodlot — neighbors hold soil and shrug dust. The herd walks around the canopy. Not an open plant bed.'))
         : t.farmEdge==='riparian' || (typeof isRiparianT==='function' && isRiparianT(t))
           ? 'A riparian buffer — roots filter runoff before it reaches the river. The herd walks around the bank. Keep bare soil off the water.'
-        : (typeof dustWashNeed==='function' && dustWashNeed() && typeof isDustWashMarkedT==='function' && isDustWashMarkedT(t))
-          ? 'This tree filled the dry wash — drought nicks the flats. Clear it to open the bed again. Not a second river.'
+        : (typeof isDustWashFillT==='function' && isDustWashFillT(t))
+          ? ((typeof dustWashNeed==='function' && dustWashNeed())
+            ? 'This tree filled the dry wash — drought nicks the flats. Clear it to open the bed again. Not a second river.'
+            : 'This tree sits in the dry wash. Clear it to open the bed again. Not a second river.')
         : 'A living hedgerow — shelter from wind and rain for neighbors, and a home for bees, butterflies and songbirds.';
     body = `<div class="istory">${story}</div><div class="chiprow">${edgeLine}</div>`;
   }else{
