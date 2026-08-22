@@ -13979,7 +13979,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.riparian';
+const SHIP_BUILD = '2026-08-22.riparianfix';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -14598,9 +14598,9 @@ function tileRunoffScore(t){
   if(typeof marshPondFeedAdj==='function' && marshPondFeedAdj(t)) v += 16; // pond bank filters
   else if(typeof shedsTowardMarshPond==='function' && shedsTowardMarshPond(t)) v += 12;
   if(state && typeof atlasWaterAdjLocal==='function' && atlasWaterAdjLocal(state, t.c, t.r)
-     && !t.crop && !(typeof isRiparianT==='function' && isRiparianT(t))
+     && !t.crop && !(typeof isRiparianLiveT==='function' && isRiparianLiveT(t))
      && !(typeof marshPondFeedAdj==='function' && marshPondFeedAdj(t))){
-    v -= 14;                                                 // bare bank sheds more than a rooted bank
+    v -= 14;                                                 // bare bank sheds more than a living rooted bank
   }
   if(typeof washAdj==='function' && washAdj(t) && (t.washBankPulse||0)>6) v += 6;
   else if(typeof dustAwayFromWash==='function' && dustAwayFromWash(t)) v -= 8;
