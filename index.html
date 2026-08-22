@@ -1290,6 +1290,7 @@ function grantHerdHead(kind){
   ensureHerd(camp);
   if((camp.herd[kind]|0) >= 1) return false;
   camp.herd[kind] = 1;
+  if(typeof noteHerdMapChanged==='function') noteHerdMapChanged();
   return true;
 }
 function inferHerdFromGrid(){
@@ -2212,6 +2213,7 @@ function syncHerdAfterMeatSale(kind){
       agents = agents.filter(x=>x!==a);
     }
   }
+  if(typeof noteHerdMapChanged==='function') noteHerdMapChanged();
 }
 /** Current graze pads of this kind, or open soil on a paddock fold if none are walking. */
 function meatStripSoilTiles(kind){
@@ -13038,6 +13040,7 @@ function addHerdHead(kind, i){
   if(cost>0 && !spend(cost)) return false;
   camp.herd[kind] = (camp.herd[kind]|0) + 1;
   if(typeof clearHerdThinIfRebuilt==='function') clearHerdThinIfRebuilt(kind);
+  if(typeof noteHerdMapChanged==='function') noteHerdMapChanged();
   const t = state.grid[i];
   const g = hydrateGraze(t.graze);
   if(g.kind==='team'){
@@ -13839,6 +13842,7 @@ function applyTool(i){
     ensureHerd(camp);
     camp.herd[tool] = (camp.herd[tool]|0) + 1;
     if(typeof clearHerdThinIfRebuilt==='function') clearHerdThinIfRebuilt(tool);
+    if(typeof noteHerdMapChanged==='function') noteHerdMapChanged();
     if(typeof buildPalette==='function') buildPalette();
     return placeHerd(tool, i);
   }
@@ -14555,7 +14559,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.landbuy';
+const SHIP_BUILD = '2026-08-22.mapherd';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -14705,7 +14709,7 @@ function openAboutCredits(){
   if(showNew) camp.tipsShown['whats_new_'+ver] = true;
   const whatsNew = showNew
     ? `<div class="lesson" style="text-align:left;margin-top:6px;border-color:rgba(234,181,67,.45)">
-        <b>What's new (${ver}):</b> Inspect and the crate floater no longer treat a leftover flock on a returning reed bed as crate-ready — duck eggs stay a 🦆 lot from open marsh, not coop 🥚, and not a stump the herd already refuses. Play stays free; no pay-to-revive.
+        <b>What's new (${ver}):</b> Owned cattle, hens, and ducks now show as living marks on the journey map — paddocks, the yard coop, and marsh — after Home Patch. Fogged land and the first-session garden stay empty. Play stays free; no pay-to-revive.
       </div>`
     : '';
   // CD — first About open literacy (in-modal; no toast spam)
@@ -20716,24 +20720,17 @@ function paintValleyAtlas(cv){
   }
 }
 /** Overlay herd on the journey map — seated on painted parcels, never drawn into VALLEY_ATLAS_SKIN. */
-const HERD_MAP_HOME = {
-  cattle: ['back_paddock','west_folds','north_folds'],
-  sheep:  ['back_paddock','west_folds','north_folds','hay_field'],
-  chicken:['homestead','home_garden'],
-  pig:    ['hay_field','orchard_slope','orchard_block'],
-  goat:   ['west_folds','back_paddock','dust_flats'],
-  duckT:  ['marsh_finger','wet_meadow'],
-};
-/** Atlas cells on the painted trough / yard / hay so sprites sit on land, not on labels. */
+/** Atlas cells on the painted trough / yard / marsh so markers sit on land, not on labels. */
 const HERD_MAP_SEATS = {
   cattle: [[14,36],[12,38],[16,34],[10,42],[12,22],[8,44],[18,18]],
   sheep:  [[12,36],[16,38],[10,20],[8,44],[76,22],[74,24]],
-  chicken:[[14,55],[10,58],[12,56],[8,57],[11,54]],
+  chicken:[[14,55],[13,55],[12,54],[12,56],[11,54],[8,57]],
   pig:    [[76,22],[74,24],[58,26],[60,14]],
   goat:   [[12,42],[8,44],[16,36],[56,44]],
   duckT:  [[22,6],[8,8],[24,8],[6,6]],
 };
-const MAP_HERD_W = {cow:24, chicken:13, sheep:22, goat:17, pig:18, duckT:14};
+const MAP_HERD_W = {cow:28, chicken:16, sheep:26, goat:20, pig:22, duckT:18};
+const MAP_HERD_EM = {cow:'🐄', chicken:'🐔', sheep:'🐑', goat:'🐐', pig:'🐖', duckT:'🦆'};
 let _mapHerd = {cv:null, agents:[], raf:0, last:0};
 function herdMapVisibleN(kind){
   const n = (camp && camp.herd && (camp.herd[kind]|0)) || 0;
@@ -20746,6 +20743,29 @@ function parcelShowsHerd(P, c){
   // Homestead / Home Patch are never fogged — still no herd chrome before Home is cleared.
   if(!(c && c.done && c.done[0])) return false;
   return parcelMapState(P, c) !== 'locked';
+}
+/** Stamp-driven homes: cattle on paddocks, hens at the yard coop, ducks on marsh. Home Patch stays off. */
+function mapHerdKindFitsParcel(kind, P){
+  if(!P || P.id==='home_garden' || P.lvIndex===0) return false;
+  if(kind==='chicken') return P.id==='homestead' || P.kind==='hub';
+  if(kind==='cattle') return typeof leftoverIsPaddockFold==='function' && leftoverIsPaddockFold(P);
+  if(kind==='sheep'){
+    return (typeof leftoverIsPaddockFold==='function' && leftoverIsPaddockFold(P))
+      || (typeof leftoverIsHayFold==='function' && leftoverIsHayFold(P));
+  }
+  if(kind==='goat'){
+    return (typeof leftoverIsPaddockFold==='function' && leftoverIsPaddockFold(P))
+      || (typeof leftoverIsDustFold==='function' && leftoverIsDustFold(P));
+  }
+  if(kind==='pig'){
+    return (typeof leftoverIsHayFold==='function' && leftoverIsHayFold(P))
+      || (typeof leftoverIsOrchardFold==='function' && leftoverIsOrchardFold(P));
+  }
+  if(kind==='duckT'){
+    if(P.id==='marsh_finger' || P.levelId==='marsh' || P.id==='wet_meadow') return true;
+    return typeof leftoverIsMarshFold==='function' && leftoverIsMarshFold(P);
+  }
+  return false;
 }
 function atlasInParcel(c, r, P){
   const b = parcelAtlasBox(P);
@@ -20765,31 +20785,60 @@ function mapHerdHash(s){
   return (h>>>0)/4294967296;
 }
 function mapHerdHomes(kind){
-  return (HERD_MAP_HOME[kind]||[]).map(id=>valleyParcel(id)).filter(P=>parcelShowsHerd(P));
+  if(typeof VALLEY_PARCELS==='undefined' || !VALLEY_PARCELS) return [];
+  return VALLEY_PARCELS.filter(P=> mapHerdKindFitsParcel(kind, P) && parcelShowsHerd(P));
+}
+/** Prefer a painted pasture / marsh / yard cell on this fold when the seat list misses. */
+function mapHerdScanSeat(kind, P, used){
+  const b = typeof parcelAtlasBox==='function' ? parcelAtlasBox(P) : null;
+  if(!b || typeof atlasGet!=='function') return null;
+  for(let r=b.r;r<b.r+b.h;r++) for(let c=b.c;c<b.c+b.w;c++){
+    if(used && used[c+','+r]) continue;
+    const A = atlasGet(c, r);
+    if(!A) continue;
+    if(A.landmark==='house') continue;
+    if(A.feature==='hedgerow' || A.feature==='woodlot' || A.feature==='path') continue;
+    if(typeof atlasIsWetCell==='function' && atlasIsWetCell(A) && kind!=='duckT') continue;
+    let ok = false;
+    if(kind==='duckT') ok = A.biome==='marsh' || A.biome==='riparian' || A.water==='pond_site';
+    else if(kind==='chicken') ok = A.landmark==='barn' || A.landmark==='coop' || A.biome==='garden';
+    else ok = A.biome==='pasture' || A.biome==='heartland' || A.biome==='orchard' || A.biome==='dust';
+    if(!ok) continue;
+    return [c, r];
+  }
+  return null;
 }
 function buildMapHerdAgents(){
   if(!camp) return [];
   if(typeof ensureHerd==='function') ensureHerd(camp);
   const agents = [];
-  Object.keys(HERD_MAP_HOME).forEach(kind=>{
+  const kinds = (camp.herd && typeof camp.herd==='object')
+    ? Object.keys(camp.herd)
+    : ['cattle','chicken','sheep','goat','pig','duckT'];
+  kinds.forEach(kind=>{
     const n = herdMapVisibleN(kind);
     if(!n) return;
     const homes = mapHerdHomes(kind);
     if(!homes.length) return;
     const ak = (typeof GRAZE_TOOLS!=='undefined' && GRAZE_TOOLS[kind]) || kind;
     const seats = HERD_MAP_SEATS[kind] || [];
-    const used = [];
+    const usedCells = {};
     for(let i=0;i<n;i++){
       const P = homes[i % homes.length];
       let u, v;
-      let pref = null, prefSi = -1;
+      let pref = null;
       for(let si=0;si<seats.length;si++){
-        if(used.indexOf(si)>=0) continue;
+        const key = seats[si][0]+','+seats[si][1];
+        if(usedCells[key]) continue;
         if(!atlasInParcel(seats[si][0], seats[si][1], P)) continue;
-        pref = seats[si]; prefSi = si; break;
+        pref = seats[si]; break;
+      }
+      if(!pref){
+        const scanned = typeof mapHerdScanSeat==='function' ? mapHerdScanSeat(kind, P, usedCells) : null;
+        if(scanned) pref = scanned;
       }
       if(pref){
-        used.push(prefSi);
+        usedCells[pref[0]+','+pref[1]] = 1;
         const b = parcelAtlasBox(P);
         u = (pref[0] + 0.5 - b.c) / b.w;
         v = (pref[1] + 0.5 - b.r) / b.h;
@@ -20825,10 +20874,13 @@ function mapHerdPoint(ag){
 }
 function drawMapHerdAt(hctx, ag, p, time){
   const frameKey = (typeof agentFrameKey==='function') ? agentFrameKey(ag) : ag.kind;
-  const img = (typeof SPRITES!=='undefined' && (SPRITES[frameKey] || SPRITES[ag.kind])) || null;
-  if(!img || !img.naturalWidth) return;
+  const img = (typeof sprReady==='function')
+    ? (sprReady(frameKey) || sprReady(ag.kind))
+    : ((typeof SPRITES!=='undefined' && (SPRITES[frameKey] || SPRITES[ag.kind])) || null);
+  const em = MAP_HERD_EM[ag.kind] || (typeof HERD_MEAT_EM!=='undefined' && HERD_MEAT_EM[ag.herdKind]) || '';
+  if((!img || !img.naturalWidth) && !em) return;
   const w = MAP_HERD_W[ag.kind] || 16;
-  const h = w * img.height / img.width;
+  const h = (img && img.naturalWidth) ? (w * img.height / img.width) : w;
   const face = ag.facing>=0 ? 1 : -1;
   const bob = (!ag.moving && !prefersQuietMotion()) ? Math.sin(time*0.7 + (ag.phase||0))*0.45 : 0;
   hctx.save();
@@ -20836,9 +20888,21 @@ function drawMapHerdAt(hctx, ag, p, time){
   hctx.beginPath();
   hctx.ellipse(p.x, p.y+0.7, w*0.36, Math.max(2.2, w*0.12), 0, 0, 6.29);
   hctx.fill();
-  hctx.translate(p.x, p.y);
-  hctx.scale(face, 1);
-  hctx.drawImage(img, -w/2, -h + bob, w, h);
+  // Soft read halo so photoreal stock does not vanish into the painted fold.
+  hctx.fillStyle = 'rgba(255,246,210,.32)';
+  hctx.beginPath();
+  hctx.ellipse(p.x, p.y - h*0.35 + bob, w*0.42, Math.max(4, h*0.36), 0, 0, 6.29);
+  hctx.fill();
+  if(img && img.naturalWidth){
+    hctx.translate(p.x, p.y);
+    hctx.scale(face, 1);
+    hctx.drawImage(img, -w/2, -h + bob, w, h);
+  }else{
+    hctx.font = Math.round(w)+'px "Segoe UI Emoji","Apple Color Emoji",sans-serif';
+    hctx.textAlign = 'center';
+    hctx.textBaseline = 'middle';
+    hctx.fillText(em, p.x+0.5, p.y - h*0.28 + bob);
+  }
   hctx.restore();
 }
 function mapPilePoint(){
@@ -21073,6 +21137,18 @@ function mountMapHerdOverlay(wrap){
   wrap.appendChild(hv);
   startMapHerd(hv, agents);
   return hv;
+}
+/** Rebuild living markers when camp.herd changes — sell/pile meat or a new head. */
+function refreshMapHerdOverlay(){
+  const wrap = document.querySelector('#jpath .vscene');
+  if(!wrap) return null;
+  const old = wrap.querySelector('.vscene-herd');
+  if(old) old.remove();
+  if(typeof stopMapHerd==='function') stopMapHerd();
+  return mountMapHerdOverlay(wrap);
+}
+function noteHerdMapChanged(){
+  if(typeof journeyOpen!=='undefined' && journeyOpen) refreshMapHerdOverlay();
 }
 function wireValleyRegion(el, P, ms){
   const oneLiner = (P.desc && String(P.desc).trim()) ? P.desc : (P.teaser || P.name);
