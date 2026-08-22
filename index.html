@@ -993,7 +993,7 @@ const HERD_OVER_PAD = 3;               // rest + 3 → overgraze
 const HERD_BUY = {cattle:12, chicken:5, sheep:9, goat:9, pig:10, duckT:7};
 const HERD_MAX = {cattle:6, chicken:8, sheep:6, goat:6, pig:4, duckT:6};
 const HERD_YIELD = {cattle:0.35, chicken:0.28, sheep:0.22, goat:0.20, pig:0.15, duckT:0.18};
-const HERD_YIELD_MARK = {cattle:'🥛', chicken:'🥚', sheep:'🧶', goat:'🥛', pig:'🪙', duckT:'🥚'};
+const HERD_YIELD_MARK = {cattle:'🥛', chicken:'🥚', sheep:'🧶', goat:'🥛', pig:'🪙', duckT:'🦆'};
 const HERD_YIELD_TOAST = {
   cattle:'The cows started giving milk.',
   chicken:'The hens started laying.',
@@ -1177,7 +1177,15 @@ function grazeYieldMark(g){
   }
   return HERD_YIELD_MARK[g.kind] || '🪙';
 }
-function grazeInspectLine(g){
+/** This tile's ducks count for crate copy — a returning reed bed does not, even if the fold is ready. */
+function marshDuckTileFeeds(t, g){
+  const graze = g || (t && t.graze);
+  if(!graze) return false;
+  if(t && typeof isReedT==='function' && isReedT(t)) return false;
+  if(typeof grazeHasKind==='function' ? !grazeHasKind(graze, 'duckT') : graze.kind!=='duckT') return false;
+  return typeof marshDuckEggReady==='function' && marshDuckEggReady();
+}
+function grazeInspectLine(g, t){
   hydrateGraze(g);
   let who;
   if(g.kind==='team') who = grazeKindHeads(g,'cattle')+' cattle + '+grazeKindHeads(g,'chicken')+' chickens';
@@ -1190,7 +1198,8 @@ function grazeInspectLine(g){
   const manure = typeof paddockManureReady==='function' && paddockManureReady() ? ' · bedding to the pile' : '';
   const thirst = typeof paddockStockThirstNeed==='function' && paddockStockThirstNeed() ? ' · dry — herd needs a drink' : '';
   const wind = typeof paddockWindShelterNeed==='function' && paddockWindShelterNeed() ? ' · open to the wind — herd needs a windbreak' : '';
-  const duckEggs = (g.kind==='duckT' && typeof marshDuckEggReady==='function' && marshDuckEggReady()) ? ' · duck eggs to the crate' : '';
+  const tile = t || (state && state.grid && state.grid.find(x=>x && x.graze===g));
+  const duckEggs = marshDuckTileFeeds(tile, g) ? ' · duck eggs to the crate' : '';
   if(stay >= rest) return who+' · no yield while this pad is tired — move them.'+manure+thirst+wind+duckEggs;
   return who+' · '+yBit+' · here '+stay.toFixed(0)+'d · move before '+Math.round(rest)+'d'+(g.synergy?' ✨':'')+manure+thirst+wind+duckEggs;
 }
@@ -5386,7 +5395,9 @@ function marshDuckEggDailyRate(n){
 function marshDuckEggFloaterIdx(s){
   if(state && state.grid && s && s.grid && state.grid===s.grid){
     for(let i=0;i<s.grid.length;i++){
-      const g = state.grid[i] && state.grid[i].graze;
+      const tile = state.grid[i];
+      if(typeof isReedT==='function' && isReedT(tile)) continue;
+      const g = tile && tile.graze;
       if(g && (typeof grazeHasKind==='function' ? grazeHasKind(g,'duckT') : g.kind==='duckT')) return i;
     }
   }
@@ -11824,7 +11835,7 @@ function soilStoryLine(t){
     if(g.kind==='cattle' || g.kind==='cow') return '🐄 Cattle remaking this pad — send 🐔 chickens next. '+tier;
     if(g.kind==='chicken') return '🐔 Chickens working the surface. '+tier;
     if(g.kind==='duckT'){
-      if(typeof marshDuckEggReady==='function' && marshDuckEggReady())
+      if(typeof marshDuckTileFeeds==='function' && marshDuckTileFeeds(t, g))
         return '🦆 Ducks on this marsh fold — eggs trickle into the crate. Not coop eggs, not reed cuttings. '+tier;
       return '🦆 Ducks on patrol. '+tier;
     }
@@ -12871,7 +12882,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.duckstump';
+const SHIP_BUILD = '2026-08-22.reedinspect';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -13021,7 +13032,7 @@ function openAboutCredits(){
   if(showNew) camp.tipsShown['whats_new_'+ver] = true;
   const whatsNew = showNew
     ? `<div class="lesson" style="text-align:left;margin-top:6px;border-color:rgba(234,181,67,.45)">
-        <b>What's new (${ver}):</b> A leftover flock on a returning reed bed no longer feeds the crate — duck eggs only trickle from ducks walking open marsh, not a stump the herd already refuses. Coop 🥚 eggs stay on their own lot. Play stays free; no pay-to-revive.
+        <b>What's new (${ver}):</b> Inspect and the crate floater no longer treat a leftover flock on a returning reed bed as crate-ready — duck eggs stay a 🦆 lot from open marsh, not coop 🥚, and not a stump the herd already refuses. Play stays free; no pay-to-revive.
       </div>`
     : '';
   // CD — first About open literacy (in-modal; no toast spam)
@@ -17448,7 +17459,7 @@ function openInfo(refreshOnly){
     if(t.reedRegen!=null && (t.farmEdge==='reed' || (typeof isReedT==='function' && isReedT(t))))
       chips.push('🌾 bed after a strip — the reeds return; soil and filtration stay thin until then. Ponds stay.');
     if(t.graze){
-      chips.push(grazeInspectLine(t.graze));
+      chips.push(grazeInspectLine(t.graze, t));
     }
     if(t.atlasLandmark==='trough' && typeof paddockStockThirstNeed==='function' && paddockStockThirstNeed())
       chips.push('💧 dry trough — the herd needs a drink they can stand beside');
