@@ -11856,6 +11856,10 @@ function applyTool(i){
       toast('🫐 That hedge is returning — not a pond bed. Leave the shelter standing.');
       ringAt(i, '#6fae5f'); SND.uhoh(); return false;
     }
+    if(typeof isWillowT==='function' && isWillowT(t)){
+      toast('🌿 That willow is returning — not a pond bed. Tend the bank beside it.');
+      ringAt(i, '#6fae5f'); SND.uhoh(); return false;
+    }
     if(!spend(td.cost)) return false;
     t.terrain = 'pond'; t.flowers = 0; t.deco = null; t.feature = null;
     state.stats.ponds++;
@@ -11867,6 +11871,10 @@ function applyTool(i){
     if(t.crop || t.graze){ toastNeedClear(t); return false; }
     if(typeof isHedgerowT==='function' && isHedgerowT(t)){
       toast('🫐 That hedge is returning — not a plant bed. Leave the shelter standing.');
+      ringAt(i, '#6fae5f'); SND.uhoh(); return false;
+    }
+    if(typeof isWillowT==='function' && isWillowT(t)){
+      toast('🌿 That willow is returning — not a plant bed. Tend the bank beside it.');
       ringAt(i, '#6fae5f'); SND.uhoh(); return false;
     }
     if(!spend(td.cost)) return false;
@@ -12002,6 +12010,10 @@ function applyTool(i){
     if(t.crop || t.graze){
       toast('Can\'t place '+ (td.name||tool) +' — '+tileBlockerName(t)+' is here. 🚜 Clear first.');
       ringAt(i, '#e06666'); SND.uhoh(); return false;
+    }
+    if(typeof isWillowT==='function' && isWillowT(t)){
+      toast('🌿 That willow is returning — not a plant bed. Tend the bank beside it.');
+      ringAt(i, '#6fae5f'); SND.uhoh(); return false;
     }
     if(tool==='wetland' && dead){ toast('💀 Wetland plants need living ground — revive this tile first!'); SND.uhoh(); return false; }
     if((tool==='orchard' || tool==='berrybush' || tool==='beehive') && dead){
@@ -12497,7 +12509,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.hedgestump';
+const SHIP_BUILD = '2026-08-22.withypond';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -12647,7 +12659,7 @@ function openAboutCredits(){
   if(showNew) camp.tipsShown['whats_new_'+ver] = true;
   const whatsNew = showNew
     ? `<div class="lesson" style="text-align:left;margin-top:6px;border-color:rgba(234,181,67,.45)">
-        <b>What's new (${ver}):</b> Fogged leftover folds now wait on Home Patch the same way coin-deed neighbors do. Before Home is cleared, leftover mist says the kitchen garden comes first — not “unlock by clearing Orchard Slope.” After Home, neighbor-clear / buy hints stay as they were. Play stays free; no pay-to-revive.
+        <b>What's new (${ver}):</b> A stripped willow stays a returning bank — leftover wet tools (pond, trees, wetland) no longer sit on that stump as if it were open ground. Pioneers / clover already refused. Home Patch first session stays clean. Play stays free; no pay-to-revive.
       </div>`
     : '';
   // CD — first About open literacy (in-modal; no toast spam)
