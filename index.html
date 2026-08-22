@@ -1216,7 +1216,7 @@ function inferHerdFromGrid(){
 function homePatchCleared(){ return !!(camp && camp.done && camp.done[0]); }
 function neighborStandUnlocked(){ return homePatchCleared(); }
 function isNeighborStandTile(t){ return !!(t && t.terrain==='nstand'); }
-function isHsAnchorTile(t){ return !!(t && (t.terrain==='house' || t.terrain==='barn' || t.terrain==='nstand')); }
+function isHsAnchorTile(t){ return !!(t && (t.terrain==='house' || t.terrain==='barn' || t.terrain==='nstand' || t.terrain==='coop')); }
 function herdBreederMin(/*kind*/){ return 1; } // first owned head is the keeper; herd code does not require a pair
 function herdSurplus(kind){
   if(!kind || !camp) return 0;
@@ -5825,6 +5825,7 @@ function ensureHomesteadTiles(){
   migrateHomesteadGrassCanvas(hs);
   if(typeof ensureNeighborStandOnTiles==='function') ensureNeighborStandOnTiles(hs.tiles, hs.gridSize||8);
   if(typeof ensureHomesteadBarnOnTiles==='function') ensureHomesteadBarnOnTiles(hs.tiles, hs.gridSize||8);
+  if(typeof ensureHomesteadCoopOnTiles==='function') ensureHomesteadCoopOnTiles(hs.tiles, hs.gridSize||8);
 }
 /** Force uniform lawn: no plow dirt / soil patches — yard is not a farm field. */
 function migrateHomesteadGrassCanvas(hs){
@@ -5833,7 +5834,7 @@ function migrateHomesteadGrassCanvas(hs){
   hs.tiles.forEach(t=>{
     if(!t) return;
     // Keep house, buildings, water, paths, player decos — only fix open ground look
-    if(t.terrain==='house' || t.terrain==='barn' || t.terrain==='nstand') return;
+    if(t.terrain==='house' || t.terrain==='barn' || t.terrain==='nstand' || t.terrain==='coop') return;
     if(t.terrain==='dead') t.terrain = 'soil';
     if(t.terrain!=='soil' && t.terrain!=='trees') return;
     // Lush grass band always (draw path also forces grass in homesteadMode)
@@ -5913,6 +5914,7 @@ function placeHouseOnTiles(tiles, size, houseTier){
   }
   if(typeof ensureNeighborStandOnTiles==='function') ensureNeighborStandOnTiles(tiles, size);
   if(typeof ensureHomesteadBarnOnTiles==='function') ensureHomesteadBarnOnTiles(tiles, size);
+  if(typeof ensureHomesteadCoopOnTiles==='function') ensureHomesteadCoopOnTiles(tiles, size);
 }
 function neighborStandSpotOk(t){
   if(!t) return false;
@@ -5943,7 +5945,7 @@ function ensureNeighborStandOnTiles(tiles, size){
   }
   for(let i=0;i<tiles.length;i++){
     const t = tiles[i];
-    if(!t || t.terrain==='house' || t.terrain==='barn') continue;
+    if(!t || t.terrain==='house' || t.terrain==='barn' || t.terrain==='coop') continue;
     const dc = Math.abs((t.c|0)-1), dr = Math.abs((t.r|0)-1);
     if(dc+dr===0 || dc>2 || dr>2) continue;
     if(neighborStandSpotOk(t)){ seatNeighborStand(t); return; }
@@ -5976,6 +5978,99 @@ function ensureHomesteadBarnOnTiles(tiles, size){
     if(t && t.terrain==='house') continue;
     if(t && t.terrain==='nstand') continue;
     if(homesteadBarnSpotOk(t)){ seatHomesteadBarn(t); return; }
+  }
+}
+function homesteadCoopSpotOk(t){
+  if(!t) return false;
+  if(t.terrain==='coop') return true;
+  if(t.terrain!=='soil') return false;
+  if(t.deco || t.crop || t.graze) return false;
+  if(typeof hasFence==='function' && hasFence(t)) return false;
+  if(t.feature==='path') return false;
+  return true;
+}
+function seatHomesteadCoop(t){
+  if(!t) return;
+  t.terrain = 'coop';
+  t.deco = null; t.crop = null; t.graze = null; t.feature = null;
+  t.fence = false; t.flowers = Math.max(t.flowers||0, 0.04);
+}
+function homesteadGardenOnTiles(tiles){
+  if(!tiles) return null;
+  for(let i=0;i<tiles.length;i++){
+    const t = tiles[i];
+    if(t && (t.deco==='deco_vegbox' || t.deco==='deco_herb' || t.deco==='deco_flowerbed')) return t;
+  }
+  return null;
+}
+/** Pile sits on grass beside the barn — size-aware so we never drop a coop on it before homesteadMode is on. */
+function homesteadPileSeatOnTiles(tiles, size){
+  if(!tiles || !size) return null;
+  if(typeof leftoverCompostStock!=='function' || leftoverCompostStock()<=0) return null;
+  const barn = (typeof findGridBarn==='function') ? findGridBarn(tiles) : null;
+  if(!barn) return null;
+  const dirs = [[-1,0],[0,1],[-1,1],[0,-1],[-1,-1],[1,1],[1,0],[1,-1]];
+  let fallback = null;
+  for(let i=0;i<dirs.length;i++){
+    const c = (barn.c|0)+dirs[i][0], r = (barn.r|0)+dirs[i][1];
+    if(!inHS(c,r,size)) continue;
+    const t = tiles[r*size+c];
+    if(!t) continue;
+    if(typeof leftoverPileSpotOpen==='function' && leftoverPileSpotOpen(t)) return t;
+    if(!fallback && typeof leftoverPileSpotOk==='function' && leftoverPileSpotOk(t)) fallback = t;
+  }
+  return fallback;
+}
+/** Coop between the garden and the barn / orchard side. Only when you own hens. Never stomps house, stand, barn, pile, or player deco. */
+function ensureHomesteadCoopOnTiles(tiles, size){
+  if(!tiles || !size) return;
+  if(typeof ensureHerd==='function') ensureHerd(camp);
+  if(!((camp && camp.herd && (camp.herd.chicken|0)) > 0)) return;
+  if(tiles.some(t=>t && t.terrain==='coop')) return;
+  const garden = homesteadGardenOnTiles(tiles);
+  const barn = (typeof findGridBarn==='function') ? findGridBarn(tiles) : null;
+  const pile = homesteadPileSeatOnTiles(tiles, size);
+  const prefer = [];
+  const seen = {};
+  const push = (c,r)=>{
+    if(!inHS(c,r,size)) return;
+    const k = c+','+r;
+    if(seen[k]) return;
+    seen[k] = 1;
+    prefer.push([c,r]);
+  };
+  if(garden){
+    const gc = garden.c|0, gr = garden.r|0;
+    const bc = barn ? (barn.c|0) : 3;
+    const br = barn ? (barn.r|0) : 1;
+    const dc = Math.sign(bc-gc) || 1;
+    const dr = Math.sign(br-gr);
+    push(gc+dc, gr); push(gc, gr+dr); push(gc+dc, gr+dr);
+    push(gc+dc*2, gr); push(gc+1, gr+1); push(gc-1, gr+1);
+    push(((gc+bc)>>1), ((gr+br)>>1));
+    push(((gc+bc)>>1), gr); push(gc+1, ((gr+br)>>1));
+  }
+  // Garden south of the house; barn / orchard sits east. Seat between them.
+  [[2,3],[3,3],[2,4],[3,4],[4,3],[1,3],[4,2],[2,2],[4,4],[5,3],[1,4],[3,2],[5,2],[2,5],[3,5]].forEach(p=>push(p[0],p[1]));
+  const trySeat = (t)=>{
+    if(!t || t.terrain==='house' || t.terrain==='nstand' || t.terrain==='barn') return false;
+    if(pile && (pile.c|0)===(t.c|0) && (pile.r|0)===(t.r|0)) return false;
+    if(!homesteadCoopSpotOk(t)) return false;
+    seatHomesteadCoop(t);
+    return true;
+  };
+  for(let i=0;i<prefer.length;i++){
+    const t = tiles[prefer[i][1]*size + prefer[i][0]];
+    if(trySeat(t)) return;
+  }
+  const origin = garden || barn;
+  if(origin){
+    for(let dr=-2; dr<=3; dr++) for(let dc=-2; dc<=3; dc++){
+      if(!dc && !dr) continue;
+      const c = (origin.c|0)+dc, r = (origin.r|0)+dr;
+      if(!inHS(c,r,size)) continue;
+      if(trySeat(tiles[r*size+c])) return;
+    }
   }
 }
 /** Living stock sits on grass only — never the house, stand, barn door, or leftover pile. */
@@ -6073,6 +6168,9 @@ function spawnHomesteadYardWalkers(){
 }
 function syncHomesteadYardWalkers(){
   if(!homesteadMode) return;
+  if(state && state.grid && typeof ensureHomesteadCoopOnTiles==='function'){
+    ensureHomesteadCoopOnTiles(state.grid, state.gridSize||GRID||8);
+  }
   agents = (agents||[]).filter(a=>!a.yard);
   spawnHomesteadYardWalkers();
 }
@@ -6115,6 +6213,7 @@ function hydrateHomesteadState(){
     }
     if(typeof ensureNeighborStandOnTiles==='function') ensureNeighborStandOnTiles(grid, size);
     if(typeof ensureHomesteadBarnOnTiles==='function') ensureHomesteadBarnOnTiles(grid, size);
+    if(typeof ensureHomesteadCoopOnTiles==='function') ensureHomesteadCoopOnTiles(grid, size);
   }
   GRID = prevGRID;
   return {
@@ -6235,6 +6334,7 @@ function openPropertyMap(){
     const cells = tiles.map(t=>{
       let bg = '#8fbc6a', ch = '';
       if(t.terrain==='house' || t.terrain==='barn'){ bg='#c4a06a'; ch=H.em; }
+      else if(t.terrain==='coop'){ bg='#d4a06a'; ch='🐔'; }
       else if(t.terrain==='nstand'){ bg='#d4b56a'; ch='🧺'; }
       else if(t.terrain==='trees'){ bg='#4f9147'; ch='🌳'; }
       else if(t.terrain==='water' || t.terrain==='pond'){ bg='#6db3e0'; ch='💧'; }
@@ -6591,7 +6691,7 @@ function hsPlaceBlocked(i){
   if(!t) return 'bad';
   const D = HS_CATALOG.find(x=>x.id===tool);
   if(!D) return null;
-  if(t.terrain==='house' || t.terrain==='barn' || t.terrain==='nstand') return 'house';
+  if(t.terrain==='house' || t.terrain==='barn' || t.terrain==='nstand' || t.terrain==='coop') return 'house';
   // free re-orient counts as valid
   if(D.fence && hasFence(t)) return null;
   if(D.deco && t.deco===D.id && yardToolOrientable(D.id)) return null;
@@ -6635,14 +6735,16 @@ function applyHomesteadTool(i){
     openInfo();
     if(t.terrain==='house'){
       toast('🏡 Catalog → Expand kits & Yard Build. Rooms are optional (Peek Inside).');
-    }else if(t.terrain==='barn'){
+    }else     if(t.terrain==='barn'){
       toast('🏠 The barn — leftover compost sits in the yard beside it.');
+    }else if(t.terrain==='coop'){
+      toast('🐔 The coop — hens scratch the grass beside it.');
     }
     return true;
   }
   if(tool==='bulldoze'){
     if(t.terrain==='nstand'){ toast('Leave the neighbor stand — it\'s the table by the house.'); return false; }
-    if(t.terrain==='house' || t.terrain==='barn'){ toast('That\'s your home! Upgrade it from 🛒 catalog.'); return false; }
+    if(t.terrain==='house' || t.terrain==='barn' || t.terrain==='coop'){ toast('That\'s your home! Upgrade it from 🛒 catalog.'); return false; }
     // free clear in homestead
     if(t.terrain!=='soil' || t.deco || hasFence(t)){
       t.terrain = 'soil'; t.deco = null; t.feature = null; t.fence = false; t.decoRot = 0; t.crop = null;
@@ -6657,7 +6759,7 @@ function applyHomesteadTool(i){
   const D = HS_CATALOG.find(x=>x.id===tool);
   if(!D){ toast('Open 🛒 Catalog → Yard Build to pick a piece.'); return false; }
   if(!hsItemUnlocked(D)){ toast('🔒 Unlock that kit under Catalog → Expand.'); SND.uhoh(); return false; }
-  if(t.terrain==='house' || t.terrain==='barn' || t.terrain==='nstand'){ toast('Leave the house footprint — build the yard around it.'); return false; }
+  if(t.terrain==='house' || t.terrain==='barn' || t.terrain==='nstand' || t.terrain==='coop'){ toast('Leave the house footprint — build the yard around it.'); return false; }
   // Free re-orient before bank check
   if(D.fence && hasFence(t)){
     t.fence = fenceFacing(t) === 0 ? 2 : 1;
@@ -8252,6 +8354,7 @@ function tileBlockerName(t){
   if(t.terrain==='trees') return 'trees';
   if(t.terrain==='house' || t.terrain==='barn') return 'the house';
   if(t.terrain==='nstand') return 'the neighbor stand';
+  if(t.terrain==='coop') return 'the chicken coop';
   if(BUILD_SET.has(t.terrain)){
     const td = toolDef(t.terrain);
     if(td && td.name) return td.name;
@@ -9270,7 +9373,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.stamp-fit';
+const SHIP_BUILD = '2026-08-22.yard-coop';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -13679,7 +13782,7 @@ function openInfo(refreshOnly){
       if(!refreshOnly) SND.pop();
       return;
     }
-    let title = (t.terrain==='house') ? `${H.em} ${H.name}` : (t.terrain==='barn' ? '🏠 The Barn' : (t.deco ? 'Decoration' : (t.terrain==='soil'?'Yard':'Placed')));
+    let title = (t.terrain==='house') ? `${H.em} ${H.name}` : (t.terrain==='barn' ? '🏠 The Barn' : (t.terrain==='coop' ? '🐔 Chicken Coop' : (t.deco ? 'Decoration' : (t.terrain==='soil'?'Yard':'Placed'))));
     const crateChip = (typeof harvestCrateChipHtml==='function') ? harvestCrateChipHtml() : '';
     let body = (t.terrain==='house')
       ? `<div class="chiprow">Home anchor — build the yard from 🛒 Catalog (Expand kits + Yard Build). Rooms are optional.</div>
@@ -13688,10 +13791,12 @@ function openInfo(refreshOnly){
          <button type="button" class="mbtn wood" style="width:100%;margin-top:8px" id="btnGoInside">🚪 Peek Inside</button>`
       : (t.terrain==='barn'
         ? `<div class="chiprow">The barn — leftover compost sits in the yard beside it when the pile has stock.</div>`
-        : `<div class="chiprow">Bank 🪙${camp.bank|0}. Use 🚜 Clear to remove (free).</div>`);
+        : (t.terrain==='coop'
+          ? `<div class="chiprow">The coop — hens scratch the grass beside it when you have chickens.</div>`
+          : `<div class="chiprow">Bank 🪙${camp.bank|0}. Use 🚜 Clear to remove (free).</div>`));
     if(t.deco) body += `<div class="chiprow">🎀 ${t.deco.replace('deco_','')}</div>`;
     if(hasFence(t)) body += `<div class="chiprow">🚧 Fence ${yardOrientLabel(fenceFacing(t))}</div>`;
-    if(t.terrain!=='soil' && t.terrain!=='barn' && t.terrain!=='house' && t.terrain!=='dead' && t.terrain!=='nstand') body += `<div class="chiprow">🏗️ ${t.terrain}</div>`;
+    if(t.terrain!=='soil' && t.terrain!=='barn' && t.terrain!=='house' && t.terrain!=='dead' && t.terrain!=='nstand' && t.terrain!=='coop') body += `<div class="chiprow">🏗️ ${t.terrain}</div>`;
     panel.innerHTML = `<div class="ititle">${title}</div>${body}`;
     panel.classList.add('show');
     const goIn = document.getElementById('btnGoInside');
