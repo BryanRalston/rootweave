@@ -3707,6 +3707,7 @@ function stampAtlasParcel(s, parcelId){
 function sowAtlasCrop(s, parcelId){
   applyAtlasBiomeLand(s, parcelId);
   stampAtlasParcel(s, parcelId);
+  if(typeof ensureAtlasLaneOnCrop==='function') ensureAtlasLaneOnCrop(s, parcelId);
 }
 function atlasWaterAdjLocal(s, c, r){
   const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
@@ -3800,11 +3801,13 @@ function genHomePatch(s){
     restoreAtlasMark(t, mark);
   });
   ensureHomePatchSwale(s);
+  if(typeof ensureAtlasLaneOnCrop==='function') ensureAtlasLaneOnCrop(s, 'home_garden');
 }
 // LEVEL 2 — Back Paddock: pasture folds + stock pond from the atlas
 function genBackField(s){
   sowAtlasCrop(s, 'back_paddock');
   ensureReachableStockWater(s);
+  if(typeof ensureAtlasLaneOnCrop==='function') ensureAtlasLaneOnCrop(s, 'back_paddock');
 }
 // LEVEL 3 — Creek Bend: same creek that leaves the east edge into River Reach
 function genCreek(s){
@@ -3829,6 +3832,7 @@ function genValley(s){
 }
 function genOrchardSlope(s){
   sowAtlasCrop(s, 'orchard_slope');
+  if(typeof ensureAtlasLaneOnCrop==='function') ensureAtlasLaneOnCrop(s, 'orchard_slope');
 }
 function genMarshFinger(s){
   sowAtlasCrop(s, 'marsh_finger');
@@ -3838,9 +3842,11 @@ function genWindRidge(s){
 }
 function genMarketCross(s){
   sowAtlasCrop(s, 'market_cross');
+  if(typeof ensureAtlasLaneOnCrop==='function') ensureAtlasLaneOnCrop(s, 'market_cross');
 }
 function genSchoolGarden(s){
   sowAtlasCrop(s, 'school_garden');
+  if(typeof ensureAtlasLaneOnCrop==='function') ensureAtlasLaneOnCrop(s, 'school_garden');
 }
 function isFarmEdgeT(t){
   return !!(t && (t.farmEdge==='windbreak' || t.farmEdge==='hedgerow'));
@@ -3848,9 +3854,139 @@ function isFarmEdgeT(t){
 function isSwaleT(t){
   return !!(t && t.feature==='swale');
 }
+function isPathT(t){
+  return !!(t && t.feature==='path');
+}
 /** Crop bed vs contour: swale holds water, it is not a plantable plot. */
 function swaleBlocksCrop(t){
   return isSwaleT(t);
+}
+/** High-dry farm lane — walkers use it; it is not a plantable crop bed. */
+function pathBlocksCrop(t){
+  return isPathT(t);
+}
+function atlasLaneSeatOk(t){
+  if(!t) return false;
+  if(t.terrain==='water' || t.terrain==='pond' || t.terrain==='riverbed') return false;
+  if(t.terrain==='barn' || t.terrain==='coop' || t.terrain==='house' || t.terrain==='trees') return false;
+  if(t.terrain==='nstand') return false;
+  if(typeof isSwaleT==='function' && isSwaleT(t)) return false;
+  if(typeof isFarmEdgeT==='function' && isFarmEdgeT(t)) return false;
+  return t.terrain==='soil' || t.terrain==='dead';
+}
+/**
+ * Keep the painted atlas lane on this crop. Dress / stock-water / edges may
+ * wipe a cell; put the high-dry path back so the lane continues across edges.
+ */
+function ensureAtlasLaneOnCrop(s, parcelId){
+  if(!s || !s.grid) return 0;
+  const P = (typeof valleyParcel==='function' && parcelId) ? valleyParcel(parcelId) : null;
+  const oc = P && P.origin ? (P.origin.c|0) : 0;
+  const or = P && P.origin ? (P.origin.r|0) : 0;
+  let n = 0;
+  s.grid.forEach(t=>{
+    if(!t) return;
+    const ac = (t.atlasC!=null) ? (t.atlasC|0) : oc+(t.c|0);
+    const ar = (t.atlasR!=null) ? (t.atlasR|0) : or+(t.r|0);
+    const A = typeof atlasGet==='function' ? atlasGet(ac, ar) : null;
+    if(!A || A.feature!=='path') return;
+    if(!atlasLaneSeatOk(t) && !isPathT(t)) return;
+    if(t.terrain==='dead' && typeof seedSoil==='function') seedSoil(t, 32, 6);
+    t.feature = 'path';
+    t.crop = null;
+    t.graze = null;
+    n++;
+  });
+  return n;
+}
+/** Atlas house (10,56) seats at yard (1,1) — same offset for the painted lane. */
+function homesteadAtlasToYard(ac, ar){
+  return {c:(ac|0)-9, r:(ar|0)-55};
+}
+/** Stamp atlas path cells onto the homestead lawn so the lane does not vanish into grass. */
+function stampHomesteadAtlasLane(tiles, size){
+  if(!tiles || !size) return 0;
+  let n = 0;
+  const side = size|0;
+  for(let ar=0; ar<ATLAS_H; ar++) for(let ac=0; ac<ATLAS_W; ac++){
+    const A = typeof atlasGet==='function' ? atlasGet(ac, ar) : null;
+    if(!A || A.feature!=='path') continue;
+    const loc = homesteadAtlasToYard(ac, ar);
+    if(loc.c<0 || loc.r<0 || loc.c>=side || loc.r>=side) continue;
+    const t = tiles[loc.r*side + loc.c];
+    if(!t) continue;
+    if(t.terrain==='house' || t.terrain==='barn' || t.terrain==='coop' || t.terrain==='nstand') continue;
+    if(t.terrain!=='soil' && t.terrain!=='dead') continue;
+    if(t.deco || t.crop || t.graze) continue;
+    if(typeof isFarmEdgeT==='function' && isFarmEdgeT(t)) continue;
+    if(typeof isSwaleT==='function' && isSwaleT(t)) continue;
+    if(typeof hasFence==='function' && hasFence(t)) continue;
+    t.feature = 'path';
+    t.flowers = Math.min(t.flowers||0, 0.04);
+    n++;
+  }
+  return n;
+}
+/** Open soil/path a walker may stand on — buildings, water, and windbreaks stay off-limits. */
+function walkerTileOk(t){
+  if(!t) return false;
+  if(t.terrain==='house' || t.terrain==='nstand' || t.terrain==='barn' || t.terrain==='coop') return false;
+  if(t.terrain==='water' || t.terrain==='pond' || t.terrain==='riverbed' || t.terrain==='trees') return false;
+  if(typeof isFarmEdgeT==='function' && isFarmEdgeT(t)) return false;
+  if(typeof isSwaleT==='function' && isSwaleT(t)) return false;
+  if(typeof isLeftoverPileTile==='function' && isLeftoverPileTile(t)) return false;
+  return t.terrain==='soil' || t.terrain==='dead';
+}
+function walkerLaneFirst(list){
+  const lane = [], rest = [];
+  (list||[]).forEach(t=>{
+    if(isPathT(t)) lane.push(t);
+    else rest.push(t);
+  });
+  return lane.concat(rest);
+}
+/** Bias a walker toward an ortho path tile — the lane is easier than cutting through beds. */
+function agentLanePull(a){
+  if(!state || !state.grid || !a || a.tile==null) return null;
+  const t = state.grid[a.tile];
+  if(!t || isPathT(t)) return null;
+  const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+  for(let i=0;i<dirs.length;i++){
+    const c = (t.c|0)+dirs[i][0], r = (t.r|0)+dirs[i][1];
+    if(typeof inGrid==='function' && !inGrid(c,r)) continue;
+    const n = state.grid[typeof idx==='function' ? idx(c,r) : (r*(state.gridSize||GRID||0)+c)];
+    if(!isPathT(n)) continue;
+    const dc = (n.c|0) - (t.c|0);
+    const dr = (n.r|0) - (t.r|0);
+    return {
+      u: dc>0 ? 0.82 : dc<0 ? 0.18 : 0.50,
+      v: dr>0 ? 0.78 : dr<0 ? 0.22 : 0.50
+    };
+  }
+  return null;
+}
+/** Yard stock may step onto the painted lane. Campaign graze pads stay put. */
+function agentStepOntoPath(a){
+  if(!a || !a.yard || !state || !state.grid) return false;
+  const t = state.grid[a.tile];
+  if(!t || isPathT(t)) return false;
+  const size = (state.gridSize|0) || GRID || 8;
+  const dirs = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]];
+  for(let i=0;i<dirs.length;i++){
+    const c = (t.c|0)+dirs[i][0], r = (t.r|0)+dirs[i][1];
+    if(c<0 || r<0 || c>=size || r>=size) continue;
+    const n = state.grid[r*size + c];
+    if(!isPathT(n) || !walkerTileOk(n)) continue;
+    a.tile = r*size + c;
+    const dc = (n.c|0) - (t.c|0);
+    const dr = (n.r|0) - (t.r|0);
+    a.u = clampUV(dc>0 ? 0.22 : dc<0 ? 0.78 : 0.50, 0.10, 0.90);
+    a.v = clampUV(dr>0 ? 0.22 : dr<0 ? 0.78 : 0.50, 0.14, 0.86);
+    a.tu = clampUV(0.50 + (Math.random()-0.5)*0.28, 0.10, 0.90);
+    a.tv = clampUV(0.50 + (Math.random()-0.5)*0.22, 0.14, 0.86);
+    return true;
+  }
+  return false;
 }
 function leftoverStampOpen(t){
   if(!t) return false;
@@ -3904,8 +4040,8 @@ function openStockDrinkBank(s, drink){
     if(n.terrain==='barn' || n.terrain==='coop' || n.terrain==='house') continue;
     if(n.terrain==='water' || n.terrain==='pond' || n.terrain==='riverbed') continue;
     if(n.terrain==='dead' || n.terrain==='soil'){
+      if(n.feature==='path' || n.feature==='swale') continue;
       seedSoil(n, 40, 8);
-      if(n.feature==='path' || n.feature==='swale') n.feature = null;
       return n;
     }
   }
@@ -4277,6 +4413,7 @@ function genLeftoverStamp(s){
     sowAtlasCrop(s, P.id);
     dressLeftoverStamp(s, P);
     seatLeftoverFarmEdges(s, P);
+    if(typeof ensureAtlasLaneOnCrop==='function') ensureAtlasLaneOnCrop(s, P.id);
   }
 }
 function soilTiles(){ return state.grid.filter(t=>t.terrain==='soil'); }
@@ -6278,6 +6415,7 @@ function placeHouseOnTiles(tiles, size, houseTier){
     const n = tiles[2*size+0];
     if(n && n.terrain==='soil' && !n.deco){ n.deco = 'deco_statue'; n.flowers = Math.max(n.flowers||0, 0.06); }
   }
+  if(typeof stampHomesteadAtlasLane==='function') stampHomesteadAtlasLane(tiles, size);
   if(typeof ensureNeighborStandOnTiles==='function') ensureNeighborStandOnTiles(tiles, size);
   if(typeof ensureHomesteadBarnOnTiles==='function') ensureHomesteadBarnOnTiles(tiles, size);
   if(typeof ensureHomesteadCoopOnTiles==='function') ensureHomesteadCoopOnTiles(tiles, size);
@@ -6462,7 +6600,7 @@ function homesteadYardSeatOk(t){
   return true;
 }
 function homesteadYardSeatOpen(t){
-  return homesteadYardSeatOk(t) && !t.deco && !t.crop && !t.graze && t.feature!=='path'
+  return homesteadYardSeatOk(t) && !t.deco && !t.crop && !t.graze
     && !(typeof isSwaleT==='function' && isSwaleT(t))
     && !(typeof hasFence==='function' && hasFence(t));
 }
@@ -6494,7 +6632,8 @@ function homesteadYardSeatsNear(grid, origin, dirs){
     if(homesteadYardSeatOpen(t)) out.push(t);
     else if(homesteadYardSeatOk(t)) fallback.push(t);
   }
-  return out.concat(fallback);
+  return (typeof walkerLaneFirst==='function' ? walkerLaneFirst(out) : out)
+    .concat(typeof walkerLaneFirst==='function' ? walkerLaneFirst(fallback) : fallback);
 }
 function homesteadYardAnyGrass(grid){
   const open = [], ok = [];
@@ -6502,7 +6641,9 @@ function homesteadYardAnyGrass(grid){
     if(homesteadYardSeatOpen(t)) open.push(t);
     else if(homesteadYardSeatOk(t)) ok.push(t);
   });
-  return open.concat(ok);
+  const first = typeof walkerLaneFirst==='function' ? walkerLaneFirst(open) : open;
+  const next = typeof walkerLaneFirst==='function' ? walkerLaneFirst(ok) : ok;
+  return first.concat(next);
 }
 function homesteadYardTakeSeat(pool, used){
   const tryCap = (cap)=>{
@@ -6595,6 +6736,7 @@ function hydrateHomesteadState(){
       const ht = grid[1*size+1];
       if(ht && ht.terrain==='barn' && !grid.some(t=>t && t.terrain==='house' && t!==ht)) ht.terrain = 'house';
     }
+    if(typeof stampHomesteadAtlasLane==='function') stampHomesteadAtlasLane(grid, size);
     if(typeof ensureNeighborStandOnTiles==='function') ensureNeighborStandOnTiles(grid, size);
     if(typeof ensureHomesteadBarnOnTiles==='function') ensureHomesteadBarnOnTiles(grid, size);
     if(typeof ensureHomesteadCoopOnTiles==='function') ensureHomesteadCoopOnTiles(grid, size);
@@ -8976,7 +9118,9 @@ function redirectPaintTarget(i){
     // 3 paints on the same heart tile should land on 3 soils — never swallow a dead-tile lesson
     const nxt = nearestMatchingTile(i, (tt,ii)=>{
       if(paintSet && paintSet.has(ii)) return false;
-      return tt.terrain==='soil' && !tt.crop && !tt.graze && !(typeof swaleBlocksCrop==='function' && swaleBlocksCrop(tt));
+      return tt.terrain==='soil' && !tt.crop && !tt.graze
+        && !(typeof swaleBlocksCrop==='function' && swaleBlocksCrop(tt))
+        && !(typeof pathBlocksCrop==='function' && pathBlocksCrop(tt));
     });
     if(nxt>=0){
       if(paintSet) paintSet.add(nxt);
@@ -9077,6 +9221,10 @@ function applyTool(i){
       toast('〰️ That contour holds water — plant the beds below.');
       ringAt(i, '#6a8a5a'); SND.uhoh(); return false;
     }
+    if(typeof pathBlocksCrop==='function' && pathBlocksCrop(t)){
+      toast('🛤️ That\'s the farm lane — plant the beds beside it.');
+      ringAt(i, '#c8b890'); SND.uhoh(); return false;
+    }
     const canWinter = buildNear(t,'greenhouse',2);
     if(!SEASONS[state.season].canPlant && !canWinter){
       const gh = toolAllowed('greenhouse') || !!(LV() && LV().shop);
@@ -9139,6 +9287,10 @@ function applyTool(i){
     if(typeof isSwaleT==='function' && isSwaleT(t)){
       toast('〰️ The herd walks around the swale — pick a bed below.');
       ringAt(i, '#6a8a5a'); SND.uhoh(); return false;
+    }
+    if(typeof isPathT==='function' && isPathT(t)){
+      toast('🛤️ The herd walks the lane — pick a bed beside it.');
+      ringAt(i, '#c8b890'); SND.uhoh(); return false;
     }
     // L5 — graze branch only for animal tools (never bleed into orchard/build wording)
     if(dead && tool!=='goat'){
@@ -9767,7 +9919,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.swale';
+const SHIP_BUILD = '2026-08-22.lane';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -9917,7 +10069,7 @@ function openAboutCredits(){
   if(showNew) camp.tipsShown['whats_new_'+ver] = true;
   const whatsNew = showNew
     ? `<div class="lesson" style="text-align:left;margin-top:6px;border-color:rgba(234,181,67,.45)">
-        <b>What's new (${ver}):</b> Leftover hay, paddock, orchard, and dry folds now carry a weather-side windbreak and atlas hedgerow seams — the herd walks around them. Home Patch stays free. Play stays free; no pay-to-revive.
+        <b>What's new (${ver}):</b> The painted farm lane stays on leftover and homestead stamps, and walkers prefer that high-dry path. Home Patch stays a dead garden. Play stays free; no pay-to-revive.
       </div>`
     : '';
   // CD — first About open literacy (in-modal; no toast spam)
@@ -11465,6 +11617,7 @@ function plantGhostOk(t, toolId){
   if(!t || !isPlantTool(toolId) || homesteadMode) return false;
   if(t.crop || t.graze) return false;
   if(typeof swaleBlocksCrop==='function' && swaleBlocksCrop(t)) return false;
+  if(typeof pathBlocksCrop==='function' && pathBlocksCrop(t)) return false;
   if(t.terrain!=='soil' && t.terrain!=='dead') return false;
   if((toolId==='sisters' || toolId==='wheat') && t.terrain==='dead') return false;
   const canWinter = typeof buildNear==='function' && buildNear(t, 'greenhouse', 2);
@@ -12358,12 +12511,20 @@ function updateAgents(simDt){
         if(pull && Math.random()<0.72){
           a.tu = clampUV(pull.u + (Math.random()-0.5)*0.14, 0.10, 0.90);
           a.tv = clampUV(pull.v + (Math.random()-0.5)*0.14, 0.14, 0.86);
+        }else if(typeof agentStepOntoPath==='function' && Math.random()<0.62 && agentStepOntoPath(a)){
+          a.idleT = 0;
         }else{
-          const ang0 = a.slotAng != null ? a.slotAng : Math.atan2((a.v||0.5)-0.5, (a.u||0.5)-0.5);
-          const ang = ang0 + (Math.random()-0.5)*0.95;
-          const rad = 0.22 + Math.random()*0.16;
-          a.tu = clampUV(0.5 + Math.cos(ang)*rad, 0.10, 0.90);
-          a.tv = clampUV(0.5 + Math.sin(ang)*rad*0.82, 0.14, 0.86);
+          const lane = (typeof agentLanePull==='function') ? agentLanePull(a) : null;
+          if(lane && Math.random()<0.7){
+            a.tu = clampUV(lane.u + (Math.random()-0.5)*0.10, 0.10, 0.90);
+            a.tv = clampUV(lane.v + (Math.random()-0.5)*0.10, 0.14, 0.86);
+          }else{
+            const ang0 = a.slotAng != null ? a.slotAng : Math.atan2((a.v||0.5)-0.5, (a.u||0.5)-0.5);
+            const ang = ang0 + (Math.random()-0.5)*0.95;
+            const rad = 0.22 + Math.random()*0.16;
+            a.tu = clampUV(0.5 + Math.cos(ang)*rad, 0.10, 0.90);
+            a.tv = clampUV(0.5 + Math.sin(ang)*rad*0.82, 0.14, 0.86);
+          }
         }
         a.idleT = 0;
       }
@@ -15650,6 +15811,17 @@ function paintValleyAtlas(cv){
     fg.closePath();
     fg.fill();
   });
+  // Soft-punch the painted lane so locked-parcel fog does not break the thread.
+  fg.globalCompositeOperation = 'destination-out';
+  for(let r=0;r<ATLAS_H;r++) for(let c=0;c<ATLAS_W;c++){
+    const A = atlasGet(c,r);
+    if(!A || A.feature!=='path') continue;
+    const p = atlasToView(c+0.5, r+0.5);
+    fg.beginPath();
+    fg.arc(p.x, p.y, 9, 0, Math.PI*2);
+    fg.fill();
+  }
+  fg.globalCompositeOperation = 'source-over';
   ctx.save();
   ctx.filter = 'blur(16px)';
   ctx.globalAlpha = 0.2;
@@ -15845,6 +16017,31 @@ function mapHerdCellBlocked(ag, u, v){
   if(!p) return false;
   return atlasIsHedgeWood(atlasGet(p.c|0, p.r|0));
 }
+function mapHerdOnPath(ag, u, v){
+  const p = mapHerdAtlasCell(ag, u, v);
+  if(!p) return false;
+  const A = atlasGet(p.c|0, p.r|0);
+  return !!(A && A.feature==='path');
+}
+/** Nearby atlas path seat in this parcel — walk the lane, not through beds. */
+function mapHerdLaneTarget(ag){
+  const P = typeof valleyParcel==='function' ? valleyParcel(ag && ag.parcelId) : null;
+  const b = typeof parcelAtlasBox==='function' ? parcelAtlasBox(P) : null;
+  if(!b || !ag) return null;
+  const here = mapHerdAtlasCell(ag);
+  let best = null, bestD = 1e9;
+  for(let r=b.r;r<b.r+b.h;r++) for(let c=b.c;c<b.c+b.w;c++){
+    const A = atlasGet(c, r);
+    if(!A || A.feature!=='path') continue;
+    const u = clampUV((c+0.5-b.c)/b.w, 0.18, 0.82);
+    const v = clampUV((r+0.5-b.r)/b.h, 0.22, 0.82);
+    if(mapHerdCellBlocked(ag, u, v)) continue;
+    const d = here ? Math.hypot((c+0.5)-here.c, (r+0.5)-here.r) : 0;
+    if(d<0.35) continue;
+    if(d<bestD){ bestD = d; best = {u, v}; }
+  }
+  return best;
+}
 function tickMapHerdAgents(agents, dt){
   if(!agents || !agents.length || prefersQuietMotion()) return;
   agents.forEach(a=>{
@@ -15854,14 +16051,19 @@ function tickMapHerdAgents(agents, dt){
       a.moving = false;
       a.idleT = (a.idleT||0) + dt;
       if(a.idleT > 1.8 + ((a.phase||0)%1)*2.2){
-        const ang = (a.phase||0) + a.idleT;
-        const rad = 0.05 + (a.walkPhase||0)*0.04;
-        const tu = clampUV(a.u + Math.cos(ang)*rad, 0.18, 0.82);
-        const tv = clampUV(a.v + Math.sin(ang)*rad*0.65, 0.22, 0.82);
-        if(mapHerdCellBlocked(a, tu, tv)){
-          a.idleT = 0;
+        const lane = (typeof mapHerdLaneTarget==='function' && Math.random()<0.68) ? mapHerdLaneTarget(a) : null;
+        if(lane && !mapHerdCellBlocked(a, lane.u, lane.v)){
+          a.tu = lane.u; a.tv = lane.v; a.idleT = 0;
         }else{
-          a.tu = tu; a.tv = tv; a.idleT = 0;
+          const ang = (a.phase||0) + a.idleT;
+          const rad = 0.05 + (a.walkPhase||0)*0.04;
+          const tu = clampUV(a.u + Math.cos(ang)*rad, 0.18, 0.82);
+          const tv = clampUV(a.v + Math.sin(ang)*rad*0.65, 0.22, 0.82);
+          if(mapHerdCellBlocked(a, tu, tv)){
+            a.idleT = 0;
+          }else{
+            a.tu = tu; a.tv = tv; a.idleT = 0;
+          }
         }
       }
     }else{
@@ -15872,6 +16074,7 @@ function tickMapHerdAgents(agents, dt){
       if(Math.abs(du) > 0.002) a.facing = du>=0 ? 1 : -1;
       let step = (a.speed||0.012) * dt;
       if(mapHerdCellBlocked(a, a.u, a.v)) step *= 0.35;
+      else if(typeof mapHerdOnPath==='function' && mapHerdOnPath(a, a.u, a.v)) step *= 1.35;
       a.u += (du/d)*step;
       a.v += (dv/d)*step;
       const mot = (typeof AGENT_MOTION!=='undefined' && AGENT_MOTION[a.kind]) || {walkHz:0.7};
