@@ -1955,20 +1955,20 @@ const LEVELS = [
      {html:'🌳 Tap <b>Trees</b> and plant them on living soil <b>RIGHT BESIDE the water</b>.<br><br>Buffer roots filter the runoff before it reaches the creek — watch the 💧 water quality pill rise!', on:'buffer'},
      {html:'💧 That\'s a <b>riparian buffer</b> — the #1 clean-water move on any real farm!<br><br>New too: 💧 <b>Ponds</b> store rain for dry spells, and 🌾 <b>Wheat</b> pays fast but tires the soil. Check the 🌊 Runoff overlay (right side) to see what\'s washing in. 🎯 Go!', btn:'Clean water! 🌊'},
    ]},
-  {id:'flats', name:'The Dust Flats', em:'🏜️', grid:11, coins:50, parYears:6,
+  {id:'flats', name:'The Dust Flats', em:'🏜️', grid:11, coins:50, parYears:6, stampFeel:'dust',
    teaser:'Salt, gullies & dust. The hard lesson.',
-   story:'The dust flats on the south-east of the farm. Salt crusts, a dry wash that only meets the river when the land heals — and barely a coin to spare. This land will fight you. Feed it anyway.',
+   story:'The dust flats on the south-east of the farm. Salt crusts, a dry wash that only runs after rain — and barely a coin to spare. This land will fight you. Feed it anyway.',
    doneText:'Even the salt pan blooms. If you can heal the Dust Flats, you can heal anything.',
    tools:['select','compost','covercrop','sisters','clover','wheat','cattle','chicken','goat','trees','pond','wetland','bulldoze'],
    // RW-069: permanently free goats (+ wetland primer) on Valley palette / shop after clear
    grantUnlocks:['goat','wetland'],
-   shop:false, river:true, events:true, startPaused:false, regen:1,
+   shop:false, river:false, events:true, startPaused:false, regen:1,
    ovs:['health','om','water','bio','runoff'],
    goalText:'Remediate the hard land of the Dust Flats.',
    goals:[
      {em:'🌅', desc:'Revive 18 dead tiles (dead → soil)', prog:()=>[Math.min(18, countRevived()), 18]},
      {em:'🧂', desc:'Revive 3 salt-pan tiles',          prog:()=>[Math.min(3, state.stats.saltRevived||0), 3]},
-     {em:'💧', desc:'River quality 60+',                prog:()=>[Math.min(60, Math.round(state.waterQuality)), 60]},
+     {em:'🏜️', desc:'Heal 6 wash-bank tiles to 40+',    prog:()=>[Math.min(6, countWashBankHealthy(40)), 6]},
      {em:'💚', desc:'Bring 30 tiles to 55+ health',     prog:()=>[Math.min(30, countHealthyTiles(55)), 30]},
    ],
    gen:genDustFlats,
@@ -2111,7 +2111,7 @@ function leftoverStampFeelFor(spec){
   if(id==='wet_meadow' || id==='willow_bottom' || id==='marsh_finger') return 'wet';
   if(id==='north_folds' || id==='west_folds') return 'paddock';
   if(id==='orchard_block') return 'orchard';
-  if(id==='dust_scrub' || id==='dust_flats') return 'dust';
+  if(id==='dust_scrub' || id==='dust_flats' || id==='flats') return 'dust';
   if(id==='east_pasture') return 'dry_graze';
   if(id==='south_reach') return 'river';
   return 'heal';
@@ -2676,7 +2676,7 @@ function valleyParcelByLvIndex(lv){
 function campaignWaterQuality(){
   if(typeof camp==='undefined' || !camp) return 40;
   ensureParcelState(camp);
-  const riverParcels = ['creek_bend','marsh_finger','dust_flats','river_reach'];
+  const riverParcels = ['creek_bend','marsh_finger','river_reach'];
   let sum = 0, n = 0;
   riverParcels.forEach(id=>{
     const st = camp.parcels[id];
@@ -5015,6 +5015,17 @@ function countWetBankHealthy(threshold){
   state.grid.forEach(t=>{
     if(t.terrain!=='soil' || t.health<thr) return;
     if(typeof leftoverWetNear==='function' ? leftoverWetNear(state, t) : false) n++;
+  });
+  return n;
+}
+/** Soil beside the painted dry wash — not live river, not open dust. */
+function countWashBankHealthy(threshold){
+  if(!state || !state.grid) return 0;
+  const thr = threshold == null ? 40 : threshold;
+  let n = 0;
+  state.grid.forEach(t=>{
+    if(t.terrain!=='soil' || t.health<thr) return;
+    if(typeof washAdj==='function' && washAdj(t, state)) n++;
   });
   return n;
 }
@@ -10519,7 +10530,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.dustwash';
+const SHIP_BUILD = '2026-08-22.dustfeel';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
