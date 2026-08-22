@@ -1062,6 +1062,13 @@ const HEDGE_AUTO = 1;        // at most one dawn lot when the trickle fills
 const HEDGE_DAWN_RATE = 0.055; // lots/day at 1 hedge; scales with sqrt(stand), stays rare
 const HEDGE_REGEN_DAYS = 8; // strip-cut stump returns as a living hedge; never an empty plant bed
 const HEDGE_STRIP_SOIL = {om:-2, erosion:-3, water:-1, microbial:-1}; // strip nicks shelter; hedge is not firewood
+const STAND_REED_SEASON = [1.10, 0.90, 1.06, 1.16]; // spring weave; summer leafy; fall cut; winter thatch
+const REED_LOT = 3;   // modest crate lot — like hay / withies, well under a wheat cut
+const REED_THIN_SET = 0.05; // careful cutting / day on a living reed stand — tap when ready
+const REED_AUTO = 1;        // at most one dawn lot when the trickle fills
+const REED_DAWN_RATE = 0.055; // lots/day at 1 reed tile; scales with sqrt(stand), stays rare
+const REED_REGEN_DAYS = 8; // strip-cut bed returns as wetland; never an empty plant bed
+const REED_STRIP_SOIL = {om:-2, erosion:-3, water:-4, microbial:-2}; // strip nicks wet hold and filtration
 const OVERGRAZE_RATES = {om:-0.45, structure:-0.35, nutrients:-0.15, water:0, microbial:-0.1, erosion:-0.5};
 function emptyHerd(){ return {cattle:0, chicken:0, sheep:0, goat:0, pig:0, duckT:0}; }
 function ensureHerd(c){
@@ -1756,7 +1763,8 @@ function standPriceMult(kind){
     : (kind==='timber' ? STAND_TIMBER_SEASON
     : (kind==='forage' ? STAND_FORAGE_SEASON
     : (kind==='willow' ? STAND_WILLOW_SEASON
-    : (kind==='hedge' ? STAND_HEDGE_SEASON : STAND_GRAIN_SEASON)))))));
+    : (kind==='hedge' ? STAND_HEDGE_SEASON
+    : (kind==='reed' ? STAND_REED_SEASON : STAND_GRAIN_SEASON))))))));
   const base = table[clk.season] || 1;
   const m = base * standLaneWobble();
   return Math.max(STAND_MULT_MIN, Math.min(STAND_MULT_MAX, m));
@@ -1770,6 +1778,7 @@ function crateLotPriceKind(lot){
   if((lot && lot.type)==='forage') return 'forage';
   if((lot && lot.type)==='willow') return 'willow';
   if((lot && lot.type)==='hedge') return 'hedge';
+  if((lot && lot.type)==='reed') return 'reed';
   return 'grain';
 }
 function crateLotSellPrice(lot){
@@ -1779,14 +1788,15 @@ function crateLotSellPrice(lot){
   let n = Math.max(1, Math.round(base * mult));
   // Modest 🪙3–4 lots round flat across the band — keep cheap/dear as a 1-coin step.
   // Key the step off the season table, not the ±3% daily wobble, so a quiet
-  // market-day mood cannot cancel summer-cheap / winter-dear fruit (or eggs, hay, firewood, forage, withies, hedge berries).
-  if(kind==='egg' || kind==='fruit' || kind==='hay' || kind==='timber' || kind==='forage' || kind==='willow' || kind==='hedge'){
+  // market-day mood cannot cancel summer-cheap / winter-dear fruit (or eggs, hay, firewood, forage, withies, hedge berries, reeds).
+  if(kind==='egg' || kind==='fruit' || kind==='hay' || kind==='timber' || kind==='forage' || kind==='willow' || kind==='hedge' || kind==='reed'){
     const table = kind==='fruit' ? STAND_FRUIT_SEASON
       : (kind==='hay' ? STAND_HAY_SEASON
       : (kind==='timber' ? STAND_TIMBER_SEASON
       : (kind==='forage' ? STAND_FORAGE_SEASON
       : (kind==='willow' ? STAND_WILLOW_SEASON
-      : (kind==='hedge' ? STAND_HEDGE_SEASON : STAND_EGG_SEASON)))));
+      : (kind==='hedge' ? STAND_HEDGE_SEASON
+      : (kind==='reed' ? STAND_REED_SEASON : STAND_EGG_SEASON))))));
     const lane = table[standClock().season] || 1;
     if(lane<=0.94 && n>=base) n = Math.max(1, base-1);
     if(lane>=1.08 && n<=base) n = base+1;
@@ -2089,7 +2099,7 @@ function neighborStandHtml(opts){
         </span>
       </div>`;
       }).join('')
-    : `<div class="nstand-note">Crate is empty. Harvest wheat, sisters, orchard fruit, hay, woodlot firewood, meadow forage, willow cuttings, or hedgerow berries, then bring it here.</div>`;
+    : `<div class="nstand-note">Crate is empty. Harvest wheat, sisters, orchard fruit, hay, woodlot firewood, meadow forage, willow cuttings, hedgerow berries, or marsh reed cuttings, then bring it here.</div>`;
   const pileNote = pileN
     ? `<div class="nstand-note">🪣 ${pileN} leftover compost ready — paint 🪣 Compost on the land (no coins). Crate leftovers${typeof leftoverPileFeedAnd==='function'?leftoverPileFeedAnd():''} feed this pile.</div>`
     : '';
@@ -2424,7 +2434,7 @@ const LEVELS = [
    ],
    gen:genMarshFinger,
    tut:[
-     {html:'🦩 <b>Marsh Finger.</b> <b>Wetlands</b> filter runoff. <b>Ducks</b> love wet ground. Keep the finger connected to the main stem.', btn:'Clean the finger'},
+     {html:'🦩 <b>Marsh Finger.</b> <b>Wetlands</b> filter runoff — tap a ready reed stand for a crate lot; leave the marsh wet. <b>Ducks</b> love wet ground. Keep the finger connected to the main stem.', btn:'Clean the finger'},
    ],
    grantUnlocks:['wetland','duckT']},
   {id:'wind', name:'Wind Ridge', em:'🌬️', grid:8, coins:55, parYears:5,
@@ -2543,7 +2553,9 @@ function leftoverStampStory(feel, P){
     woodlot: 'Shade and brush. Thin a little firewood; leave the canopy. Restore the understory.',
     wet: (P && P.id==='willow_bottom')
       ? 'Living willow on wet ground. Cut withies into the crate; leave the tree. Strip the stand and the bank loses shelter. Not meadow forage, not firewood.'
-      : 'Wet ground and reeds. Do not farm this like a dry garden.',
+      : (P && (P.id==='marsh_finger' || P.levelId==='marsh'))
+        ? 'Wet ground and reeds. Cut reeds into the crate; leave the marsh wet and filtering. Strip the stand and filtration thins. Not meadow forage, not willow.'
+        : 'Wet ground and reeds. Do not farm this like a dry garden.',
     meadow: 'Wet flowery meadow — reeds, clover, and flowers along the creek. Gather wild cuttings into the crate. Not hay, not a kitchen row.',
     paddock: 'A grazing fold. Pasture, manure, rest, and stock water — bedding and droppings feed the compost pile. Gather berries from the living hedge; leave the shelter. Not a kitchen garden.',
     orchard: 'Trees and understory. Perennials, not corn rows.',
@@ -4369,7 +4381,7 @@ function genSchoolGarden(s){
   if(typeof ensureAtlasLaneOnCrop==='function') ensureAtlasLaneOnCrop(s, 'school_garden');
 }
 function isFarmEdgeT(t){
-  return !!(t && (t.farmEdge==='windbreak' || t.farmEdge==='hedgerow' || t.farmEdge==='woodlot' || t.farmEdge==='riparian' || t.farmEdge==='willow'));
+  return !!(t && (t.farmEdge==='windbreak' || t.farmEdge==='hedgerow' || t.farmEdge==='woodlot' || t.farmEdge==='riparian' || t.farmEdge==='willow' || t.farmEdge==='reed'));
 }
 function isRiparianT(t){
   return !!(t && t.farmEdge==='riparian');
@@ -4582,6 +4594,7 @@ function isWoodlotTimberT(t, s){
   if(typeof isRiparianT==='function' && isRiparianT(t)) return false;
   if(t.farmEdge==='willow') return false;
   if(typeof currentWillowFold==='function' && currentWillowFold(s)) return false;
+  if(typeof currentMarshFold==='function' && currentMarshFold(s)) return false;
   return true;
 }
 function leftoverSeedWoodlotTimber(t){
@@ -4957,6 +4970,7 @@ function hedgeBerryFoldReady(s){
   if(typeof currentWillowFold==='function' && currentWillowFold(s)) return false;
   if(typeof currentWoodlotFold==='function' && currentWoodlotFold(s)) return false;
   if(typeof currentMeadowForageFold==='function' && currentMeadowForageFold(s)) return false;
+  if(typeof currentMarshFold==='function' && currentMarshFold(s)) return false;
   return true;
 }
 /** Living hedgerow — seated seam, atlas hedge, or planted leftover paddock hedge. Not willow, not timber. */
@@ -5127,6 +5141,220 @@ function tickHedgeBerry(){
   if(n) camp.hedgeAcc -= n;
   return n;
 }
+/** Leftover / campaign marsh. Home, willow, and wet meadow stay off. */
+function leftoverIsMarshFold(P){
+  if(!P) return false;
+  if(P.id==='home_garden' || P.lvIndex===0) return false;
+  if(P.id==='willow_bottom' || P.levelId==='willow_bottom') return false;
+  if(P.id==='wet_meadow') return false;
+  const feel = typeof leftoverStampFeelFor==='function' ? leftoverStampFeelFor(P) : (P.stampFeel||'');
+  if(feel==='meadow') return false;
+  if(P.id==='marsh_finger' || P.levelId==='marsh') return true;
+  return feel==='wet' && !!(P.leftover || P.buyable);
+}
+/** Field under the player, or the parked marsh fold while they are in the yard. */
+function marshReedFarm(){
+  if(typeof homesteadMode!=='undefined' && homesteadMode && typeof plotStateBackup!=='undefined'
+     && plotStateBackup && plotStateBackup.grid && !plotStateBackup.homesteadView){
+    return plotStateBackup;
+  }
+  if(state && !state.homesteadView) return state;
+  return null;
+}
+function currentMarshFold(s){
+  s = s || (typeof marshReedFarm==='function' ? marshReedFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s) return false;
+  if(s.homesteadView) return false;
+  const L = (typeof LEVELS!=='undefined' && LEVELS[s.lv]) ? LEVELS[s.lv] : null;
+  if(L && L.id==='home') return false;
+  if(L && (L.id==='willow_bottom' || L.levelId==='willow_bottom')) return false;
+  if(L && (L.stampFeel==='meadow' || L.id==='wet_meadow')) return false;
+  if(L && L.id==='marsh') return true;
+  const P = typeof valleyParcelByLvIndex==='function' ? valleyParcelByLvIndex(s.lv) : null;
+  return leftoverIsMarshFold(P);
+}
+/** Leftover or campaign marsh after Home. First session and non-marsh folds stay off. */
+function marshFoldReady(s){
+  if(!camp) return false;
+  if(typeof homePatchCleared==='function' && !homePatchCleared()) return false;
+  return currentMarshFold(s);
+}
+/** Returning reed bed after a strip — not a plant bed, not a pond site. */
+function isReedT(t){
+  return !!(t && (t.farmEdge==='reed' || t.reedRegen!=null));
+}
+/** Living wetland reeds on this marsh fold. Stand stays. Not meadow forage, not willow. */
+function isMarshReedT(t, s){
+  if(!t || t.terrain!=='wetland') return false;
+  if(!marshFoldReady(s)) return false;
+  if(typeof isMarshPondT==='function' && isMarshPondT(t)) return false;
+  return true;
+}
+function leftoverSeedMarshReed(t){
+  if(!t || t.terrain!=='wetland') return;
+  if(t.reedReady!=null || t.reedSet!=null) return;
+  const u = sr(((t.c|0)*23 + (t.r|0)*37 + 11));
+  t.reedReady = u >= 0.72;
+  t.reedSet = t.reedReady ? 0 : u;
+}
+function marshReedTileReady(t, s){
+  if(!isMarshReedT(t, s)) return false;
+  leftoverSeedMarshReed(t);
+  return !!(t && t.reedReady);
+}
+function marshReedThinRate(s){
+  let r = REED_THIN_SET;
+  const season = (s && (s.season|0)) || 0;
+  if(season===0) r *= 1.08; // spring weave
+  if(season===1) r *= 0.82; // summer leafy
+  if(season===2) r *= 1.06; // fall cut
+  if(season===3) r *= 1.12; // winter thatch
+  return r;
+}
+function marshReedFloaterIdx(s, i){
+  if(state && state.grid && s && s.grid && state.grid===s.grid && state.grid[i]) return i;
+  if(typeof selected==='number' && selected>=0 && state && state.grid && state.grid[selected]) return selected;
+  if(state && state.grid){
+    for(let k=0;k<state.grid.length;k++){
+      if(state.grid[k] && (state.grid[k].terrain==='nstand' || state.grid[k].terrain==='house' || state.grid[k].terrain==='coop')) return k;
+    }
+  }
+  return (typeof selected==='number' && selected>=0) ? selected : 0;
+}
+function marshReedStory(tier){
+  return '🌾 Living marsh reeds — cuttings for the crate. The stand stays wet and filtering. Neighbors pay more in winter thatch and spring weave. Not meadow forage, not willow. '+(tier||'');
+}
+function bankMarshReedLot(t, i, s, opts){
+  const o = opts || {};
+  if(typeof bankHarvestLot==='function') bankHarvestLot({type:'reed', em:'🌾', name:'Reed cuttings', coins:REED_LOT});
+  if(state && state.stats) state.stats.harvests = (state.stats.harvests|0) + 1;
+  const fi = marshReedFloaterIdx(s, i);
+  if(typeof floater==='function' && state && state.grid && state.grid[fi]){
+    floater(fi, o.stripCut ? '🌾 crate · filter thins' : '🌾 crate', o.stripCut ? '#c9a070' : '#ffd45e', 16);
+  }
+  if(typeof burst==='function' && state && state.grid && state.grid[fi]) burst(fi, o.stripCut ? '#c9b896' : '#c8f0a0', 6);
+  if(typeof SND!=='undefined' && SND && typeof SND.place==='function') SND.place();
+  if(typeof toast==='function'){
+    toast(o.stripCut
+      ? '🌾 Heavy strip — reeds in the crate, but the marsh lost filter. Soil thins until the stand returns. Ponds stay.'
+      : '🌾 Reed cuttings in the crate by the house. The marsh stays wet and filtering. Neighbors pay more in winter thatch — or let them sit for the pile.',
+      {once: o.stripCut ? 'reed_strip_first' : 'reed_cut_first', throttleMs:4000});
+  }
+  if(typeof refreshNeighborStandIfOpen==='function') refreshNeighborStandIfOpen();
+  if(typeof updateHUD==='function') updateHUD();
+}
+/** Tap a ready reed stand — careful cuttings. The wetland stays. */
+function harvestMarshReedTile(t, i, opts){
+  const o = opts || {};
+  const s = o.farm || (typeof marshReedFarm==='function' ? marshReedFarm() : state);
+  if(!t || t.terrain!=='wetland') return false;
+  if(!marshFoldReady(s)) return false;
+  if(!marshReedTileReady(t, s)) return false;
+  t.reedReady = false;
+  t.reedSet = 0;
+  bankMarshReedLot(t, i, s, o);
+  return true;
+}
+/** Strip the reed stand: cuttings now, soil/filter nick, bed regenerates. Never an empty plant bed. Never a pond wipe. */
+function applyReedStripSoil(t, s){
+  s = s || (typeof state!=='undefined' ? state : null);
+  if(!t || !t.soil) return 0;
+  const b = REED_STRIP_SOIL;
+  const bump = (tile)=>{
+    if(!tile || !tile.soil) return;
+    if(typeof isMarshPondT==='function' && isMarshPondT(tile)) return;
+    if(tile.terrain==='pond' || tile.terrain==='water') return;
+    tile.soil.om = clamp((tile.soil.om||0) + b.om);
+    tile.soil.erosion = clamp((tile.soil.erosion||0) + b.erosion);
+    tile.soil.water = clamp((tile.soil.water||0) + b.water);
+    tile.soil.microbial = clamp((tile.soil.microbial||0) + b.microbial);
+    if(tile.terrain==='soil' || tile.terrain==='dead'){
+      tile.soil.water = Math.max(tile.soil.water||0, 36);
+    }
+    if(typeof recalc==='function') recalc(tile);
+  };
+  bump(t);
+  const g = (s && ((s.gridSize|0) || (typeof GRID==='number' ? GRID : 0))) || 0;
+  if(s && s.grid && g>0){
+    const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+    for(let k=0;k<dirs.length;k++){
+      const c = (t.c|0)+dirs[k][0], r = (t.r|0)+dirs[k][1];
+      if(c<0 || r<0 || c>=g || r>=g) continue;
+      bump(s.grid[r*g+c]);
+    }
+  }
+  if(s && s.waterQuality!=null) s.waterQuality = clamp((s.waterQuality||0) - 2);
+  return 1;
+}
+function stripMarshReed(t, i, opts){
+  const o = opts || {};
+  const s = o.farm || (typeof marshReedFarm==='function' ? marshReedFarm() : state);
+  if(!t || t.terrain!=='wetland') return false;
+  if(!marshFoldReady(s)) return false;
+  if(typeof isMarshPondT==='function' && isMarshPondT(t)) return false;
+  applyReedStripSoil(t, s);
+  t.terrain = 'soil';
+  t.deco = null;
+  t.decoRot = 0;
+  t.crop = null;
+  t.farmEdge = 'reed';
+  t.reedReady = false;
+  t.reedSet = 0;
+  t.reedRegen = 0;
+  if(t.soil) t.soil.water = Math.max(t.soil.water||0, 42);
+  bankMarshReedLot(t, i, s, {stripCut:true});
+  return true;
+}
+function tickMarshReedGrow(s){
+  if(!s || !s.grid) return;
+  s.grid.forEach(t=>{
+    if(!t) return;
+    if(t.reedRegen!=null && (t.farmEdge==='reed' || (typeof isReedT==='function' && isReedT(t)))){
+      t.reedRegen = (t.reedRegen|0) + 1;
+      if(t.reedRegen >= REED_REGEN_DAYS){
+        t.terrain = 'wetland';
+        t.deco = null;
+        t.crop = null;
+        t.farmEdge = null;
+        t.reedRegen = null;
+        t.reedReady = false;
+        t.reedSet = 0;
+      }
+      return;
+    }
+    if(t.terrain!=='wetland') return;
+    if(!marshFoldReady(s)) return;
+    leftoverSeedMarshReed(t);
+    if(t.reedReady) return;
+    t.reedSet = Math.max(0, +t.reedSet || 0) + marshReedThinRate(s);
+    if(t.reedSet >= 1){
+      t.reedReady = true;
+      t.reedSet = 0;
+    }
+  });
+}
+/** One sim dawn: a rare reed trickle. Tap still picks ready cuttings. Stand stays. */
+function tickMarshReed(){
+  if(!camp || !marshFoldReady()) return 0;
+  const s = marshReedFarm();
+  if(!s || !s.grid) return 0;
+  tickMarshReedGrow(s);
+  let reeds = 0;
+  const ready = [];
+  s.grid.forEach((t,i)=>{
+    if(isMarshReedT(t, s)) reeds++;
+    if(marshReedTileReady(t, s)) ready.push(i);
+  });
+  if(!reeds) return 0;
+  camp.reedAcc = Math.max(0, +camp.reedAcc || 0) + REED_DAWN_RATE * Math.sqrt(reeds);
+  if(camp.reedAcc < 1 || !ready.length) return 0;
+  let n = 0;
+  for(let k=0;k<Math.min(REED_AUTO, ready.length);k++){
+    if(harvestMarshReedTile(s.grid[ready[k]], ready[k], {farm:s, auto:true})) n++;
+  }
+  if(n) camp.reedAcc -= n;
+  return n;
+}
 function isSwaleT(t){
   return !!(t && t.feature==='swale');
 }
@@ -5274,6 +5502,7 @@ function leftoverStampOpen(t){
   if(t.terrain==='barn' || t.terrain==='coop' || t.terrain==='house') return false;
   if(t.terrain==='trees' || t.terrain==='orchard' || t.terrain==='berrybush') return false;
   if(t.feature==='path' || t.feature==='swale') return false;
+  if(typeof isReedT==='function' && isReedT(t)) return false;
   if(isFarmEdgeT(t)) return false; // windbreak / hedgerow / woodlot / bank buffer: herd walks around, not through
   if(typeof isRiparianT==='function' && isRiparianT(t)) return false;
   if(typeof isWoodlotT==='function' && isWoodlotT(t)) return false;
@@ -5542,7 +5771,7 @@ function tickPaddockStockThirst(){
 /** Seated / atlas / planted windbreak, hedgerow, or woodlot canopy — not riparian, not a stump. */
 function isWindShelterT(t){
   if(!t) return false;
-  if(t.woodRegen!=null || t.willowRegen!=null || t.hedgeRegen!=null) return false;
+  if(t.woodRegen!=null || t.willowRegen!=null || t.hedgeRegen!=null || t.reedRegen!=null) return false;
   if(typeof isRiparianT==='function' && isRiparianT(t)) return false;
   if(t.farmEdge==='windbreak' || t.farmEdge==='hedgerow' || t.farmEdge==='woodlot' || t.farmEdge==='willow') return true;
   if(typeof isWoodlotT==='function' && isWoodlotT(t)) return true;
@@ -6328,6 +6557,12 @@ function dressLeftoverStamp(s, P){
     }
     if((P.leftover || P.buyable) && typeof dressLeftoverMeadowBloom==='function'){
       dressLeftoverMeadowBloom(s, P, {light:true});
+    }
+    if(typeof leftoverIsMarshFold==='function' && leftoverIsMarshFold(P)
+       && typeof leftoverSeedMarshReed==='function'){
+      tiles.forEach(t=>{
+        if(t && t.terrain==='wetland') leftoverSeedMarshReed(t);
+      });
     }
     return;
   }
@@ -8211,6 +8446,7 @@ function simStep(dt){
     if(typeof tickWoodlotTimber==='function') tickWoodlotTimber();
     if(typeof tickWillowCut==='function') tickWillowCut();
     if(typeof tickHedgeBerry==='function') tickHedgeBerry();
+    if(typeof tickMarshReed==='function') tickMarshReed();
     if(typeof tickMeadowForage==='function') tickMeadowForage();
     if(typeof tickPaddockManure==='function') tickPaddockManure();
     if(typeof tickPaddockStockThirst==='function') tickPaddockStockThirst();
@@ -11483,6 +11719,11 @@ function soilStoryLine(t){
       return '🌳 The filter — roots hold the bank and drink the runoff.';
     return '🌳 Living hedge — windbreak, shade, and a home for bees.';
   }
+  if(t.terrain==='wetland'){
+    if(typeof isMarshReedT==='function' && isMarshReedT(t))
+      return (typeof marshReedStory==='function' ? marshReedStory('') : '🌾 Living marsh reeds for the crate. The stand stays wet and filtering.');
+    return '🌾 A living filter — reeds clean runoff before it reaches the river.';
+  }
   if(t.terrain!=='soil') return '';
   const h = t.health|0;
   const tier = h >= 80 ? '🌟 Rich living soil — keep diversity and rest; it pays you back.'
@@ -11648,6 +11889,11 @@ function applyTool(i){
       ringAt(i, '#ffe89a');
       return true;
     }
+    if(t.terrain==='wetland' && typeof harvestMarshReedTile==='function' && harvestMarshReedTile(t, i)){
+      openInfo();
+      ringAt(i, '#ffe89a');
+      return true;
+    }
     openInfo();
     ringAt(i, '#ffe89a'); SND.pop();
     return true;
@@ -11696,6 +11942,14 @@ function applyTool(i){
             && typeof stripHedgeTree==='function'){
       did = ()=>{ stripHedgeTree(t, i); };
     }
+    else if(t.terrain==='pond' && typeof isMarshPondT==='function' && isMarshPondT(t)){
+      toast('🌾 That marsh pond filters runoff — leave it wet.');
+      SND.uhoh(); return false;
+    }
+    else if(t.terrain==='wetland' && typeof marshFoldReady==='function' && marshFoldReady()
+            && typeof stripMarshReed==='function'){
+      did = ()=>{ stripMarshReed(t, i); };
+    }
     else if(t.terrain==='pond' || t.terrain==='trees') did = ()=>{ t.terrain = 'soil'; };
     else if(BUILD_SET.has(t.terrain)) did = ()=>{ t.terrain = 'soil'; agents = agents.filter(a=>a.tile!==i); };
     if(!did){ toast('Nothing to clear here.'); return false; }
@@ -11731,6 +11985,10 @@ function applyTool(i){
     }
     if(typeof isWillowT==='function' && isWillowT(t)){
       toast('🌿 That willow is returning — not a plant bed. Tend the bank beside it.');
+      ringAt(i, '#6fae5f'); SND.uhoh(); return false;
+    }
+    if(typeof isReedT==='function' && isReedT(t)){
+      toast('🌾 That reed stand is returning — not a plant bed. Leave the marsh wet.');
       ringAt(i, '#6fae5f'); SND.uhoh(); return false;
     }
     if(typeof isHedgerowT==='function' && isHedgerowT(t)){
@@ -11860,6 +12118,10 @@ function applyTool(i){
       toast('🌿 That willow is returning — not a pond bed. Tend the bank beside it.');
       ringAt(i, '#6fae5f'); SND.uhoh(); return false;
     }
+    if(typeof isReedT==='function' && isReedT(t)){
+      toast('🌾 That reed stand is returning — not a pond bed. Leave the marsh wet.');
+      ringAt(i, '#6fae5f'); SND.uhoh(); return false;
+    }
     if(!spend(td.cost)) return false;
     t.terrain = 'pond'; t.flowers = 0; t.deco = null; t.feature = null;
     state.stats.ponds++;
@@ -11875,6 +12137,10 @@ function applyTool(i){
     }
     if(typeof isWillowT==='function' && isWillowT(t)){
       toast('🌿 That willow is returning — not a plant bed. Tend the bank beside it.');
+      ringAt(i, '#6fae5f'); SND.uhoh(); return false;
+    }
+    if(typeof isReedT==='function' && isReedT(t)){
+      toast('🌾 That reed stand is returning — not a plant bed. Leave the marsh wet.');
       ringAt(i, '#6fae5f'); SND.uhoh(); return false;
     }
     if(!spend(td.cost)) return false;
@@ -12015,6 +12281,10 @@ function applyTool(i){
       toast('🌿 That willow is returning — not a plant bed. Tend the bank beside it.');
       ringAt(i, '#6fae5f'); SND.uhoh(); return false;
     }
+    if(typeof isReedT==='function' && isReedT(t)){
+      toast('🌾 That reed stand is returning — not a plant bed. Leave the marsh wet.');
+      ringAt(i, '#6fae5f'); SND.uhoh(); return false;
+    }
     if(tool==='wetland' && dead){ toast('💀 Wetland plants need living ground — revive this tile first!'); SND.uhoh(); return false; }
     if((tool==='orchard' || tool==='berrybush' || tool==='beehive') && dead){
       toast('💀 '+ (td.em||'') +' needs living ground — feed with 🪣 or 🌿 first!');
@@ -12064,6 +12334,9 @@ function applyTool(i){
     if(tool==='wetland' && waterAdj(t)){
       state.waterQuality = clamp(state.waterQuality + 5);
       setTimeout(()=>floater(i, '💧 filtering the river!', '#bfe3ff', 15), 350);
+    }
+    if(tool==='wetland' && typeof leftoverSeedMarshReed==='function' && typeof marshFoldReady==='function' && marshFoldReady()){
+      leftoverSeedMarshReed(t);
     }
     afterBuild(); return true;
   }
@@ -12509,7 +12782,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.withypond';
+const SHIP_BUILD = '2026-08-22.marshreed';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -12659,7 +12932,7 @@ function openAboutCredits(){
   if(showNew) camp.tipsShown['whats_new_'+ver] = true;
   const whatsNew = showNew
     ? `<div class="lesson" style="text-align:left;margin-top:6px;border-color:rgba(234,181,67,.45)">
-        <b>What's new (${ver}):</b> A stripped willow stays a returning bank — leftover wet tools (pond, trees, wetland) no longer sit on that stump as if it were open ground. Pioneers / clover already refused. Home Patch first session stays clean. Play stays free; no pay-to-revive.
+        <b>What's new (${ver}):</b> Marsh Finger reeds go into the harvest crate. A careful tap leaves the stand wet and filtering; a heavy strip nicks soil and filtration until the reeds return. Filter ponds stay. Home, meadow, and willow stay clean. Play stays free; no pay-to-revive.
       </div>`
     : '';
   // CD — first About open literacy (in-modal; no toast spam)
@@ -14232,6 +14505,7 @@ function plantGhostOk(t, toolId){
   if(typeof pathBlocksCrop==='function' && pathBlocksCrop(t)) return false;
   if(typeof isWoodlotT==='function' && isWoodlotT(t)) return false;
   if(typeof isWillowT==='function' && isWillowT(t)) return false;
+  if(typeof isReedT==='function' && isReedT(t)) return false;
   if(typeof isHedgerowT==='function' && isHedgerowT(t)) return false;
   if(typeof isRiparianT==='function' && isRiparianT(t)) return false;
   if(typeof isHighPondT==='function' && isHighPondT(t)) return false;
@@ -17047,6 +17321,14 @@ function openInfo(refreshOnly){
     }
   }else if(BUILD_SET.has(t.terrain)){
     body = `<div class="chiprow">${BUILD_INFO[t.terrain]||''}</div>`;
+    if(t.terrain==='wetland' && typeof isMarshReedT==='function' && isMarshReedT(t)){
+      const story = (typeof soilStoryLine==='function') ? soilStoryLine(t) : '';
+      const ready = typeof marshReedTileReady==='function' && marshReedTileReady(t);
+      body = (story?`<div class="istory">${story}</div>`:'')
+        + `<div class="chiprow">${ready
+          ? 'Living reeds — cuttings are ready. Tap for a crate lot; the stand stays wet and filtering. Not meadow forage, not willow.'
+          : 'Living reeds — tap when a cutting is ready, or wait for a dawn trickle. The marsh stays wet and filtering. Not meadow forage, not willow.'}</div>`;
+    }
     if(t.terrain==='orchard'){
       if(typeof orchardTileReady==='function' && orchardTileReady(t))
         body += `<div class="chiprow">🍎 fruit ready — tap to pick into the crate</div>`;
@@ -17074,6 +17356,8 @@ function openInfo(refreshOnly){
       chips.push('🌿 stump after a strip — the willow returns; bank soil and shelter stay thin until then');
     if(t.hedgeRegen!=null && (t.farmEdge==='hedgerow' || t.atlasFeature==='hedgerow' || (typeof isHedgerowT==='function' && isHedgerowT(t))))
       chips.push('🫐 stump after a strip — the hedge returns; soil and shelter stay thin until then');
+    if(t.reedRegen!=null && (t.farmEdge==='reed' || (typeof isReedT==='function' && isReedT(t))))
+      chips.push('🌾 bed after a strip — the reeds return; soil and filtration stay thin until then. Ponds stay.');
     if(t.graze){
       chips.push(grazeInspectLine(t.graze));
     }
