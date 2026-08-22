@@ -1055,6 +1055,13 @@ const WILLOW_AUTO = 1;        // at most one dawn lot when the trickle fills
 const WILLOW_DAWN_RATE = 0.055; // lots/day at 1 tree; scales with sqrt(stand), stays rare
 const WILLOW_REGEN_DAYS = 8; // strip-cut stump returns as a living willow; never an empty plant bed
 const WILLOW_STRIP_SOIL = {om:-2, erosion:-4, water:-3, microbial:-1}; // strip nicks bank hold and shelter
+const STAND_HEDGE_SEASON = [1.10, 0.88, 1.14, 1.08]; // spring first fruit; summer glut; fall hips/nuts; winter jam
+const HEDGE_BERRY_LOT = 3;   // modest crate lot — like hay / firewood, well under a wheat cut
+const HEDGE_THIN_SET = 0.05; // careful pick / day on a living hedge — tap when ready
+const HEDGE_AUTO = 1;        // at most one dawn lot when the trickle fills
+const HEDGE_DAWN_RATE = 0.055; // lots/day at 1 hedge; scales with sqrt(stand), stays rare
+const HEDGE_REGEN_DAYS = 8; // strip-cut stump returns as a living hedge; never an empty plant bed
+const HEDGE_STRIP_SOIL = {om:-2, erosion:-3, water:-1, microbial:-1}; // strip nicks shelter; hedge is not firewood
 const OVERGRAZE_RATES = {om:-0.45, structure:-0.35, nutrients:-0.15, water:0, microbial:-0.1, erosion:-0.5};
 function emptyHerd(){ return {cattle:0, chicken:0, sheep:0, goat:0, pig:0, duckT:0}; }
 function ensureHerd(c){
@@ -1748,7 +1755,8 @@ function standPriceMult(kind){
     : (kind==='hay' ? STAND_HAY_SEASON
     : (kind==='timber' ? STAND_TIMBER_SEASON
     : (kind==='forage' ? STAND_FORAGE_SEASON
-    : (kind==='willow' ? STAND_WILLOW_SEASON : STAND_GRAIN_SEASON))))));
+    : (kind==='willow' ? STAND_WILLOW_SEASON
+    : (kind==='hedge' ? STAND_HEDGE_SEASON : STAND_GRAIN_SEASON)))))));
   const base = table[clk.season] || 1;
   const m = base * standLaneWobble();
   return Math.max(STAND_MULT_MIN, Math.min(STAND_MULT_MAX, m));
@@ -1761,6 +1769,7 @@ function crateLotPriceKind(lot){
   if((lot && lot.type)==='timber') return 'timber';
   if((lot && lot.type)==='forage') return 'forage';
   if((lot && lot.type)==='willow') return 'willow';
+  if((lot && lot.type)==='hedge') return 'hedge';
   return 'grain';
 }
 function crateLotSellPrice(lot){
@@ -1770,13 +1779,14 @@ function crateLotSellPrice(lot){
   let n = Math.max(1, Math.round(base * mult));
   // Modest 🪙3–4 lots round flat across the band — keep cheap/dear as a 1-coin step.
   // Key the step off the season table, not the ±3% daily wobble, so a quiet
-  // market-day mood cannot cancel summer-cheap / winter-dear fruit (or eggs, hay, firewood, forage, withies).
-  if(kind==='egg' || kind==='fruit' || kind==='hay' || kind==='timber' || kind==='forage' || kind==='willow'){
+  // market-day mood cannot cancel summer-cheap / winter-dear fruit (or eggs, hay, firewood, forage, withies, hedge berries).
+  if(kind==='egg' || kind==='fruit' || kind==='hay' || kind==='timber' || kind==='forage' || kind==='willow' || kind==='hedge'){
     const table = kind==='fruit' ? STAND_FRUIT_SEASON
       : (kind==='hay' ? STAND_HAY_SEASON
       : (kind==='timber' ? STAND_TIMBER_SEASON
       : (kind==='forage' ? STAND_FORAGE_SEASON
-      : (kind==='willow' ? STAND_WILLOW_SEASON : STAND_EGG_SEASON))));
+      : (kind==='willow' ? STAND_WILLOW_SEASON
+      : (kind==='hedge' ? STAND_HEDGE_SEASON : STAND_EGG_SEASON)))));
     const lane = table[standClock().season] || 1;
     if(lane<=0.94 && n>=base) n = Math.max(1, base-1);
     if(lane>=1.08 && n<=base) n = base+1;
@@ -2079,7 +2089,7 @@ function neighborStandHtml(opts){
         </span>
       </div>`;
       }).join('')
-    : `<div class="nstand-note">Crate is empty. Harvest wheat, sisters, orchard fruit, hay, woodlot firewood, meadow forage, or willow cuttings, then bring it here.</div>`;
+    : `<div class="nstand-note">Crate is empty. Harvest wheat, sisters, orchard fruit, hay, woodlot firewood, meadow forage, willow cuttings, or hedgerow berries, then bring it here.</div>`;
   const pileNote = pileN
     ? `<div class="nstand-note">🪣 ${pileN} leftover compost ready — paint 🪣 Compost on the land (no coins). Crate leftovers${typeof leftoverPileFeedAnd==='function'?leftoverPileFeedAnd():''} feed this pile.</div>`
     : '';
@@ -2535,7 +2545,7 @@ function leftoverStampStory(feel, P){
       ? 'Living willow on wet ground. Cut withies into the crate; leave the tree. Strip the stand and the bank loses shelter. Not meadow forage, not firewood.'
       : 'Wet ground and reeds. Do not farm this like a dry garden.',
     meadow: 'Wet flowery meadow — reeds, clover, and flowers along the creek. Gather wild cuttings into the crate. Not hay, not a kitchen row.',
-    paddock: 'A grazing fold. Pasture, manure, rest, and stock water — bedding and droppings feed the compost pile. Not a kitchen garden.',
+    paddock: 'A grazing fold. Pasture, manure, rest, and stock water — bedding and droppings feed the compost pile. Gather berries from the living hedge; leave the shelter. Not a kitchen garden.',
     orchard: 'Trees and understory. Perennials, not corn rows.',
     dust: 'Salt, dust, and a dry wash that only runs after rain. Soften it; do not pretend it is lush.',
     dry_graze: 'Dry pasture at the quarter-section edge. Sparse graze and salt-crust — a little manure for the pile when the herd walks. Not a garden.',
@@ -3771,6 +3781,7 @@ function defaultCamp(){
     eggAcc: 0, // homestead coop → crate lots (fractional days)
     woodAcc: 0, // woodlot firewood dawn trickle (fractional days)
     willowAcc: 0, // willow withies dawn trickle (fractional days)
+    hedgeAcc: 0, // living hedgerow berries dawn trickle (fractional days)
     manureAcc: 0, // leftover paddock bedding → pile lots (fractional days)
     coopBeddingAcc: 0, // homestead coop droppings → pile lots (fractional days)
   };
@@ -4922,6 +4933,199 @@ function tickWillowCut(){
   if(n) camp.willowAcc -= n;
   return n;
 }
+function isHedgerowT(t){
+  return !!(t && (t.farmEdge==='hedgerow' || t.atlasFeature==='hedgerow'));
+}
+/** Field under the player, or the parked hedge fold while they are in the yard. */
+function hedgeBerryFarm(){
+  if(typeof homesteadMode!=='undefined' && homesteadMode && typeof plotStateBackup!=='undefined'
+     && plotStateBackup && plotStateBackup.grid && !plotStateBackup.homesteadView){
+    return plotStateBackup;
+  }
+  if(state && !state.homesteadView) return state;
+  return null;
+}
+/** After Home. First session, willow, woodlot, and meadow stay off — tile gate does the rest. */
+function hedgeBerryFoldReady(s){
+  if(!camp) return false;
+  if(typeof homePatchCleared==='function' && !homePatchCleared()) return false;
+  s = s || (typeof hedgeBerryFarm==='function' ? hedgeBerryFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s) return false;
+  if(s.homesteadView) return false;
+  const L = (typeof LEVELS!=='undefined' && LEVELS[s.lv]) ? LEVELS[s.lv] : null;
+  if(L && L.id==='home') return false;
+  if(typeof currentWillowFold==='function' && currentWillowFold(s)) return false;
+  if(typeof currentWoodlotFold==='function' && currentWoodlotFold(s)) return false;
+  if(typeof currentMeadowForageFold==='function' && currentMeadowForageFold(s)) return false;
+  return true;
+}
+/** Living hedgerow — seated seam, atlas hedge, or planted leftover paddock hedge. Not willow, not timber. */
+function isHedgerowBerryT(t, s){
+  if(!t || t.terrain!=='trees') return false;
+  if(!hedgeBerryFoldReady(s)) return false;
+  if(typeof isRiparianT==='function' && isRiparianT(t)) return false;
+  if(typeof isWoodlotT==='function' && isWoodlotT(t)) return false;
+  if(typeof isWillowT==='function' && isWillowT(t)) return false;
+  if(t.farmEdge==='windbreak' || t.farmEdge==='woodlot' || t.farmEdge==='willow') return false;
+  return typeof isHedgerowT==='function' ? isHedgerowT(t) : !!(t.farmEdge==='hedgerow' || t.atlasFeature==='hedgerow');
+}
+function leftoverSeedHedgeBerry(t){
+  if(!t || t.terrain!=='trees') return;
+  if(t.hedgeReady!=null || t.hedgeSet!=null) return;
+  const u = sr(((t.c|0)*29 + (t.r|0)*17 + 19));
+  t.hedgeReady = u >= 0.72;
+  t.hedgeSet = t.hedgeReady ? 0 : u;
+}
+function hedgeBerryTileReady(t, s){
+  if(!isHedgerowBerryT(t, s)) return false;
+  leftoverSeedHedgeBerry(t);
+  return !!(t && t.hedgeReady);
+}
+function hedgeBerryThinRate(s){
+  let r = HEDGE_THIN_SET;
+  const season = (s && (s.season|0)) || 0;
+  if(season===0) r *= 1.08; // spring first fruit
+  if(season===1) r *= 1.12; // summer glut
+  if(season===2) r *= 1.10; // fall hips / nuts
+  if(season===3) r *= 0.78; // winter rest
+  return r;
+}
+function hedgeBerryFloaterIdx(s, i){
+  if(state && state.grid && s && s.grid && state.grid===s.grid && state.grid[i]) return i;
+  if(typeof selected==='number' && selected>=0 && state && state.grid && state.grid[selected]) return selected;
+  if(state && state.grid){
+    for(let k=0;k<state.grid.length;k++){
+      if(state.grid[k] && (state.grid[k].terrain==='nstand' || state.grid[k].terrain==='house' || state.grid[k].terrain==='coop')) return k;
+    }
+  }
+  return (typeof selected==='number' && selected>=0) ? selected : 0;
+}
+function bankHedgeBerryLot(t, i, s, opts){
+  const o = opts || {};
+  if(typeof bankHarvestLot==='function') bankHarvestLot({type:'hedge', em:'🫐', name:'Hedgerow berries', coins:HEDGE_BERRY_LOT});
+  if(state && state.stats) state.stats.harvests = (state.stats.harvests|0) + 1;
+  const fi = hedgeBerryFloaterIdx(s, i);
+  if(typeof floater==='function' && state && state.grid && state.grid[fi]){
+    floater(fi, o.stripCut ? '🫐 crate · shelter thins' : '🫐 crate', o.stripCut ? '#c9a070' : '#ffd45e', 16);
+  }
+  if(typeof burst==='function' && state && state.grid && state.grid[fi]) burst(fi, o.stripCut ? '#c9b896' : '#c8f0a0', 6);
+  if(typeof SND!=='undefined' && SND && typeof SND.place==='function') SND.place();
+  if(typeof toast==='function'){
+    toast(o.stripCut
+      ? '🫐 Heavy strip — berries in the crate, but the fold lost shelter. Soil thins until the hedge returns.'
+      : '🫐 Hedgerow berries in the crate by the house. Neighbors pay more in fall and winter — or let them sit for the pile. The hedge stays.',
+      {once: o.stripCut ? 'hedge_strip_first' : 'hedge_berry_first', throttleMs:4000});
+  }
+  if(typeof refreshNeighborStandIfOpen==='function') refreshNeighborStandIfOpen();
+  if(typeof updateHUD==='function') updateHUD();
+}
+/** Tap a ready living hedge — careful pick. The hedge stays. */
+function harvestHedgeBerryTile(t, i, opts){
+  const o = opts || {};
+  const s = o.farm || (typeof hedgeBerryFarm==='function' ? hedgeBerryFarm() : state);
+  if(!t || t.terrain!=='trees') return false;
+  if(!hedgeBerryFoldReady(s)) return false;
+  if(!hedgeBerryTileReady(t, s)) return false;
+  t.hedgeReady = false;
+  t.hedgeSet = 0;
+  bankHedgeBerryLot(t, i, s, o);
+  return true;
+}
+/** Strip the hedge: berries now, soil/shelter nick, stump regenerates. Never an empty plant bed. */
+function applyHedgeStripSoil(t, s){
+  s = s || (typeof state!=='undefined' ? state : null);
+  if(!t || !t.soil) return 0;
+  const b = HEDGE_STRIP_SOIL;
+  const bump = (tile)=>{
+    if(!tile || !tile.soil) return;
+    tile.soil.om = clamp((tile.soil.om||0) + b.om);
+    tile.soil.erosion = clamp((tile.soil.erosion||0) + b.erosion);
+    tile.soil.water = clamp((tile.soil.water||0) + b.water);
+    tile.soil.microbial = clamp((tile.soil.microbial||0) + b.microbial);
+    if(typeof recalc==='function') recalc(tile);
+  };
+  bump(t);
+  const g = (s && ((s.gridSize|0) || (typeof GRID==='number' ? GRID : 0))) || 0;
+  if(s && s.grid && g>0){
+    const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+    for(let k=0;k<dirs.length;k++){
+      const c = (t.c|0)+dirs[k][0], r = (t.r|0)+dirs[k][1];
+      if(c<0 || r<0 || c>=g || r>=g) continue;
+      bump(s.grid[r*g+c]);
+    }
+  }
+  return 1;
+}
+function stripHedgeTree(t, i, opts){
+  const o = opts || {};
+  const s = o.farm || (typeof hedgeBerryFarm==='function' ? hedgeBerryFarm() : state);
+  if(!t || t.terrain!=='trees') return false;
+  if(!hedgeBerryFoldReady(s)) return false;
+  if(typeof isHedgerowT==='function' ? !isHedgerowT(t) : !(t.farmEdge==='hedgerow' || t.atlasFeature==='hedgerow')) return false;
+  applyHedgeStripSoil(t, s);
+  t.terrain = 'soil';
+  t.deco = 'deco_stump';
+  t.decoRot = 0;
+  t.crop = null;
+  t.farmEdge = 'hedgerow';
+  t.atlasFeature = t.atlasFeature || 'hedgerow';
+  t.hedgeReady = false;
+  t.hedgeSet = 0;
+  t.hedgeRegen = 0;
+  bankHedgeBerryLot(t, i, s, {stripCut:true});
+  return true;
+}
+function tickHedgeBerryGrow(s){
+  if(!s || !s.grid) return;
+  s.grid.forEach(t=>{
+    if(!t) return;
+    if(t.hedgeRegen!=null && (t.farmEdge==='hedgerow' || t.atlasFeature==='hedgerow' || (typeof isHedgerowT==='function' && isHedgerowT(t)))){
+      t.hedgeRegen = (t.hedgeRegen|0) + 1;
+      if(t.hedgeRegen >= HEDGE_REGEN_DAYS){
+        t.terrain = 'trees';
+        t.deco = null;
+        t.farmEdge = 'hedgerow';
+        t.atlasFeature = t.atlasFeature || 'hedgerow';
+        t.hedgeRegen = null;
+        t.hedgeReady = false;
+        t.hedgeSet = 0;
+      }
+      return;
+    }
+    if(t.terrain!=='trees') return;
+    if(!hedgeBerryFoldReady(s)) return;
+    if(!isHedgerowBerryT(t, s)) return;
+    leftoverSeedHedgeBerry(t);
+    if(t.hedgeReady) return;
+    t.hedgeSet = Math.max(0, +t.hedgeSet || 0) + hedgeBerryThinRate(s);
+    if(t.hedgeSet >= 1){
+      t.hedgeReady = true;
+      t.hedgeSet = 0;
+    }
+  });
+}
+/** One sim dawn: a rare berry trickle. Tap still picks ready fruit. Hedge stays. */
+function tickHedgeBerry(){
+  if(!camp || !hedgeBerryFoldReady()) return 0;
+  const s = hedgeBerryFarm();
+  if(!s || !s.grid) return 0;
+  tickHedgeBerryGrow(s);
+  let hedges = 0;
+  const ready = [];
+  s.grid.forEach((t,i)=>{
+    if(isHedgerowBerryT(t, s)) hedges++;
+    if(hedgeBerryTileReady(t, s)) ready.push(i);
+  });
+  if(!hedges) return 0;
+  camp.hedgeAcc = Math.max(0, +camp.hedgeAcc || 0) + HEDGE_DAWN_RATE * Math.sqrt(hedges);
+  if(camp.hedgeAcc < 1 || !ready.length) return 0;
+  let n = 0;
+  for(let k=0;k<Math.min(HEDGE_AUTO, ready.length);k++){
+    if(harvestHedgeBerryTile(s.grid[ready[k]], ready[k], {farm:s, auto:true})) n++;
+  }
+  if(n) camp.hedgeAcc -= n;
+  return n;
+}
 function isSwaleT(t){
   return !!(t && t.feature==='swale');
 }
@@ -5072,6 +5276,7 @@ function leftoverStampOpen(t){
   if(isFarmEdgeT(t)) return false; // windbreak / hedgerow / woodlot / bank buffer: herd walks around, not through
   if(typeof isRiparianT==='function' && isRiparianT(t)) return false;
   if(typeof isWoodlotT==='function' && isWoodlotT(t)) return false;
+  if(typeof isHedgerowT==='function' && isHedgerowT(t)) return false;
   return true;
 }
 function leftoverStampLand(t){
@@ -5336,7 +5541,7 @@ function tickPaddockStockThirst(){
 /** Seated / atlas / planted windbreak, hedgerow, or woodlot canopy — not riparian, not a stump. */
 function isWindShelterT(t){
   if(!t) return false;
-  if(t.woodRegen!=null || t.willowRegen!=null) return false;
+  if(t.woodRegen!=null || t.willowRegen!=null || t.hedgeRegen!=null) return false;
   if(typeof isRiparianT==='function' && isRiparianT(t)) return false;
   if(t.farmEdge==='windbreak' || t.farmEdge==='hedgerow' || t.farmEdge==='woodlot' || t.farmEdge==='willow') return true;
   if(typeof isWoodlotT==='function' && isWoodlotT(t)) return true;
@@ -8004,6 +8209,7 @@ function simStep(dt){
     if(typeof tickOrchardFruit==='function') tickOrchardFruit();
     if(typeof tickWoodlotTimber==='function') tickWoodlotTimber();
     if(typeof tickWillowCut==='function') tickWillowCut();
+    if(typeof tickHedgeBerry==='function') tickHedgeBerry();
     if(typeof tickMeadowForage==='function') tickMeadowForage();
     if(typeof tickPaddockManure==='function') tickPaddockManure();
     if(typeof tickPaddockStockThirst==='function') tickPaddockStockThirst();
@@ -11426,6 +11632,11 @@ function applyTool(i){
       ringAt(i, '#ffe89a');
       return true;
     }
+    if(t.terrain==='trees' && typeof harvestHedgeBerryTile==='function' && harvestHedgeBerryTile(t, i)){
+      openInfo();
+      ringAt(i, '#ffe89a');
+      return true;
+    }
     if(t.deco==='deco_haybales' && typeof harvestHayBale==='function' && harvestHayBale(t, i)){
       openInfo();
       ringAt(i, '#ffe89a');
@@ -11479,6 +11690,11 @@ function applyTool(i){
             && typeof stripWillowTree==='function'){
       did = ()=>{ stripWillowTree(t, i); };
     }
+    else if(t.terrain==='trees' && typeof hedgeBerryFoldReady==='function' && hedgeBerryFoldReady()
+            && typeof isHedgerowT==='function' && isHedgerowT(t)
+            && typeof stripHedgeTree==='function'){
+      did = ()=>{ stripHedgeTree(t, i); };
+    }
     else if(t.terrain==='pond' || t.terrain==='trees') did = ()=>{ t.terrain = 'soil'; };
     else if(BUILD_SET.has(t.terrain)) did = ()=>{ t.terrain = 'soil'; agents = agents.filter(a=>a.tile!==i); };
     if(!did){ toast('Nothing to clear here.'); return false; }
@@ -11514,6 +11730,10 @@ function applyTool(i){
     }
     if(typeof isWillowT==='function' && isWillowT(t)){
       toast('🌿 That willow is returning — not a plant bed. Tend the bank beside it.');
+      ringAt(i, '#6fae5f'); SND.uhoh(); return false;
+    }
+    if(typeof isHedgerowT==='function' && isHedgerowT(t)){
+      toast('🫐 That hedge is returning — not a plant bed. Leave the shelter standing.');
       ringAt(i, '#6fae5f'); SND.uhoh(); return false;
     }
     if(typeof isHighPondT==='function' && isHighPondT(t)){
@@ -11670,6 +11890,12 @@ function applyTool(i){
         , {once:'first_tree_by_water', throttleMs:3500}), 600);
       }
       if(typeof earnNote==='function') earnNote('buffer', {delay:1800});
+    }
+    if(!t.farmEdge && typeof homePatchCleared==='function' && homePatchCleared()
+       && typeof currentPaddockFold==='function' && currentPaddockFold()){
+      t.farmEdge = 'hedgerow';
+      t.hedgeReady = false;
+      t.hedgeSet = 0;
     }
     afterBuild(); return true;
   }
@@ -12258,7 +12484,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.withystump';
+const SHIP_BUILD = '2026-08-22.hedgeberry';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -13981,6 +14207,7 @@ function plantGhostOk(t, toolId){
   if(typeof pathBlocksCrop==='function' && pathBlocksCrop(t)) return false;
   if(typeof isWoodlotT==='function' && isWoodlotT(t)) return false;
   if(typeof isWillowT==='function' && isWillowT(t)) return false;
+  if(typeof isHedgerowT==='function' && isHedgerowT(t)) return false;
   if(typeof isRiparianT==='function' && isRiparianT(t)) return false;
   if(typeof isHighPondT==='function' && isHighPondT(t)) return false;
   if(t.terrain!=='soil' && t.terrain!=='dead') return false;
@@ -16820,6 +17047,8 @@ function openInfo(refreshOnly){
       chips.push('🪵 stump after a heavy cut — canopy returns; soil and shelter stay thin until then');
     if(t.willowRegen!=null && (t.farmEdge==='willow' || (typeof isWillowT==='function' && isWillowT(t))))
       chips.push('🌿 stump after a strip — the willow returns; bank soil and shelter stay thin until then');
+    if(t.hedgeRegen!=null && (t.farmEdge==='hedgerow' || t.atlasFeature==='hedgerow' || (typeof isHedgerowT==='function' && isHedgerowT(t))))
+      chips.push('🫐 stump after a strip — the hedge returns; soil and shelter stay thin until then');
     if(t.graze){
       chips.push(grazeInspectLine(t.graze));
     }
@@ -16877,8 +17106,14 @@ function openInfo(refreshOnly){
     const story = soilStoryLine(t);
     const edgeLine = t.farmEdge==='windbreak'
       ? 'A thin windbreak on the weather side — neighbors hold soil a little better, and the herd walks around it.'
-      : t.farmEdge==='hedgerow'
-        ? 'A hedgerow seam from the painting — shelter for the next fold, and the herd walks around it.'
+      : t.farmEdge==='hedgerow' || (typeof isHedgerowT==='function' && isHedgerowT(t))
+        ? ((t.hedgeRegen!=null)
+          ? 'A stump after a strip — soil and shelter thin until the hedge returns. Not an open plant bed.'
+          : (typeof isHedgerowBerryT==='function' && isHedgerowBerryT(t)
+            ? (typeof hedgeBerryTileReady==='function' && hedgeBerryTileReady(t)
+              ? 'Living hedgerow — berries are ready. Tap for a crate lot; the hedge stays. Shelter still counts. Not willow, not firewood.'
+              : 'Living hedgerow — tap when berries are ready, or wait for a dawn trickle. The hedge stays. Shelter from wind. Not willow, not firewood.')
+            : 'A hedgerow seam from the painting — shelter for the next fold, and the herd walks around it.'))
         : (typeof isWillowCutT==='function' && isWillowCutT(t)) || t.farmEdge==='willow'
           ? ((t.willowRegen!=null)
             ? 'A stump after a strip — bank soil and shelter thin until the willow returns. Not an open plant bed.'
