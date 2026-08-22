@@ -7505,6 +7505,12 @@ function simStep(dt){
 }
 function harvestCrop(t, i){
   const c = CROPS[t.crop.type];
+  // Leftover Wet Meadow dress is perennial. Cuttings are a tap / dawn trickle —
+  // a kitchen cover cut would strip clover and pioneer and leave bare soil.
+  if(typeof leftoverIsMeadowForageT==='function' && leftoverIsMeadowForageT(t)){
+    if(t.crop) t.crop.growth = Math.min(0.99, +t.crop.growth || 0);
+    return;
+  }
   const f = farmCache || farmStats();
   let mult = 0.4 + t.health/100;
   if(c.yield>0 && buildNear(t,'beehive',2)) mult *= 1.2;   // pollination bonus
@@ -11697,7 +11703,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.meadowcrate';
+const SHIP_BUILD = '2026-08-22.bloomstay';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
