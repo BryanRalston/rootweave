@@ -2872,19 +2872,25 @@ function parcelDeedOffered(P, c){
   if(!neighbors.length) return true;
   return neighbors.some(id=>parcelNeighborOwned(id, c));
 }
+/** Neighbor ids that can open a leftover stamp — same list for unlock and mist hint. */
+function leftoverNeighborIds(P){
+  const ids = [];
+  const add = (id)=>{ if(id && ids.indexOf(id)<0) ids.push(id); };
+  if(!P) return ids;
+  (P.neighborParcels||[]).forEach(add);
+  const ur = P.unlockRules || {};
+  if(ur.parcelId) add(ur.parcelId);
+  (ur.parcelIds||[]).forEach(add);
+  (ur.neighborParcels||[]).forEach(add);
+  return ids;
+}
 /** Leftover stamps open after Home Patch once any neighboring plot is cleared (or a buyable neighbor is deeded). */
 function leftoverNeighborClearedOpen(P, c){
   c = c || camp;
   if(!P || !P.leftover) return false;
   if(typeof homePatchCleared==='function' && !homePatchCleared()) return false;
   ensureParcelState(c);
-  const ids = [];
-  const add = (id)=>{ if(id && ids.indexOf(id)<0) ids.push(id); };
-  (P.neighborParcels||[]).forEach(add);
-  const ur = P.unlockRules || {};
-  if(ur.parcelId) add(ur.parcelId);
-  (ur.parcelIds||[]).forEach(add);
-  (ur.neighborParcels||[]).forEach(add);
+  const ids = leftoverNeighborIds(P);
   for(let i=0;i<ids.length;i++){
     const N = valleyParcel(ids[i]);
     if(!N || N.kind==='hub') continue;
@@ -2896,13 +2902,18 @@ function leftoverNeighborClearedOpen(P, c){
   return false;
 }
 function leftoverNeighborHintNames(P){
-  const ids = [];
-  const add = (id)=>{ if(id && ids.indexOf(id)<0) ids.push(id); };
-  (P && P.neighborParcels||[]).forEach(add);
-  const ur = (P && P.unlockRules) || {};
-  if(ur.parcelId) add(ur.parcelId);
-  (ur.parcelIds||[]).forEach(add);
-  return ids.map(id=>valleyParcel(id)).filter(N=>N && N.kind!=='hub').map(N=>N.name);
+  return leftoverNeighborIds(P).map(id=>valleyParcel(id)).filter(N=>N && N.kind!=='hub').map(N=>N.name);
+}
+/** Mist copy: deeds are bought, campaign neighbors are cleared. Hub neighbors stay out. */
+function leftoverNeighborHintLine(P){
+  const entries = leftoverNeighborIds(P).map(id=>valleyParcel(id)).filter(N=>N && N.kind!=='hub');
+  if(!entries.length) return '';
+  const clears = entries.filter(N=>!N.buyable).map(N=>N.name);
+  const buys = entries.filter(N=>N.buyable).map(N=>N.name);
+  const parts = [];
+  if(clears.length) parts.push('clearing '+clears.join(' or '));
+  if(buys.length) parts.push('buying '+buys.join(' or '));
+  return 'Unlock by '+parts.join(' or ');
 }
 function parcelUnlockHint(P){
   const ur = (P && P.unlockRules) || {};
@@ -2916,8 +2927,8 @@ function parcelUnlockHint(P){
     return 'Work the neighboring field, then this fold can change hands';
   }
   if(P && P.leftover){
-    const names = leftoverNeighborHintNames(P);
-    if(names.length>1) return 'Unlock by clearing '+names.join(' or ');
+    const line = leftoverNeighborHintLine(P);
+    if(line) return line;
   }
   if(ur.type==='parcel_cleared' && ur.parcelId){
     const need = valleyParcel(ur.parcelId);
@@ -11016,7 +11027,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.leftovernbor';
+const SHIP_BUILD = '2026-08-22.nborhint';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
