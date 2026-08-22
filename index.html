@@ -3692,7 +3692,10 @@ function stampAtlasParcel(s, parcelId){
     if(A.landmark==='shed'){ if(t.terrain==='dead') seedSoil(t,36,8); t.deco='deco_stump'; }
     if(A.landmark==='trough'){
       // Stream-fed trough: a working drink, not a rock sticker.
-      t.terrain = 'pond'; carveClear(t);
+      // Never punch the painted lane to make the drink — stand beside it.
+      if(A.feature!=='path' && t.feature!=='path'){
+        t.terrain = 'pond'; carveClear(t);
+      }
     }
     if(A.landmark==='bridge'){ if(t.terrain==='dead') seedSoil(t,38,8); t.deco='deco_boulder'; }
     if(A.landmark==='ruin'){ t.deco='deco_bones'; if(!t.feature) t.feature='gully'; }
@@ -9919,7 +9922,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.lane';
+const SHIP_BUILD = '2026-08-22.lanetrough';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
