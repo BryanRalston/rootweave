@@ -1527,7 +1527,18 @@ function standPriceMult(kind){
 }
 function crateLotBase(lot){ return Math.max(1, (lot && lot.coins)|0); }
 function crateLotPriceKind(lot){ return (lot && lot.type)==='egg' ? 'egg' : 'grain'; }
-function crateLotSellPrice(lot){ return Math.max(1, Math.round(crateLotBase(lot) * standPriceMult(crateLotPriceKind(lot)))); }
+function crateLotSellPrice(lot){
+  const base = crateLotBase(lot);
+  const kind = crateLotPriceKind(lot);
+  const mult = standPriceMult(kind);
+  let n = Math.max(1, Math.round(base * mult));
+  // 🪙3 egg lots round back to 3 across the modest band — keep cheap/dear as a 1-coin step.
+  if(kind==='egg'){
+    if(mult<=0.94 && n>=base) n = Math.max(1, base-1);
+    if(mult>=1.08 && n<=base) n = base+1;
+  }
+  return n;
+}
 function meatSellPrice(kind){ return Math.max(1, Math.round((HERD_MEAT[kind]||0) * standPriceMult('meat'))); }
 function crateCurrentWorth(){
   return ensureCrate().reduce((a,l)=>a+crateLotSellPrice(l), 0);
@@ -11093,7 +11104,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.coopeggs';
+const SHIP_BUILD = '2026-08-22.egglane';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
