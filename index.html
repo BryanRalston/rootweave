@@ -2005,8 +2005,9 @@ function neighborStandHtml(opts){
       </div>`;
       }).join('')
     : `<div class="nstand-note">Crate is empty. Harvest wheat, sisters, orchard fruit, hay, woodlot firewood, or meadow forage, then bring it here.</div>`;
+  const manureReady = typeof paddockManureReady==='function' && paddockManureReady();
   const pileNote = pileN
-    ? `<div class="nstand-note">🪣 ${pileN} leftover compost ready — paint 🪣 Compost on the land (no coins). Crate leftovers and paddock bedding feed this pile.</div>`
+    ? `<div class="nstand-note">🪣 ${pileN} leftover compost ready — paint 🪣 Compost on the land (no coins). Crate leftovers${manureReady?' and paddock bedding':''} feed this pile.</div>`
     : '';
   const leftoverNote = leftoverN
     ? `<div class="nstand-note">Leftovers sat a few lane days. Compost them — you skip today's lane coins for soil.</div>`
@@ -11787,7 +11788,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.paddockmanure';
+const SHIP_BUILD = '2026-08-22.manurecopy';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -16228,6 +16229,7 @@ function openInfo(refreshOnly){
       return;
     }
     const pileLine = (typeof leftoverPileInspectLine==='function') ? leftoverPileInspectLine() : '';
+    const manureReady = typeof paddockManureReady==='function' && paddockManureReady();
     const onPile = !!(typeof isLeftoverPileTile==='function' && isLeftoverPileTile(t) && pileLine);
     if(onPile || (t.terrain==='barn' && pileLine)){
       panel.innerHTML = `<div class="ititle">🪣 Compost pile</div>
@@ -16248,7 +16250,7 @@ function openInfo(refreshOnly){
          ${crateChip}
          <button type="button" class="mbtn wood" style="width:100%;margin-top:8px" id="btnGoInside">🚪 Peek Inside</button>`
       : (t.terrain==='barn'
-        ? `<div class="chiprow">The barn — leftover compost sits in the yard beside it. Crate leftovers and paddock bedding feed that pile.</div>`
+        ? `<div class="chiprow">The barn — leftover compost sits in the yard beside it. Crate leftovers${manureReady?' and paddock bedding':''} feed that pile.</div>`
         : (t.terrain==='coop'
           ? `<div class="chiprow">The coop — hens scratch the grass. Eggs trickle into the crate by the house.</div>
              ${crateChip}`
@@ -16376,13 +16378,14 @@ function openInfo(refreshOnly){
     const high = typeof isHighPondT==='function' && isHighPondT(t);
     const marsh = typeof isMarshPondT==='function' && isMarshPondT(t);
     const paddockDrink = typeof currentPaddockFold==='function' && currentPaddockFold();
+    const manureReady = typeof paddockManureReady==='function' && paddockManureReady();
     body = high
       ? `<div class="chiprow">A high pond on the ridge — downhill fields hold a little more water and wilt a little less. Not a plant bed.</div>`
       : marsh
         ? `<div class="chiprow">A marsh pond — runoff settles here before it reaches the main river. Reeds and wet soil feed it. Not a kitchen bed.</div>`
       : paddockDrink
-        ? `<div class="chiprow">Stock water the herd stands beside. Bedding and droppings from this fold feed the compost pile. Not a kitchen pond.</div>`
-      : `<div class="chiprow">Stores rain, waters nearby soil, and keeps the farm safe in droughts. Dragonflies love it.</div>`;
+        ? `<div class="chiprow">Stock water the herd stands beside.${manureReady?' Bedding and droppings from this fold feed the compost pile.':''} Not a kitchen pond.</div>`
+        : `<div class="chiprow">Stores rain, waters nearby soil, and keeps the farm safe in droughts. Dragonflies love it.</div>`;
   }else if(t.terrain==='water'){
     const wq = Math.round(state.waterQuality);
     const mood = wq>=80 ? '✨ Crystal clear — fish and ducks are home!' : wq>=55 ? '🙂 Clearing up — keep the banks planted!' : '🟤 Murky with runoff from bare soil…';
