@@ -4198,6 +4198,29 @@ function leftoverStampOpen(t){
 function leftoverStampLand(t){
   return leftoverStampOpen(t) && (t.terrain==='soil' || t.terrain==='dead');
 }
+/** Interior leftover land that can take a fruit-tree seat. Leave play edges for windbreak / hedgerow. */
+function leftoverOrchardSeatOk(t, g){
+  if(!t || !leftoverStampLand(t)) return false;
+  if(t.feature==='path' || t.feature==='swale' || t.feature==='saltflat') return false;
+  if(t.atlasLandmark) return false;
+  if(typeof isFarmEdgeT==='function' && isFarmEdgeT(t)) return false;
+  if(typeof isWoodlotT==='function' && isWoodlotT(t)) return false;
+  const side = (g|0) || (typeof GRID==='number' ? GRID : 0);
+  if(side>2){
+    const c = t.c|0, r = t.r|0;
+    if(r===0 || r===side-1 || c===0 || c===side-1) return false;
+  }
+  return true;
+}
+/** Atlas orchard / leftover fruit trees — not a woodlot belt, not a hay row. */
+function leftoverIsOrchardGroveT(t){
+  if(!t) return false;
+  if(t.terrain==='orchard') return true;
+  if(t.terrain!=='trees') return false;
+  if(typeof isFarmEdgeT==='function' && isFarmEdgeT(t)) return false;
+  if(typeof isWoodlotT==='function' && isWoodlotT(t)) return false;
+  return t.atlasBiome==='orchard';
+}
 const STOCK_DRINK_DIRS = [[1,0],[-1,0],[0,1],[0,-1]];
 /** Working paddock drink. Pond only — river, wash, and riverbed are not stock water. */
 function isStockDrinkT(t){
@@ -4482,22 +4505,57 @@ function dressLeftoverStamp(s, P){
     return;
   }
   if(feel==='orchard'){
-    const wantGrove = Math.max(3, Math.round(GRID*0.22));
-    let grove = tiles.filter(t=>t.terrain==='trees' || t.terrain==='orchard').length;
+    // Restore atlas orchard trees already on this crop. Leave woodlot / windbreak belts alone.
+    tiles.forEach(t=>{
+      if(!t || t.terrain!=='trees') return;
+      if(typeof isFarmEdgeT==='function' && isFarmEdgeT(t)) return;
+      if(typeof isWoodlotT==='function' && isWoodlotT(t)) return;
+      if(t.atlasBiome==='orchard'){
+        t.terrain = 'orchard';
+        if(typeof carveClear==='function') carveClear(t);
+      }
+    });
+    const g = (s.gridSize|0) || GRID;
+    const wantGrove = Math.max(8, Math.round((g*g)*0.20));
+    let grove = tiles.filter(t=>typeof leftoverIsOrchardGroveT==='function' ? leftoverIsOrchardGroveT(t) : t.terrain==='orchard').length;
+    const scoreGrove = (t)=>{
+      let n = 0;
+      if(t.atlasBiome==='orchard') n += 6;
+      // Rows / alleys: fruit on even cols, odd rows — clumps fill if the row is short.
+      if(((t.c|0)%2)===0 && ((t.r|0)%2)===1) n += 8;
+      if(typeof leftoverCanopyNear==='function' && leftoverCanopyNear(s, t)) n += 3;
+      n += roll(t, 1) * 1.2;
+      return n;
+    };
+    tiles.filter(t=>leftoverOrchardSeatOk(t, g)).slice().sort((a,b)=>scoreGrove(b)-scoreGrove(a)).forEach(t=>{
+      if(grove>=wantGrove) return;
+      const row = ((t.c|0)%2)===0 && ((t.r|0)%2)===1;
+      const clump = typeof leftoverCanopyNear==='function' && leftoverCanopyNear(s, t) && roll(t,2)<0.62;
+      if(!(row || clump || grove < Math.round(wantGrove*0.4))) return;
+      t.terrain = 'orchard';
+      if(typeof carveClear==='function') carveClear(t);
+      grove++;
+    });
+    // Light understory in the alleys — clover / pioneers / flowers / soil the player can still work.
     tiles.forEach(t=>{
       if(!leftoverStampLand(t)) return;
-      if(grove<wantGrove && ((t.c+t.r)%2===0) && roll(t,1)<0.55){
-        t.terrain = 'trees'; carveClear(t);
-        grove++;
-        return;
+      const under = typeof leftoverCanopyNear==='function' && leftoverCanopyNear(s, t);
+      if(t.terrain==='dead' && (under || roll(t,3)<0.46)){
+        seedSoil(t, 28 + roll(t,4)*8, 8);
       }
-      if(t.terrain==='dead' || (t.terrain==='soil' && roll(t,2)<0.32)){
-        if(t.terrain==='soil') makeDead(t);
+      if(t.terrain!=='soil') return;
+      t.soil.om = Math.min(100, (t.soil.om||30)+6);
+      t.soil.erosion = Math.min(100, (t.soil.erosion||30)+8);
+      if(under){
+        t.soil.water = Math.min(100, (t.soil.water||30)+6);
+        t.flowers = Math.max(t.flowers||0, 0.16 + roll(t,5)*0.24);
+        if(!t.crop && !t.deco && roll(t,6)<0.42){
+          t.crop = {type: roll(t,7)<0.58 ? 'clover' : 'covercrop', growth:0.30, days:2};
+        }
+      } else if(!t.deco && roll(t,8)<0.18){
         t.deco = 'deco_deadtree';
-      } else if(t.terrain==='soil'){
-        t.soil.om = Math.min(100, (t.soil.om||30)+4);
-        recalc(t);
       }
+      recalc(t);
     });
     return;
   }
@@ -4899,7 +4957,9 @@ function waterTileIdx(){
 }
 function treeAdj(t){
   for(let dr=-1; dr<=1; dr++) for(let dc=-1; dc<=1; dc++){
-    if((dc||dr) && inGrid(t.c+dc,t.r+dr) && state.grid[idx(t.c+dc,t.r+dr)].terrain==='trees') return true;
+    if(!(dc||dr) || !inGrid(t.c+dc,t.r+dr)) continue;
+    const n = state.grid[idx(t.c+dc,t.r+dr)];
+    if(n && (n.terrain==='trees' || n.terrain==='orchard')) return true;
   }
   return false;
 }
@@ -4920,7 +4980,7 @@ function healthyNeighbors(t){
     if(!inGrid(c,r)) return;
     const nb = state.grid[idx(c,r)];
     if(nb.terrain==='soil' && nb.health>=65) n++;
-    if(nb.terrain==='trees' || isWaterT(nb)) n += 0.5;   // living edges help too
+    if(nb.terrain==='trees' || nb.terrain==='orchard' || isWaterT(nb)) n += 0.5;   // living edges help too
   });
   return n;
 }
@@ -10289,7 +10349,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.southwash';
+const SHIP_BUILD = '2026-08-22.orchgrove';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
