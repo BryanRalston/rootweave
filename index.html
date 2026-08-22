@@ -1033,6 +1033,10 @@ const ORCHARD_REGEN_DAYS = 8; // strip-cut stump returns as a living fruit tree;
 const ORCHARD_STRIP_SOIL = {om:-2, erosion:-3, water:-1, microbial:-1}; // strip nicks the hang; not firewood
 const STAND_HAY_SEASON   = [1.06, 0.88, 0.92, 1.18]; // last stores; summer cut; fall still plenty; winter feed
 const HAY_LOT = 3;   // modest crate lot — like eggs, well under a wheat cut
+const HAY_THIN_SET = 0.10; // cuttings / day on a living hay stand — the dress stays
+const HAY_AUTO_PICK = 1;    // light dawn trickle — tap can pick the rest
+const HAY_REGEN_DAYS = 8; // strip-cut stubble returns as standing hay; never an empty plant bed
+const HAY_STRIP_SOIL = {om:-2, erosion:-3, water:-1, microbial:-1}; // strip nicks cover; graze waits until the stand returns
 const STAND_TIMBER_SEASON = [1.02, 0.88, 1.08, 1.18]; // spring leftover; summer cheap; fall stack; winter firewood dear
 const TIMBER_LOT = 3;   // modest crate lot — like hay / eggs, well under a wheat cut
 const TIMBER_THIN_SET = 0.05; // careful limb / day on a woodlot tree — tap when ready
@@ -2680,7 +2684,7 @@ function leftoverStampStory(feel, P){
   const name = (P && P.name) || 'This fold';
   const desc = (P && P.desc) ? String(P.desc).trim()+' ' : '';
   const line = {
-    hay: 'Open hay and cover — cut forage into the crate, rest the ground, keep the weather-side windbreak. Not a kitchen row.',
+    hay: 'Open hay and cover — cut forage into the crate, rest the ground, keep the weather-side windbreak. Leave enough stand; strip it bare and graze waits until it returns. Not a kitchen row.',
     woodlot: 'Shade and brush. Thin a little firewood; leave the canopy. Restore the understory.',
     wet: (P && P.id==='willow_bottom')
       ? 'Living willow on wet ground. Cut withies into the crate; leave the tree. Strip the stand and the bank loses shelter. Not meadow forage, not firewood.'
@@ -6446,6 +6450,7 @@ function leftoverStampOpen(t){
   if(t.feature==='path' || t.feature==='swale') return false;
   if(typeof isReedT==='function' && isReedT(t)) return false;
   if(typeof isOrchardT==='function' && isOrchardT(t)) return false;
+  if(typeof isHayStubbleT==='function' && isHayStubbleT(t)) return false;
   if(isFarmEdgeT(t)) return false; // windbreak / hedgerow / woodlot / bank buffer / orchard stump: herd walks around, not through
   if(typeof isRiparianT==='function' && isRiparianT(t)) return false;
   if(typeof isWoodlotT==='function' && isWoodlotT(t)) return false;
@@ -6536,6 +6541,206 @@ function harvestHayBale(t, i){
   if(typeof refreshNeighborStandIfOpen==='function') refreshNeighborStandIfOpen();
   if(typeof updateHUD==='function') updateHUD();
   return true;
+}
+/** Field under the player, or the parked hay fold while they are in the yard. */
+function hayCutFarm(){
+  if(typeof homesteadMode!=='undefined' && homesteadMode && typeof plotStateBackup!=='undefined'
+     && plotStateBackup && plotStateBackup.grid && !plotStateBackup.homesteadView){
+    return plotStateBackup;
+  }
+  if(state && !state.homesteadView) return state;
+  return null;
+}
+/** Returning hay after a strip — not a plant bed, not a graze pad. */
+function isHayStubbleT(t){
+  return !!(t && t.hayRegen!=null);
+}
+/** Living hay stand the crate can take — clover / pioneer / wheat on a hay-marked fold. Not meadow bloom, not sisters, not orchard. */
+function leftoverIsHayCutT(t, s){
+  if(!t) return false;
+  s = s || (typeof hayCutFarm==='function' ? hayCutFarm() : (typeof state!=='undefined' ? state : null));
+  if(typeof hayFoldReady==='function' ? !hayFoldReady(s) : true) return false;
+  if(s && s.grid && s.grid.indexOf(t) < 0) return false;
+  if(t.crop && t.crop.type==='sisters') return false;
+  if(typeof leftoverIsMeadowForageT==='function' && leftoverIsMeadowForageT(t, s)) return false;
+  if(typeof leftoverIsOrchardGroveT==='function' && leftoverIsOrchardGroveT(t)) return false;
+  if(typeof isMarshReedT==='function' && isMarshReedT(t, s)) return false;
+  return typeof leftoverIsHayForageT==='function' ? leftoverIsHayForageT(t) : false;
+}
+function leftoverSeedHayCut(t){
+  if(!t || (typeof leftoverIsHayForageT==='function' ? !leftoverIsHayForageT(t) : true)) return;
+  if(t.crop && t.crop.type==='sisters') return;
+  if(t.hayReady!=null || t.haySet!=null) return;
+  const u = sr(((t.c|0)*19 + (t.r|0)*41 + 17));
+  t.hayReady = u >= 0.58;
+  t.haySet = t.hayReady ? 0 : u;
+}
+function hayTileReady(t, s){
+  if(!leftoverIsHayCutT(t, s)) return false;
+  leftoverSeedHayCut(t);
+  return !!(t && t.hayReady);
+}
+function hayCutRate(s){
+  let r = HAY_THIN_SET;
+  const season = (s && (s.season|0)) || 0;
+  if(season===1) r *= 1.12; // summer cut
+  if(season===3) r *= 0.78; // winter rest
+  return r;
+}
+function hayCutFloaterIdx(s, i){
+  if(state && state.grid && s && s.grid && state.grid===s.grid && state.grid[i]) return i;
+  if(typeof selected==='number' && selected>=0 && state && state.grid && state.grid[selected]) return selected;
+  if(state && state.grid){
+    for(let k=0;k<state.grid.length;k++){
+      if(state.grid[k] && (state.grid[k].terrain==='nstand' || state.grid[k].terrain==='house' || state.grid[k].terrain==='coop')) return k;
+    }
+  }
+  return (typeof selected==='number' && selected>=0) ? selected : 0;
+}
+function hayCutStory(tier){
+  return '🌾 Standing hay — a forage cut for the crate, not a kitchen till and not meadow bloom. Neighbors pay more in winter feed season. Leave enough stand; strip it bare and graze waits until it returns. '+(tier||'');
+}
+/** Living forage still standing on this hay fold. Stubbles do not count. */
+function hayStandLivingCount(s){
+  s = s || (typeof hayCutFarm==='function' ? hayCutFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return 0;
+  let n = 0;
+  s.grid.forEach(t=>{
+    if(typeof leftoverIsHayForageT==='function' && leftoverIsHayForageT(t)) n++;
+  });
+  return n;
+}
+/** Fold was stripped — no living hay left, only returning stubble. Graze waits. */
+function hayStandBare(s){
+  s = s || (typeof hayCutFarm==='function' ? hayCutFarm() : (typeof state!=='undefined' ? state : null));
+  if(typeof hayFoldReady==='function' ? !hayFoldReady(s) : true) return false;
+  if(!s || !s.grid) return false;
+  let living = 0, stubbles = 0;
+  s.grid.forEach(t=>{
+    if(typeof leftoverIsHayForageT==='function' && leftoverIsHayForageT(t)) living++;
+    if(isHayStubbleT(t)) stubbles++;
+  });
+  return living===0 && stubbles>0;
+}
+function bankHayCutLot(t, i, s, opts){
+  const o = opts || {};
+  if(typeof bankHarvestLot==='function') bankHarvestLot({type:'hay', em:'🌾', name:'Hay', coins:HAY_LOT});
+  if(state && state.stats) state.stats.harvests = (state.stats.harvests|0) + 1;
+  const fi = hayCutFloaterIdx(s, i);
+  if(typeof floater==='function' && state && state.grid && state.grid[fi]){
+    floater(fi, o.stripCut ? '🌾 crate · stand gone' : '🌾 crate', o.stripCut ? '#c9a070' : '#ffd45e', 16);
+  }
+  if(typeof burst==='function' && state && state.grid && state.grid[fi]) burst(fi, o.stripCut ? '#c9b896' : '#e8d4a0', 6);
+  if(typeof SND!=='undefined' && SND && typeof SND.place==='function') SND.place();
+  if(typeof toast==='function'){
+    toast(o.stripCut
+      ? '🌾 Heavy cut — hay in the crate, but the stand is gone. Graze waits until the cover returns.'
+      : '🌾 Hay in the crate by the house. Neighbors pay more in winter feed season — or let it sit for the pile.',
+      {once: o.stripCut ? 'hay_strip_first' : 'hay_first_bank', throttleMs:4000});
+  }
+  if(typeof refreshNeighborStandIfOpen==='function') refreshNeighborStandIfOpen();
+  if(typeof updateHUD==='function') updateHUD();
+}
+/** Tap a ready hay stand — careful cut. The crop stays. */
+function harvestHayTile(t, i, opts){
+  const o = opts || {};
+  const s = o.farm || (typeof hayCutFarm==='function' ? hayCutFarm() : state);
+  if(!t) return false;
+  if(typeof hayFoldReady==='function' ? !hayFoldReady(s) : true) return false;
+  if(!hayTileReady(t, s)) return false;
+  t.hayReady = false;
+  t.haySet = 0;
+  bankHayCutLot(t, i, s, o);
+  return true;
+}
+function applyHayStripSoil(t, s){
+  s = s || (typeof state!=='undefined' ? state : null);
+  if(!t || !t.soil) return 0;
+  const b = HAY_STRIP_SOIL;
+  const bump = (tile)=>{
+    if(!tile || !tile.soil) return;
+    tile.soil.om = clamp((tile.soil.om||0) + b.om);
+    tile.soil.erosion = clamp((tile.soil.erosion||0) + b.erosion);
+    tile.soil.water = clamp((tile.soil.water||0) + b.water);
+    tile.soil.microbial = clamp((tile.soil.microbial||0) + b.microbial);
+    if(typeof recalc==='function') recalc(tile);
+  };
+  bump(t);
+  const g = (s && ((s.gridSize|0) || (typeof GRID==='number' ? GRID : 0))) || 0;
+  if(s && s.grid && g>0){
+    const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+    for(let k=0;k<dirs.length;k++){
+      const c = (t.c|0)+dirs[k][0], r = (t.r|0)+dirs[k][1];
+      if(c<0 || r<0 || c>=g || r>=g) continue;
+      bump(s.grid[r*g+c]);
+    }
+  }
+  return 1;
+}
+/** Strip the hay stand: forage now, soil nick, stubble regenerates. Never an empty plant bed. */
+function stripHayStand(t, i, opts){
+  const o = opts || {};
+  const s = o.farm || (typeof hayCutFarm==='function' ? hayCutFarm() : state);
+  if(!t || !t.crop) return false;
+  if(typeof hayFoldReady==='function' ? !hayFoldReady(s) : true) return false;
+  if(typeof leftoverIsHayForageT==='function' ? !leftoverIsHayForageT(t) : true) return false;
+  if(typeof leftoverIsMeadowForageT==='function' && leftoverIsMeadowForageT(t, s)) return false;
+  const kind = t.crop.type;
+  applyHayStripSoil(t, s);
+  t.hayKind = kind;
+  t.crop = null;
+  t.graze = null;
+  t.deco = 'deco_stump';
+  t.decoRot = 0;
+  t.hayReady = false;
+  t.haySet = 0;
+  t.hayRegen = 0;
+  bankHayCutLot(t, i, s, {stripCut:true});
+  return true;
+}
+function tickHayCutGrow(s){
+  if(!s || !s.grid) return;
+  s.grid.forEach(t=>{
+    if(!t) return;
+    if(t.hayRegen!=null){
+      t.hayRegen = (t.hayRegen|0) + 1;
+      if(t.hayRegen >= HAY_REGEN_DAYS){
+        const kind = (t.hayKind==='wheat' || t.hayKind==='clover' || t.hayKind==='covercrop') ? t.hayKind : 'clover';
+        t.crop = {type:kind, growth:0.30, days:2};
+        if(t.deco==='deco_stump') t.deco = null;
+        t.hayRegen = null;
+        t.hayKind = null;
+        t.hayReady = false;
+        t.haySet = 0;
+      }
+      return;
+    }
+    if(typeof hayFoldReady==='function' ? !hayFoldReady(s) : true) return;
+    if(!leftoverIsHayCutT(t, s)) return;
+    leftoverSeedHayCut(t);
+    if(t.hayReady) return;
+    t.haySet = Math.max(0, +t.haySet || 0) + hayCutRate(s);
+    if(t.haySet >= 1){
+      t.hayReady = true;
+      t.haySet = 0;
+    }
+  });
+}
+/** One sim dawn: a ready hay stand may bank a small lot. The crop stays. */
+function tickHayCut(){
+  if(!camp) return 0;
+  const s = typeof hayCutFarm==='function' ? hayCutFarm() : (typeof state!=='undefined' ? state : null);
+  if(typeof hayFoldReady==='function' ? !hayFoldReady(s) : true) return 0;
+  if(!s || !s.grid) return 0;
+  tickHayCutGrow(s);
+  const ready = [];
+  s.grid.forEach((t,i)=>{ if(hayTileReady(t, s)) ready.push(i); });
+  if(!ready.length) return 0;
+  let n = 0;
+  for(let k=0;k<Math.min(HAY_AUTO_PICK, ready.length);k++){
+    if(harvestHayTile(s.grid[ready[k]], ready[k], {farm:s, auto:true})) n++;
+  }
+  return n;
 }
 /** Interior leftover land that can take a clover / cover graze start. Leave drink + play edges. */
 function leftoverPaddockSeatOk(t, g){
@@ -6714,7 +6919,7 @@ function tickPaddockStockThirst(){
 /** Seated / atlas / planted windbreak, hedgerow, or woodlot canopy — not riparian, not a stump. */
 function isWindShelterT(t){
   if(!t) return false;
-  if(t.woodRegen!=null || t.willowRegen!=null || t.hedgeRegen!=null || t.reedRegen!=null || t.orchardRegen!=null) return false;
+  if(t.woodRegen!=null || t.willowRegen!=null || t.hedgeRegen!=null || t.reedRegen!=null || t.orchardRegen!=null || t.hayRegen!=null) return false;
   if(typeof isRiparianT==='function' && isRiparianT(t)) return false;
   if(t.farmEdge==='windbreak' || t.farmEdge==='hedgerow' || t.farmEdge==='woodlot' || t.farmEdge==='willow') return true;
   if(typeof isWoodlotT==='function' && isWoodlotT(t)) return true;
@@ -7501,8 +7706,14 @@ function dressLeftoverStamp(s, P){
       const type = pick<0.42 ? 'clover' : pick<0.78 ? 'covercrop' : 'wheat';
       t.crop = {type, growth:0.30 + roll(t,4)*0.20, days:2};
       t.deco = null;
+      if(typeof leftoverSeedHayCut==='function') leftoverSeedHayCut(t);
       forage++;
     });
+    if(typeof leftoverSeedHayCut==='function'){
+      tiles.forEach(t=>{
+        if(t && typeof leftoverIsHayForageT==='function' && leftoverIsHayForageT(t)) leftoverSeedHayCut(t);
+      });
+    }
     let bales = tiles.filter(t=>t.deco==='deco_haybales').length;
     const wantBales = 3;
     tiles.filter(t=>leftoverHaySeatOk(t, g) && t.terrain==='soil' && !t.crop).slice().sort((a,b)=>roll(b,5)-roll(a,5)).forEach(t=>{
@@ -9630,6 +9841,7 @@ function simStep(dt){
     if(typeof tickMarshReed==='function') tickMarshReed();
     if(typeof tickMarshDuckEggs==='function') tickMarshDuckEggs();
     if(typeof tickMeadowForage==='function') tickMeadowForage();
+    if(typeof tickHayCut==='function') tickHayCut();
     if(typeof tickPaddockManure==='function') tickPaddockManure();
     if(typeof tickPaddockStockThirst==='function') tickPaddockStockThirst();
     if(typeof tickPaddockWindShelter==='function') tickPaddockWindShelter();
@@ -9670,24 +9882,21 @@ function harvestCrop(t, i){
     if(t.crop) t.crop.growth = Math.min(0.99, +t.crop.growth || 0);
     return;
   }
+  // Hay-marked folds are perennial cover. A kitchen cut would strip the stand.
+  // Tap / dawn trickle banks hay; Clear is the strip that leaves stubble.
+  if((typeof leftoverIsHayCutT==='function' && leftoverIsHayCutT(t))
+     || (typeof hayFoldReady==='function' && hayFoldReady()
+         && typeof leftoverIsHayForageT==='function' && leftoverIsHayForageT(t)
+         && t.crop && t.crop.type!=='sisters')){
+    if(t.crop) t.crop.growth = Math.min(0.99, +t.crop.growth || 0);
+    return;
+  }
   const f = farmCache || farmStats();
   let mult = 0.4 + t.health/100;
   if(c.yield>0 && buildNear(t,'beehive',2)) mult *= 1.2;   // pollination bonus
   if(c.yield>0 && (f.b.silo||0)>0) mult *= 1.15;           // silo: stored & sold well
   const coins = Math.round(c.yield * mult);
-  const hayCut = typeof hayFoldReady==='function' && hayFoldReady()
-    && (typeof leftoverIsHayForageT==='function' ? leftoverIsHayForageT(t) : (t.crop && (t.crop.type==='clover' || t.crop.type==='covercrop' || t.crop.type==='wheat')));
-  if(hayCut){
-    // Hay folds cut forage, not a kitchen wheat till. Modest lot — same crate / stand / pile.
-    if(typeof bankHarvestLot==='function') bankHarvestLot({type:'hay', em:'🌾', name:'Hay', coins:HAY_LOT});
-    floater(i, '🌾 crate', '#ffd45e', 17);
-    burst(i, '#e8d4a0', 8);
-    SND.place();
-    if(camp){
-      if(!camp.tipsShown) camp.tipsShown = {};
-      toast('🌾 Hay in the crate by the house. Neighbors pay more in winter feed season — or let it sit for the pile.', {once:'hay_first_bank', throttleMs:4000});
-    }
-  }else if(coins>0){
+  if(coins>0){
     // Home Patch first-run still pays on the tile. After that, the crate by the house holds it.
     if(typeof neighborStandUnlocked==='function' && neighborStandUnlocked()){
       bankHarvestLot({type:t.crop.type, em:c.em, name:c.name, coins});
@@ -9729,13 +9938,13 @@ function harvestCrop(t, i){
     t.soil.nutrients = clamp(t.soil.nutrients+4);
   }
   if(c.cover) t.flowers = Math.min(1, t.flowers+0.35);
-  if(!hayCut && !c.diverse && Math.random()<0.35){
+  if(!c.diverse && Math.random()<0.35){
     toast(typeof neighborStandUnlocked==='function' && neighborStandUnlocked()
       ? '🌾 Quick Wheat filled the crate… but that soil feels tired.'
       : '🌾 Quick Wheat paid fast… but that soil feels tired.');
   }
   if(t.crop && t.crop.type==='wheat' && typeof earnNote==='function'
-     && !hayCut && !(typeof hayFoldForageWheat==='function' && hayFoldForageWheat(t))) earnNote('lonely');
+     && !(typeof hayFoldForageWheat==='function' && hayFoldForageWheat(t))) earnNote('lonely');
   t.crop = null;
   recalc(t);
   checkBadges();
@@ -13002,8 +13211,10 @@ function soilStoryLine(t){
     const c = CROPS[t.crop.type];
     if(t.crop.type==='sisters')
       return '🌽 The guild — corn is the pole, beans feed nitrogen, squash shades weeds. A team feeds the soil. '+tier;
+    if(typeof leftoverIsHayCutT==='function' && leftoverIsHayCutT(t))
+      return (typeof hayCutStory==='function' ? hayCutStory(tier) : '🌾 Standing hay for the crate. '+tier);
     if(typeof hayFoldForageWheat==='function' && hayFoldForageWheat(t))
-      return '🌾 Standing hay — a forage cut for the crate, not a kitchen till. Neighbors pay more in winter feed season. '+tier;
+      return (typeof hayCutStory==='function' ? hayCutStory(tier) : '🌾 Standing hay — a forage cut for the crate, not a kitchen till. Neighbors pay more in winter feed season. '+tier);
     if(typeof leftoverIsMeadowForageT==='function' && leftoverIsMeadowForageT(t))
       return (typeof meadowForageStory==='function' ? meadowForageStory(tier) : '🌼 Wild meadow cuttings for the crate. '+tier);
     if(t.crop.type==='wheat' || (!c.diverse && !c.cover)){
@@ -13016,6 +13227,8 @@ function soilStoryLine(t){
     if(c.diverse) return (c.em||'🌽')+' Diverse crop growing. '+tier;
     return (c.em||'🌾')+' Crop in the ground. '+tier;
   }
+  if(typeof isHayStubbleT==='function' && isHayStubbleT(t))
+    return '🌾 Stubble after a strip — the hay returns; soil thins and graze waits until then. '+tier;
   if(!t.crop && !t.graze && ((t.sinceGraze||999) < 8 || (t.sinceCattle||999) < 8))
     return '🕯️ Sabbath — rest after the herd. Roots and microbes work when you aren\'t extracting. '+tier;
   if(t.revivedOnce && h < 60){
@@ -13149,6 +13362,11 @@ function applyTool(i){
       ringAt(i, '#ffe89a');
       return true;
     }
+    if(typeof harvestHayTile==='function' && harvestHayTile(t, i)){
+      openInfo();
+      ringAt(i, '#ffe89a');
+      return true;
+    }
     if(typeof harvestMeadowTile==='function' && harvestMeadowTile(t, i)){
       openInfo();
       ringAt(i, '#ffe89a');
@@ -13193,7 +13411,18 @@ function applyTool(i){
   if(tool==='bridge'){ toast('🌉 Bridges go ON the river!'); return false; }
   if(tool==='bulldoze'){
     let did = null;
-    if(isLandT(t) && t.crop) did = ()=>{ t.crop = null; };
+    if(typeof isHayStubbleT==='function' && isHayStubbleT(t)){
+      toast('🌾 That hay is returning — not an empty plant bed. Leave the stubble until the stand comes back.');
+      SND.uhoh(); return false;
+    }
+    if(isLandT(t) && t.crop
+       && typeof hayFoldReady==='function' && hayFoldReady()
+       && typeof leftoverIsHayForageT==='function' && leftoverIsHayForageT(t)
+       && !(typeof leftoverIsMeadowForageT==='function' && leftoverIsMeadowForageT(t))
+       && typeof stripHayStand==='function'){
+      did = ()=>{ stripHayStand(t, i); };
+    }
+    else if(isLandT(t) && t.crop) did = ()=>{ t.crop = null; };
     else if(isLandT(t) && t.graze){
       toast('Move the herd — they live here.');
       SND.uhoh(); return false;
@@ -13346,6 +13575,10 @@ function applyTool(i){
       toast('🍎 That orchard is returning — not a plant bed. Leave the trees standing.');
       ringAt(i, '#6fae5f'); SND.uhoh(); return false;
     }
+    if(typeof isHayStubbleT==='function' && isHayStubbleT(t)){
+      toast('🌾 That hay is returning — not a plant bed. Leave the stubble until the stand comes back.');
+      ringAt(i, '#6fae5f'); SND.uhoh(); return false;
+    }
     if(typeof isHighPondT==='function' && isHighPondT(t)){
       toast('💧 The high pond is not a plant bed — tend the downhill fields.');
       ringAt(i, '#7fc4ee'); SND.uhoh(); return false;
@@ -13362,6 +13595,7 @@ function applyTool(i){
     if(state.unlocks.upg_seeds) cost = Math.max(1, cost-1);
     if(!spend(cost)) return false;
     t.crop = {type:tool, growth:0.05, days:0};
+    if(typeof leftoverSeedHayCut==='function' && typeof leftoverIsHayForageT==='function' && leftoverIsHayForageT(t)) leftoverSeedHayCut(t);
     if(tool==='sisters'){
       t.soil.om+=3.5; t.soil.nutrients+=3.5; t.soil.microbial+=2.5; t.soil.water+=1;
       state.stats.sistersPlanted = (state.stats.sistersPlanted|0) + 1;
@@ -13437,6 +13671,14 @@ function applyTool(i){
       toast('🍎 The herd walks around the orchard — leave the trees standing.');
       ringAt(i, '#6fae5f'); SND.uhoh(); return false;
     }
+    if(typeof isHayStubbleT==='function' && isHayStubbleT(t)){
+      toast('🌾 The herd walks around the returning hay — leave the stubble until the stand comes back.');
+      ringAt(i, '#6fae5f'); SND.uhoh(); return false;
+    }
+    if(typeof hayStandBare==='function' && hayStandBare()){
+      toast('🌾 The hay stand is gone — graze waits until the cover returns.');
+      ringAt(i, '#c9a070'); SND.uhoh(); return false;
+    }
     // L5 — graze branch only for animal tools (never bleed into orchard/build wording)
     if(dead && tool!=='goat'){
       toast(toolAllowed('goat') ? '💀 Nothing to eat on dead ground… only 🐐 goats can browse this scrub!'
@@ -13485,6 +13727,10 @@ function applyTool(i){
       toast('🍎 That orchard is returning — not a pond bed. Leave the trees standing.');
       ringAt(i, '#6fae5f'); SND.uhoh(); return false;
     }
+    if(typeof isHayStubbleT==='function' && isHayStubbleT(t)){
+      toast('🌾 That hay is returning — not a pond bed. Leave the stubble until the stand comes back.');
+      ringAt(i, '#6fae5f'); SND.uhoh(); return false;
+    }
     if(!spend(td.cost)) return false;
     if(typeof rememberHomeWaterMarks==='function') rememberHomeWaterMarks(t);
     t.terrain = 'pond'; t.flowers = 0; t.deco = null; t.feature = null;
@@ -13509,6 +13755,10 @@ function applyTool(i){
     }
     if(typeof isOrchardT==='function' && isOrchardT(t)){
       toast('🍎 That orchard is returning — not a plant bed. Leave the trees standing.');
+      ringAt(i, '#6fae5f'); SND.uhoh(); return false;
+    }
+    if(typeof isHayStubbleT==='function' && isHayStubbleT(t)){
+      toast('🌾 That hay is returning — not a plant bed. Leave the stubble until the stand comes back.');
       ringAt(i, '#6fae5f'); SND.uhoh(); return false;
     }
     if(!spend(td.cost)) return false;
@@ -13662,6 +13912,10 @@ function applyTool(i){
     }
     if(typeof isOrchardT==='function' && isOrchardT(t)){
       toast('🍎 That orchard is returning — not a plant bed. Leave the trees standing.');
+      ringAt(i, '#6fae5f'); SND.uhoh(); return false;
+    }
+    if(typeof isHayStubbleT==='function' && isHayStubbleT(t)){
+      toast('🌾 That hay is returning — not a plant bed. Leave the stubble until the stand comes back.');
       ringAt(i, '#6fae5f'); SND.uhoh(); return false;
     }
     if(tool==='wetland' && dead){ toast('💀 Wetland plants need living ground — revive this tile first!'); SND.uhoh(); return false; }
@@ -14168,7 +14422,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.orchardfruit';
+const SHIP_BUILD = '2026-08-22.haycrate';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -15901,6 +16155,7 @@ function plantGhostOk(t, toolId){
   if(typeof isReedT==='function' && isReedT(t)) return false;
   if(typeof isHedgerowT==='function' && isHedgerowT(t)) return false;
   if(typeof isOrchardT==='function' && isOrchardT(t)) return false;
+  if(typeof isHayStubbleT==='function' && isHayStubbleT(t)) return false;
   if(typeof isRiparianT==='function' && isRiparianT(t)) return false;
   if(typeof isHighPondT==='function' && isHighPondT(t)) return false;
   if(t.terrain!=='soil' && t.terrain!=='dead') return false;
@@ -18774,10 +19029,16 @@ function openInfo(refreshOnly){
     }
     if(t.deco==='deco_haybales' && typeof hayBaleReady==='function' && hayBaleReady(t))
       chips.push('🌾 cut hay — tap to pick into the crate');
+    if(typeof hayTileReady==='function' && hayTileReady(t))
+      chips.push('🌾 hay ready — tap to cut into the crate');
+    else if(typeof leftoverIsHayCutT==='function' && leftoverIsHayCutT(t))
+      chips.push('🌾 standing hay — tap when a cut is ready');
     if(typeof meadowForageTileReady==='function' && meadowForageTileReady(t))
       chips.push('🌼 wild cuttings ready — tap to pick into the crate');
     else if(typeof leftoverIsMeadowForageT==='function' && leftoverIsMeadowForageT(t))
       chips.push('🌼 wild cuttings — tap when the bloom is ready');
+    if(t.hayRegen!=null || (typeof isHayStubbleT==='function' && isHayStubbleT(t)))
+      chips.push('🌾 stubble after a strip — the stand returns; graze waits until then');
     if(t.woodRegen!=null && (t.farmEdge==='woodlot' || t.atlasFeature==='woodlot'))
       chips.push('🪵 stump after a heavy cut — canopy returns; soil and shelter stay thin until then');
     if(t.willowRegen!=null && (t.farmEdge==='willow' || (typeof isWillowT==='function' && isWillowT(t))))
@@ -18793,6 +19054,8 @@ function openInfo(refreshOnly){
     }
     if(t.atlasLandmark==='trough' && typeof paddockStockThirstNeed==='function' && paddockStockThirstNeed())
       chips.push('💧 dry trough — the herd needs a drink they can stand beside');
+    if(typeof hayStandBare==='function' && hayStandBare() && !t.crop && !t.graze && !(typeof isHayStubbleT==='function' && isHayStubbleT(t)))
+      chips.push('🌾 the hay stand is gone — graze waits until cover returns');
     if(!t.crop && !t.graze) chips.push('💤 resting & regenerating');
     if(t.feature==='swale'){
       const swaleChip = (typeof homeWaterStory==='function' && homeWaterStory(t)) || '〰️ contour — holds water for the beds below';
