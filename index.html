@@ -21139,8 +21139,11 @@ function mapThirstFolds(){
   const s = typeof mapThirstFarm==='function' ? mapThirstFarm() : null;
   if(!s || typeof paddockStockThirstNeed!=='function' || !paddockStockThirstNeed(s)) return out;
   const P = typeof mapThirstParcelForFarm==='function' ? mapThirstParcelForFarm(s) : null;
-  if(!P) return out;
-  if(typeof parcelShowsThirst==='function' ? !parcelShowsThirst(P) : (P.id==='home_garden' || P.lvIndex===0)) return out;
+  if(!P || P.id==='home_garden' || P.lvIndex===0) return out;
+  if(typeof leftoverIsPaddockFold==='function' && !leftoverIsPaddockFold(P)) return out;
+  const owned = typeof parcelShowsThirst==='function' && parcelShowsThirst(P);
+  const here = P.lvIndex===s.lv;
+  if(!owned && !here) return out;
   out.push(P);
   return out;
 }
