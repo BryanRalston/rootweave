@@ -3397,10 +3397,25 @@ function parcelMapState(P, c){
   if((st.restorePct|0) > 0 || (c.cur===P.lvIndex && !homesteadMode)) return 'in_progress';
   return 'available';
 }
+/** Coin price for a leftover stamp that is still locked. Above first-session 🪙40; existing edge deeds keep their listed cost. */
+function leftoverDeedCost(P){
+  const feel = leftoverStampFeelFor(P);
+  const area = ((P && P.size && P.size.w)|0) * ((P && P.size && P.size.h)|0);
+  const base = {
+    paddock: 58, hay: 70, meadow: 76, orchard: 80,
+    woodlot: 86, river: 90, dust: 96, wet: 54, dry_graze: 74, heal: 70
+  }[feel] || 70;
+  return Math.max(48, base + Math.round(area / 24));
+}
+function parcelCanDeed(P){
+  return !!(P && P.kind==='plot' && P.id!=='home_garden' && P.id!=='home' && (P.buyable || P.leftover));
+}
 function parcelDeedCost(P){
   const ur = (P && P.unlockRules) || {};
   const n = (ur.cost|0) || (P && P.deedCost|0) || 0;
-  return Math.max(1, n);
+  if(n > 0) return n;
+  if(P && P.leftover) return leftoverDeedCost(P);
+  return 1;
 }
 function parcelIsBought(P, c){
   c = c || camp;
@@ -3419,11 +3434,15 @@ function parcelNeighborOwned(id, c){
 /** Farm deal is live: Home Patch is free-and-cleared, and this fold touches your farm. */
 function parcelDeedOffered(P, c){
   c = c || camp;
-  if(!P || !P.buyable) return false;
+  if(!parcelCanDeed(P)) return false;
   if(typeof homePatchCleared==='function' && !homePatchCleared()) return false;
+  if(parcelIsBought(P, c)) return false;
+  if(P.leftover && leftoverNeighborClearedOpen(P, c)) return false;
   const ur = P.unlockRules || {};
-  const neighbors = ur.neighborParcels || P.neighborParcels || [];
-  if(!neighbors.length) return true;
+  const neighbors = P.leftover
+    ? leftoverNeighborIds(P)
+    : (ur.neighborParcels || P.neighborParcels || []);
+  if(!neighbors.length) return !!P.buyable;
   return neighbors.some(id=>parcelNeighborOwned(id, c));
 }
 /** Neighbor ids that can open a leftover stamp — same list for unlock and mist hint. */
@@ -3484,6 +3503,14 @@ function parcelUnlockHint(P){
     if(typeof homePatchCleared==='function' && !homePatchCleared()){
       return 'Home Patch comes first — this fold can wait';
     }
+    if(parcelIsBought(P)) return 'Yours — tap to work it';
+    if(parcelDeedOffered(P)){
+      const cost = parcelDeedCost(P);
+      const line = leftoverNeighborHintLine(P);
+      return line
+        ? `A neighbor will sign this land over for 🪙${cost}. Or ${line.charAt(0).toLowerCase()+line.slice(1)}`
+        : `A neighbor will sign this land over for 🪙${cost}`;
+    }
     const line = leftoverNeighborHintLine(P);
     if(line) return line;
   }
@@ -3515,6 +3542,7 @@ function parcelIsUnlocked(P, c){
   const R = P.unlockRules || {type:'always'};
   if(R.type==='always') return true;
   ensureParcelState(c);
+  if((P.leftover || P.buyable) && parcelIsBought(P, c)) return true;
   if(P.leftover && leftoverNeighborClearedOpen(P, c)) return true;
   if(R.type==='parcel_cleared'){
     const need = c.parcels[R.parcelId];
@@ -3584,9 +3612,30 @@ function spendFarmDeedCoins(cost){
   }
   return left===0;
 }
+function leftoverDeedFeelLine(P){
+  const feel = leftoverStampFeelFor(P);
+  return {
+    hay: 'This is the hay fold itself — cover and cut, not a lock.',
+    woodlot: 'This is the woodlot itself — shade and brush, not a lock.',
+    meadow: 'This is the wet meadow itself — bloom and flow, not a lock.',
+    paddock: 'This is the paddock fold itself — pasture and rest, not a lock.',
+    orchard: 'This is the orchard fold itself — trees and understory, not a lock.',
+    dust: 'This is the dust fold itself — salt and scrub, not a lock.',
+    river: 'This is the river fold itself — banks and wash, not a lock.',
+    wet: 'This is the wet fold itself — willow and reeds, not a lock.',
+    dry_graze: 'This is the dry pasture itself — sparse graze, not a lock.',
+    heal: 'This is the leftover fold itself — not a lock.'
+  }[feel] || 'This is the leftover fold itself — not a lock.';
+}
+function leftoverDeedWaitLine(P){
+  if(!P || !P.leftover) return '';
+  const line = leftoverNeighborHintLine(P);
+  if(!line) return '';
+  return ' You can also wait — '+line.charAt(0).toLowerCase()+line.slice(1)+'.';
+}
 function openLandDeed(P){
-  if(!P || !P.buyable) return;
-  if(parcelIsBought(P)){
+  if(!parcelCanDeed(P)) return;
+  if(parcelIsBought(P) || (P.leftover && leftoverNeighborClearedOpen(P))){
     if(P.lvIndex!=null) journeyPick(P.lvIndex);
     return;
   }
@@ -3594,6 +3643,8 @@ function openLandDeed(P){
   const bal = farmDeedBalance();
   const offered = parcelDeedOffered(P);
   const oneLiner = (P.desc && String(P.desc).trim()) ? P.desc : (P.teaser || P.name);
+  const feelLine = leftoverDeedFeelLine(P);
+  const waitLine = leftoverDeedWaitLine(P);
   let lesson = '';
   let buyBtn = '';
   if(typeof homePatchCleared==='function' && !homePatchCleared()){
@@ -3601,9 +3652,9 @@ function openLandDeed(P){
   }else if(!offered){
     lesson = `<div class="lesson" style="text-align:left">Fog still sits on the neighbor line. Work the field that touches this fold, then the neighbor will talk terms.</div>`;
   }else if(bal < cost){
-    lesson = `<div class="lesson" style="text-align:left">A neighbor will sign <b>${P.name}</b> over for <b>🪙${cost}</b>. You have <b>🪙${bal}</b> — surplus from the stand, harvests, or the optional coin shop. Play stays free; this is just more ground.</div>`;
+    lesson = `<div class="lesson" style="text-align:left">A neighbor will sign <b>${P.name}</b> over for <b>🪙${cost}</b>. You have <b>🪙${bal}</b> — surplus from the stand, harvests, or the optional coin shop. Play stays free; this is just more ground.${waitLine}</div>`;
   }else{
-    lesson = `<div class="lesson" style="text-align:left">A neighbor will sign <b>${P.name}</b> over for <b>🪙${cost}</b>. You have <b>🪙${bal}</b>. Same atlas crop as the leftover folds — tap in and work it after the ink dries.</div>`;
+    lesson = `<div class="lesson" style="text-align:left">A neighbor will sign <b>${P.name}</b> over for <b>🪙${cost}</b>. You have <b>🪙${bal}</b>. ${feelLine}${waitLine}</div>`;
     buyBtn = `<button class="mbtn big" data-act="buydeed" data-parcel="${P.id}">Take the fold · 🪙${cost}</button>`;
   }
   showModal(`
@@ -3619,7 +3670,7 @@ function openLandDeed(P){
 }
 function buyParcelDeed(id){
   const P = valleyParcel(id);
-  if(!P || !P.buyable) return false;
+  if(!parcelCanDeed(P)) return false;
   if(P.id==='home_garden' || P.id==='home') return false;
   if(parcelIsBought(P)){
     closeModal();
@@ -10397,8 +10448,8 @@ function checkLevelComplete(){
     });
     if(opened.length) pathOpen = opened.map(P=>`${P.em} ${P.name}`).join(', ');
     const deals = VALLEY_PARCELS.filter(P=>
-      P.buyable && !parcelIsBought(P, camp) && parcelDeedOffered(P, camp) &&
-      ((P.neighborParcels||[]).includes(clearedParcel.id) || ((P.unlockRules||{}).neighborParcels||[]).includes(clearedParcel.id))
+      parcelCanDeed(P) && !parcelIsBought(P, camp) && parcelDeedOffered(P, camp) &&
+      leftoverNeighborIds(P).includes(clearedParcel.id)
     );
     if(deals.length){
       const dealLine = deals.map(P=>`${P.em} ${P.name} · 🪙${parcelDeedCost(P)}`).join(', ');
@@ -11034,7 +11085,7 @@ function openPropertyMap(){
     const unlocked = ms !== 'locked';
     const done = ms==='restored' || ms==='mastered';
     const stars = (camp.parcels[P.id] && camp.parcels[P.id].bestStars) || (P.lvIndex!=null ? camp.stars[P.lvIndex]|0 : 0);
-    const st = (P.buyable && ms==='locked')
+    const st = (parcelCanDeed(P) && ms==='locked')
       ? (parcelDeedOffered(P, camp) ? ('🪙'+parcelDeedCost(P)) : '·')
       : (STATE_ICON[ms] || '○');
     const star = done ? '⭐'.repeat(Math.max(1, stars||1)) : '';
@@ -14504,7 +14555,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.meatfix';
+const SHIP_BUILD = '2026-08-22.landbuy';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -19930,7 +19981,7 @@ function runJourneySoftTips(){
   }
   // 3b) Surrounding land deal — after Home Patch, never the first-session lead
   if(typeof homePatchCleared==='function' && homePatchCleared() &&
-     VALLEY_PARCELS.some(P=>P.buyable && !parcelIsBought(P) && parcelDeedOffered(P))){
+     VALLEY_PARCELS.some(P=>parcelCanDeed(P) && !parcelIsBought(P) && parcelDeedOffered(P))){
     if(offerJourneySoftTip('land_deed_first', 'A fogged neighbor with a coin price is a land deal — surplus from play or the coin shop. Home Patch stays free.', 600)) return;
   }
   // 4) Map pins before design goals (cold-start map literacy)
@@ -21028,7 +21079,7 @@ function wireValleyRegion(el, P, ms){
   const hint = parcelUnlockHint(P);
   const stateWord = ms==='restored'?'restored':ms==='mastered'?'mastered':ms==='in_progress'?'in progress':ms==='locked'?'still fogged':ms==='hub'?'home':'open';
   el.setAttribute('role', 'button');
-  const deedLive = !!(P.buyable && ms==='locked' && typeof parcelDeedOffered==='function' && parcelDeedOffered(P));
+  const deedLive = !!(ms==='locked' && typeof parcelDeedOffered==='function' && parcelDeedOffered(P));
   el.setAttribute('tabindex', (ms==='locked' && !deedLive) ? '-1' : '0');
   el.setAttribute('aria-label', [P.name, oneLiner, deedLive?hint:(ms==='locked'?hint:stateWord)].filter(Boolean).join('. '));
   const go = ()=>{
@@ -21040,12 +21091,10 @@ function wireValleyRegion(el, P, ms){
     }
     if(P.lvIndex==null) return;
     if(ms==='locked'){
-      if(P.buyable){
-        if(parcelDeedOffered(P)){ SND.pop(); openLandDeed(P); return; }
-        toast(`${P.name} is still in mist — ${hint || 'work the neighboring field first.'}`);
-        return;
+      if(typeof parcelDeedOffered==='function' && parcelDeedOffered(P)){
+        SND.pop(); openLandDeed(P); return;
       }
-      toast(`${P.name} is still in mist — ${hint || 'heal a neighboring field first.'}`);
+      toast(`${P.name} is still in mist — ${hint || (P.leftover?'heal a neighboring field first.':'work the neighboring field first.')}`);
       return;
     }
     journeyPick(P.lvIndex);
@@ -21094,7 +21143,7 @@ function buildValleyMapEl(){
     const q = parcelViewQuad(P);
     if(!q) return;
     const ms = (P.kind==='hub' && !hsOn) ? 'hub' : parcelMapState(P, camp);
-    const deedLive = !!(P.buyable && ms==='locked' && typeof parcelDeedOffered==='function' && parcelDeedOffered(P));
+    const deedLive = !!(ms==='locked' && typeof parcelDeedOffered==='function' && parcelDeedOffered(P));
     const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
     poly.setAttribute('points', q.map(p=>p.x.toFixed(1)+','+p.y.toFixed(1)).join(' '));
     poly.setAttribute('class', 'vreg '+ms+(P.id==='home_garden'?' home':'')+(deedLive?' deed':''));
