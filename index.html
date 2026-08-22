@@ -5071,7 +5071,8 @@ function paddockStockThirstTiles(s){
   const tiles = [];
   if(!s || !s.grid) return tiles;
   s.grid.forEach((t, i)=>{
-    if(t && t.graze && t.soil && t.terrain==='soil') tiles.push({t, i});
+    // Soil pads and dead scrub (East Pasture goats) both walk; dead has soil attrs.
+    if(t && t.graze && t.soil && (t.terrain==='soil' || t.terrain==='dead')) tiles.push({t, i});
   });
   return tiles;
 }
@@ -11914,7 +11915,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.stockthirst';
+const SHIP_BUILD = '2026-08-22.thirstscrub';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -16437,7 +16438,7 @@ function openInfo(refreshOnly){
       ${washLine?`<div class="chiprow">${washLine}</div>`:''}
       ${t.compost>0?`<div class="chiprow">🪣 compost working — ${t.compost.toFixed(0)}d left</div>`:''}
       ${t.crop?`<div class="chiprow">🌿 pioneers cracking the crust — ${Math.round(Math.min(1,t.crop.growth)*100)}%</div>`:''}
-      ${t.graze?`<div class="chiprow">🐐 goats browsing the scrub</div>`:''}
+      ${t.graze?`<div class="chiprow">🐐 goats browsing the scrub${typeof paddockStockThirstNeed==='function' && paddockStockThirstNeed()?' · dry — herd needs a drink':''}</div>`:''}
       <div class="chiprow">💡 Feed it: 🪣 compost${toolAllowed('covercrop')?', 🌿 pioneer plants':''}${toolAllowed('goat')?', or 🐐 goats':''}. Water nearby helps it all work faster.</div>`;
   }else if(t.terrain==='riverbed'){
     const pulsed = (t.washPulse||0) > 8;
