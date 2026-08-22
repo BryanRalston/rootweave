@@ -1274,6 +1274,95 @@ function spendLeftoverCompost(){
   camp.compostStock = leftoverCompostStock() - 1;
   return true;
 }
+/** Yard pile is leftover stock you can see — not a saved tile, not a fresh Home Patch. */
+function leftoverPileWanted(){
+  if(leftoverCompostStock()<=0) return false;
+  if(homesteadMode) return true;
+  if(!state || state.homesteadView) return false;
+  const L = (typeof LV==='function') ? LV() : null;
+  if(!L || L.id!=='home') return false;
+  return !!(typeof homePatchCleared==='function' && homePatchCleared());
+}
+function leftoverPileTier(){
+  const n = leftoverCompostStock();
+  if(n<=0) return 0;
+  if(n<=2) return 1; // small
+  if(n<=5) return 2; // medium
+  return 3; // large
+}
+function leftoverPileInspectLine(){
+  const n = leftoverCompostStock();
+  if(n<=0) return '';
+  return n+' leftover compost — paint 🪣';
+}
+function leftoverPileSpotOk(t){
+  if(!t) return false;
+  if(t.terrain==='house' || t.terrain==='nstand' || t.terrain==='barn' || t.terrain==='coop') return false;
+  if(t.terrain!=='soil' && t.terrain!=='dead') return false;
+  return true;
+}
+function leftoverPileSpotOpen(t){
+  return leftoverPileSpotOk(t) && !t.deco && !t.crop && !t.graze && t.feature!=='path'
+    && !(typeof hasFence==='function' && hasFence(t));
+}
+function findGridBarn(grid){
+  if(!grid) return null;
+  for(let i=0;i<grid.length;i++) if(grid[i] && grid[i].terrain==='barn') return grid[i];
+  return null;
+}
+function leftoverPilePickNear(grid, origin, dirs){
+  if(!grid || !origin || !dirs) return null;
+  let fallback = null;
+  for(let i=0;i<dirs.length;i++){
+    const c = (origin.c|0)+dirs[i][0], r = (origin.r|0)+dirs[i][1];
+    if(typeof inGrid==='function' && !inGrid(c,r)) continue;
+    const t = grid[(typeof idx==='function') ? idx(c,r) : (r*(GRID||0)+c)];
+    if(leftoverPileSpotOpen(t)) return t;
+    if(!fallback && leftoverPileSpotOk(t)) fallback = t;
+  }
+  return fallback;
+}
+function leftoverPileTile(){
+  if(!leftoverPileWanted() || !state || !state.grid) return null;
+  const grid = state.grid;
+  const barn = findGridBarn(grid);
+  if(barn){
+    return leftoverPilePickNear(grid, barn, [[-1,0],[0,1],[-1,1],[0,-1],[-1,-1],[1,1],[1,0],[1,-1]]) || barn;
+  }
+  if(homesteadMode){
+    const house = grid.find(t=>t && t.terrain==='house');
+    return leftoverPilePickNear(grid, house, [[2,0],[1,0],[2,1],[1,1],[3,0],[3,1],[0,1],[2,-1]]);
+  }
+  // Home Patch replay: north edge faces the homestead barn / compost yard
+  const prefer = [];
+  for(let c=GRID-1;c>=0;c--) prefer.push({c, r:0});
+  for(let c=GRID-1;c>=0;c--) prefer.push({c, r:1});
+  for(let i=0;i<prefer.length;i++){
+    const t = grid[idx(prefer[i].c, prefer[i].r)];
+    if(leftoverPileSpotOpen(t)) return t;
+  }
+  for(let i=0;i<prefer.length;i++){
+    const t = grid[idx(prefer[i].c, prefer[i].r)];
+    if(leftoverPileSpotOk(t)) return t;
+  }
+  return null;
+}
+function isLeftoverPileTile(t){
+  const p = leftoverPileTile();
+  return !!(p && t && (p.c|0)===(t.c|0) && (p.r|0)===(t.r|0));
+}
+function inspectLeftoverPile(){
+  const line = leftoverPileInspectLine();
+  if(!line) return false;
+  if(typeof neighborStandUnlocked==='function' && neighborStandUnlocked()){
+    if(typeof openNeighborStand==='function') openNeighborStand(true);
+    toast('🪣 '+line, {throttleMs:2500});
+  }else{
+    toast('🪣 '+line, {throttleMs:2500});
+    if(typeof openInfo==='function') openInfo();
+  }
+  return true;
+}
 function crateLotAgeDays(lot){
   if(!lot) return 0;
   const now = standClockDays();
@@ -5732,6 +5821,7 @@ function ensureHomesteadTiles(){
   }
   migrateHomesteadGrassCanvas(hs);
   if(typeof ensureNeighborStandOnTiles==='function') ensureNeighborStandOnTiles(hs.tiles, hs.gridSize||8);
+  if(typeof ensureHomesteadBarnOnTiles==='function') ensureHomesteadBarnOnTiles(hs.tiles, hs.gridSize||8);
 }
 /** Force uniform lawn: no plow dirt / soil patches — yard is not a farm field. */
 function migrateHomesteadGrassCanvas(hs){
@@ -5819,6 +5909,7 @@ function placeHouseOnTiles(tiles, size, houseTier){
     if(n && n.terrain==='soil' && !n.deco){ n.deco = 'deco_statue'; n.flowers = Math.max(n.flowers||0, 0.06); }
   }
   if(typeof ensureNeighborStandOnTiles==='function') ensureNeighborStandOnTiles(tiles, size);
+  if(typeof ensureHomesteadBarnOnTiles==='function') ensureHomesteadBarnOnTiles(tiles, size);
 }
 function neighborStandSpotOk(t){
   if(!t) return false;
@@ -5853,6 +5944,35 @@ function ensureNeighborStandOnTiles(tiles, size){
     const dc = Math.abs((t.c|0)-1), dr = Math.abs((t.r|0)-1);
     if(dc+dr===0 || dc>2 || dr>2) continue;
     if(neighborStandSpotOk(t)){ seatNeighborStand(t); return; }
+  }
+}
+function homesteadBarnSpotOk(t){
+  if(!t) return false;
+  if(t.terrain==='barn') return true;
+  if(t.terrain!=='soil') return false;
+  if(t.deco || t.crop || t.graze) return false;
+  if(typeof hasFence==='function' && hasFence(t)) return false;
+  if(t.feature==='path') return false;
+  return true;
+}
+function seatHomesteadBarn(t){
+  if(!t) return;
+  t.terrain = 'barn';
+  t.deco = null; t.crop = null; t.graze = null; t.feature = null;
+  t.fence = false; t.flowers = Math.max(t.flowers||0, 0.04);
+}
+/** Barn east of the house — compost yard sits beside it, next to the garden. Never stomps house, stand, or player work. */
+function ensureHomesteadBarnOnTiles(tiles, size){
+  if(!tiles || !size) return;
+  if(tiles.some(t=>t && t.terrain==='barn')) return;
+  const prefer = [[3,1],[3,2],[4,1],[4,2],[2,2],[5,1],[3,3],[4,3],[5,2],[2,3]];
+  for(let i=0;i<prefer.length;i++){
+    const c = prefer[i][0], r = prefer[i][1];
+    if(!inHS(c,r,size)) continue;
+    const t = tiles[r*size+c];
+    if(t && t.terrain==='house') continue;
+    if(t && t.terrain==='nstand') continue;
+    if(homesteadBarnSpotOk(t)){ seatHomesteadBarn(t); return; }
   }
 }
 function inHS(c,r,size){ return c>=0 && r>=0 && c<size && r<size; }
@@ -5893,6 +6013,7 @@ function hydrateHomesteadState(){
       if(ht && ht.terrain==='barn') ht.terrain = 'house';
     }
     if(typeof ensureNeighborStandOnTiles==='function') ensureNeighborStandOnTiles(grid, size);
+    if(typeof ensureHomesteadBarnOnTiles==='function') ensureHomesteadBarnOnTiles(grid, size);
   }
   GRID = prevGRID;
   return {
@@ -6401,9 +6522,19 @@ function applyHomesteadTool(i){
       else { openInfo(); toast('🧺 The neighbor stand opens after Home Patch.'); }
       return true;
     }
+    if(typeof isLeftoverPileTile==='function' && isLeftoverPileTile(t) && leftoverCompostStock()>0){
+      inspectLeftoverPile();
+      return true;
+    }
+    if(t.terrain==='barn' && leftoverCompostStock()>0){
+      inspectLeftoverPile();
+      return true;
+    }
     openInfo();
-    if(t.terrain==='house' || t.terrain==='barn'){
+    if(t.terrain==='house'){
       toast('🏡 Catalog → Expand kits & Yard Build. Rooms are optional (Peek Inside).');
+    }else if(t.terrain==='barn'){
+      toast('🏠 The barn — leftover compost sits in the yard beside it.');
     }
     return true;
   }
@@ -8289,7 +8420,13 @@ function applyTool(i){
   const td = toolDef(tool);
   if(!t || !td) return false;
   if(tool==='select'){
-    selected = i; openInfo();
+    selected = i;
+    if(typeof isLeftoverPileTile==='function' && isLeftoverPileTile(t) && leftoverCompostStock()>0){
+      inspectLeftoverPile();
+      ringAt(i, '#ffe89a'); SND.pop();
+      return true;
+    }
+    openInfo();
     ringAt(i, '#ffe89a'); SND.pop();
     return true;
   }
@@ -11116,6 +11253,41 @@ function drawCompostObj(t){
     ctx.beginPath(); ctx.ellipse(seat.x, seat.y-5, 5.6, 3.0, 0, 0, 6.29); ctx.fill();
   });
 }
+/** Leftover stock pile by the barn — seated on the diamond, grows with camp.compostStock. */
+function drawLeftoverCompostPile(t){
+  if(!t || typeof leftoverPileWanted!=='function' || !leftoverPileWanted()) return;
+  if(typeof isLeftoverPileTile==='function' && !isLeftoverPileTile(t)) return;
+  const tier = leftoverPileTier();
+  if(tier<=0) return;
+  const onBarn = t.terrain==='barn';
+  const seat = tileSeat(t, onBarn ? 0.16 : 0.48, onBarn ? 0.80 : 0.64);
+  const w = tier>=3 ? 56 : tier>=2 ? 46 : 34;
+  const h = spriteH('compost', w, Math.round(w * 0.82));
+  if(typeof drawFootShadow==='function') drawFootShadow(seat.x, seat.y + 2, w * 0.32, w * 0.11);
+  const mound = ()=>{
+    const s = w / 38;
+    ctx.fillStyle = '#5c4024';
+    ctx.beginPath(); ctx.ellipse(seat.x, seat.y, 10*s, 5.2*s, 0, 0, 6.29); ctx.fill();
+    ctx.fillStyle = '#7a5b36';
+    ctx.beginPath(); ctx.ellipse(seat.x, seat.y-3.2*s, 8.4*s, 4.4*s, 0, 0, 6.29); ctx.fill();
+    ctx.fillStyle = '#93744a';
+    ctx.beginPath(); ctx.ellipse(seat.x-0.6*s, seat.y-6.4*s, 6.2*s, 3.4*s, 0, 0, 6.29); ctx.fill();
+    if(tier>=2){
+      ctx.fillStyle = '#a88858';
+      ctx.beginPath(); ctx.ellipse(seat.x+1.2*s, seat.y-8.6*s, 4.4*s, 2.4*s, 0, 0, 6.29); ctx.fill();
+    }
+    if(tier>=3){
+      ctx.fillStyle = '#6a4a28';
+      ctx.beginPath(); ctx.ellipse(seat.x-3.4*s, seat.y-2.2*s, 4.8*s, 2.6*s, 0.2, 0, 6.29); ctx.fill();
+    }
+    drawEmoji('🪣', seat.x+2*s, seat.y-10*s, 9+tier*2);
+  };
+  if(useDiorama() && SPRITES['dio_compost']){
+    drawSprite('dio_compost', seat.x, seat.y + 2, w, h, mound);
+    return;
+  }
+  drawSprite('compost', seat.x, seat.y + 2, w, h, mound);
+}
 function drawFlowersObj(t, time, seed){
   if(state.season===3) return;   // tucked under the snow
   if(useDiorama()) return;
@@ -11517,7 +11689,11 @@ function drawTileObjects(t, i, time){
   const seed = i*17+3;
   if(t.terrain==='nstand'){ drawNeighborStand(t, time); return; }
   if(t.terrain==='house'){ drawHomesteadHouse(t, time); return; }
-  if(t.terrain==='barn' || t.terrain==='coop'){ drawBuilding(t, time); return; }
+  if(t.terrain==='barn' || t.terrain==='coop'){
+    drawBuilding(t, time);
+    if(typeof drawLeftoverCompostPile==='function') drawLeftoverCompostPile(t);
+    return;
+  }
   if(t.terrain==='trees'){ drawTreesObj(t, time, seed); return; }
   if(BUILD_SET.has(t.terrain)){
     // D2 — keep buildings readable under data overlays (wash is on ground only)
@@ -11542,6 +11718,7 @@ function drawTileObjects(t, i, time){
     const wp = pt(t, 0.78, 0.62);
     drawSprite('worm', wp.x, wp.y, 12, spriteH('worm', 12, 10), ()=>drawEmoji('🪱', wp.x, wp.y-3, 10));
   }
+  if(typeof drawLeftoverCompostPile==='function') drawLeftoverCompostPile(t);
   ctx.globalAlpha = 1;
 }
 
@@ -13385,14 +13562,29 @@ function openInfo(refreshOnly){
       if(!refreshOnly) SND.pop();
       return;
     }
-    let title = (t.terrain==='house'||t.terrain==='barn') ? `${H.em} ${H.name}` : (t.deco ? 'Decoration' : (t.terrain==='soil'?'Yard':'Placed'));
+    const pileLine = (typeof leftoverPileInspectLine==='function') ? leftoverPileInspectLine() : '';
+    const onPile = !!(typeof isLeftoverPileTile==='function' && isLeftoverPileTile(t) && pileLine);
+    if(onPile || (t.terrain==='barn' && pileLine)){
+      panel.innerHTML = `<div class="ititle">🪣 Compost pile</div>
+        <div class="chiprow">${pileLine}</div>
+        ${neighborStandUnlocked()?`<button type="button" class="mbtn wood" style="width:100%;margin-top:8px" data-act="nstand">🧺 Neighbor stand</button>`:''}
+        <button type="button" class="closex" id="infoClose" style="position:absolute;right:8px;top:8px">✕</button>`;
+      panel.classList.add('show');
+      const px = document.getElementById('infoClose');
+      if(px) px.onclick = ()=>{ selected = -1; closeInfo(); };
+      if(!refreshOnly) SND.pop();
+      return;
+    }
+    let title = (t.terrain==='house') ? `${H.em} ${H.name}` : (t.terrain==='barn' ? '🏠 The Barn' : (t.deco ? 'Decoration' : (t.terrain==='soil'?'Yard':'Placed')));
     const crateChip = (typeof harvestCrateChipHtml==='function') ? harvestCrateChipHtml() : '';
-    let body = (t.terrain==='house'||t.terrain==='barn')
+    let body = (t.terrain==='house')
       ? `<div class="chiprow">Home anchor — build the yard from 🛒 Catalog (Expand kits + Yard Build). Rooms are optional.</div>
          ${neighborStandUnlocked()?`<button type="button" class="mbtn wood" style="width:100%;margin-top:8px" data-act="nstand">🧺 Neighbor stand</button>`:''}
          ${crateChip}
          <button type="button" class="mbtn wood" style="width:100%;margin-top:8px" id="btnGoInside">🚪 Peek Inside</button>`
-      : `<div class="chiprow">Bank 🪙${camp.bank|0}. Use 🚜 Clear to remove (free).</div>`;
+      : (t.terrain==='barn'
+        ? `<div class="chiprow">The barn — leftover compost sits in the yard beside it when the pile has stock.</div>`
+        : `<div class="chiprow">Bank 🪙${camp.bank|0}. Use 🚜 Clear to remove (free).</div>`);
     if(t.deco) body += `<div class="chiprow">🎀 ${t.deco.replace('deco_','')}</div>`;
     if(hasFence(t)) body += `<div class="chiprow">🚧 Fence ${yardOrientLabel(fenceFacing(t))}</div>`;
     if(t.terrain!=='soil' && t.terrain!=='barn' && t.terrain!=='house' && t.terrain!=='dead' && t.terrain!=='nstand') body += `<div class="chiprow">🏗️ ${t.terrain}</div>`;
@@ -13489,8 +13681,11 @@ function openInfo(refreshOnly){
   }
   const regName = (REGIONS.find(r=>r.id===t.region)||{}).name || '';
   const crateChip = (typeof harvestCrateChipHtml==='function') ? harvestCrateChipHtml() : '';
+  const pileLine = (typeof leftoverPileInspectLine==='function' && typeof isLeftoverPileTile==='function' && isLeftoverPileTile(t))
+    ? leftoverPileInspectLine() : '';
+  const pileChip = pileLine ? `<div class="chiprow">🪣 ${pileLine}</div>` : '';
   panel.innerHTML = `<h3>${healthFace(isLandT(t)?t.health:80)} ${names[t.terrain]||t.terrain} <span style="font-size:11px;color:var(--soft)">${regName}</span>
-    <button class="closex" id="infoClose">✕</button></h3>${body}${crateChip}`;
+    <button class="closex" id="infoClose">✕</button></h3>${body}${pileChip}${crateChip}`;
   panel.classList.add('show');
   document.getElementById('infoClose').onclick = ()=>{ selected = -1; closeInfo(); };
   const sci = document.getElementById('sciToggle');
@@ -14970,16 +15165,53 @@ function drawMapHerdAt(hctx, ag, p, time){
   hctx.drawImage(img, -w/2, -h + bob, w, h);
   hctx.restore();
 }
+function mapPilePoint(){
+  if(typeof leftoverCompostStock!=='function' || leftoverCompostStock()<=0) return null;
+  const P = (typeof valleyParcel==='function') ? valleyParcel('homestead') : null;
+  if(!P) return null;
+  const b = (typeof parcelAtlasBox==='function') ? parcelAtlasBox(P) : null;
+  if(!b) return null;
+  // Atlas compost yard (8,55) sits by the barn (14,55) next to the garden — overlay only.
+  const u = clampUV((8 + 0.55 - b.c) / b.w, 0.18, 0.82);
+  const v = clampUV((55 + 0.45 - b.r) / b.h, 0.22, 0.82);
+  return parcelSeat(P, u, v);
+}
+function drawMapPileMark(hctx){
+  const p = mapPilePoint();
+  if(!p || !hctx) return;
+  const tier = leftoverPileTier();
+  const s = 3.2 + tier * 1.1;
+  hctx.save();
+  hctx.fillStyle = 'rgba(22,14,8,.28)';
+  hctx.beginPath();
+  hctx.ellipse(p.x, p.y+0.8, s*1.35, Math.max(1.6, s*0.42), 0, 0, 6.29);
+  hctx.fill();
+  hctx.fillStyle = '#6a4a28';
+  hctx.beginPath();
+  hctx.ellipse(p.x, p.y-0.4, s*1.15, s*0.55, 0, 0, 6.29);
+  hctx.fill();
+  hctx.fillStyle = '#8a6a40';
+  hctx.beginPath();
+  hctx.ellipse(p.x, p.y-s*0.55, s*0.85, s*0.42, 0, 0, 6.29);
+  hctx.fill();
+  hctx.font = Math.round(8+tier)+'px "Segoe UI Emoji",sans-serif';
+  hctx.textAlign = 'center';
+  hctx.textBaseline = 'middle';
+  hctx.fillText('🪣', p.x+1, p.y-s*1.15);
+  hctx.restore();
+}
 function paintMapHerd(cv, agents){
   if(!cv) return;
   const hctx = cv.getContext('2d');
   if(!hctx) return;
   hctx.clearRect(0, 0, cv.width, cv.height);
-  if(!agents || !agents.length) return;
   const t = (typeof performance!=='undefined' ? performance.now() : 0)/1000;
-  agents.slice().sort((a,b)=> mapHerdPoint(a).y - mapHerdPoint(b).y).forEach(ag=>{
-    drawMapHerdAt(hctx, ag, mapHerdPoint(ag), t);
-  });
+  if(agents && agents.length){
+    agents.slice().sort((a,b)=> mapHerdPoint(a).y - mapHerdPoint(b).y).forEach(ag=>{
+      drawMapHerdAt(hctx, ag, mapHerdPoint(ag), t);
+    });
+  }
+  if(typeof drawMapPileMark==='function') drawMapPileMark(hctx);
 }
 function tickMapHerdAgents(agents, dt){
   if(!agents || !agents.length || prefersQuietMotion()) return;
@@ -15015,11 +15247,12 @@ function stopMapHerd(){
 }
 function startMapHerd(cv, agents){
   stopMapHerd();
-  if(!cv || !agents || !agents.length) return;
+  const pileOn = typeof leftoverCompostStock==='function' && leftoverCompostStock()>0;
+  if(!cv || ((!agents || !agents.length) && !pileOn)) return;
   _mapHerd.cv = cv;
-  _mapHerd.agents = agents;
+  _mapHerd.agents = agents || [];
   _mapHerd.last = 0;
-  paintMapHerd(cv, agents);
+  paintMapHerd(cv, _mapHerd.agents);
   const loop = (now)=>{
     if(!_mapHerd.cv || !_mapHerd.cv.isConnected){ _mapHerd.raf = 0; return; }
     const dt = _mapHerd.last ? Math.min(0.05, (now-_mapHerd.last)/1000) : 0.016;
@@ -15032,7 +15265,8 @@ function startMapHerd(cv, agents){
 }
 function mountMapHerdOverlay(wrap){
   const agents = buildMapHerdAgents();
-  if(!agents.length) return null;
+  const pileOn = typeof leftoverCompostStock==='function' && leftoverCompostStock()>0;
+  if(!agents.length && !pileOn) return null;
   const hv = document.createElement('canvas');
   hv.className = 'vscene-herd';
   hv.width = VALLEY_VIEW.w;
