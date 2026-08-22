@@ -7049,6 +7049,7 @@ function tickPaddockStockThirst(){
     }
     if(typeof recalc==='function') recalc(t);
   });
+  if(typeof noteThirstMapChanged==='function') noteThirstMapChanged();
   if(wet) return 0;
   const fi = typeof paddockManureFloaterIdx==='function' ? paddockManureFloaterIdx(s) : 0;
   if(typeof floater==='function' && state && state.grid && state.grid[fi]){
@@ -14148,6 +14149,7 @@ function afterBuild(){
   updateHUD();
   if(typeof tutSyncSim==='function') tutSyncSim();
   if(selected>=0) openInfo(true);
+  if(typeof noteThirstMapChanged==='function') noteThirstMapChanged();
   // K5 — after first meaningful action, keep goals strip honest
   if(state && state.lv===0 && !state.levelDone){
     const st = state.stats||{};
@@ -14587,7 +14589,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.whatsnew';
+const SHIP_BUILD = '2026-08-22.mapthirst';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -14737,7 +14739,7 @@ function openAboutCredits(){
   if(showNew) camp.tipsShown['whats_new_'+ver] = true;
   const whatsNew = showNew
     ? `<div class="lesson" style="text-align:left;margin-top:6px;border-color:rgba(234,181,67,.45)">
-        <b>What's new (${ver}):</b> After Home Patch the journey map shows the farm you run — living herd marks (cattle, hens, ducks, goats, sheep, pigs) on owned paddocks, yard, and marsh; leftover compost on the homestead pile; the neighbor stand when crate lots or surplus meat are ready. Surplus meat is a herd tradeoff. Adjacent leftover folds can be bought with coins. Wildlife hops and flaps with the existing motion packs. Fogged land and the first-session garden stay empty. Play stays free; no pay-to-revive.
+        <b>What's new (${ver}):</b> After Home Patch the journey map shows the farm you run — living herd marks (cattle, hens, ducks, goats, sheep, pigs) on owned paddocks, yard, and marsh; leftover compost on the homestead pile; the neighbor stand when crate lots or surplus meat are ready; a thirsty-water mark on a walking paddock when the trough is dry. Surplus meat is a herd tradeoff. Adjacent leftover folds can be bought with coins. Wildlife hops and flaps with the existing motion packs. Fogged land and the first-session garden stay empty. Play stays free; no pay-to-revive.
       </div>`
     : '';
   // CD — first About open literacy (in-modal; no toast spam)
@@ -20786,6 +20788,12 @@ function parcelShowsStand(P, c){
   if(!P || P.id!=='homestead') return false;
   return parcelShowsHerd(P, c);
 }
+/** Stock-water mark sits on owned paddock / dry-graze folds — never Home kitchen or mist. */
+function parcelShowsThirst(P, c){
+  if(!P || P.id==='home_garden' || P.lvIndex===0) return false;
+  if(typeof leftoverIsPaddockFold==='function' && !leftoverIsPaddockFold(P)) return false;
+  return typeof parcelShowsHerd==='function' ? parcelShowsHerd(P, c) : false;
+}
 /** Stamp-driven homes: cattle on paddocks, goats/sheep on paddock/dry-graze/hay,
  *  pigs at the yard or paddock (same family as homestead walkers), hens at the
  *  coop, ducks on marsh. Home Patch kitchen beds stay off. */
@@ -21115,6 +21123,101 @@ function drawMapStandMark(hctx){
   hctx.fillText('🧺', p.x+1, p.y-s*1.15);
   hctx.restore();
 }
+/** Field under the player, or the parked paddock fold while they are in the yard. */
+function mapThirstFarm(){
+  return typeof paddockManureFarm==='function' ? paddockManureFarm() : (typeof state!=='undefined' && state && !state.homesteadView ? state : null);
+}
+function mapThirstParcelForFarm(s){
+  s = s || (typeof mapThirstFarm==='function' ? mapThirstFarm() : null);
+  if(!s) return null;
+  return typeof valleyParcelByLvIndex==='function' ? valleyParcelByLvIndex(s.lv) : null;
+}
+/** Walking paddock / dry-graze folds whose trough is dry. Hide when stock water is OK. */
+function mapThirstFolds(){
+  const out = [];
+  if(typeof homePatchCleared==='function' && !homePatchCleared()) return out;
+  const s = typeof mapThirstFarm==='function' ? mapThirstFarm() : null;
+  if(!s || typeof paddockStockThirstNeed!=='function' || !paddockStockThirstNeed(s)) return out;
+  const P = typeof mapThirstParcelForFarm==='function' ? mapThirstParcelForFarm(s) : null;
+  if(!P) return out;
+  if(typeof parcelShowsThirst==='function' ? !parcelShowsThirst(P) : (P.id==='home_garden' || P.lvIndex===0)) return out;
+  out.push(P);
+  return out;
+}
+/** Overlay dry stock water on the in-play paddock. First session and mist stay bare. */
+function mapThirstOverlayOn(){
+  const folds = typeof mapThirstFolds==='function' ? mapThirstFolds() : [];
+  return !!(folds && folds.length);
+}
+function mapThirstCellIsKitchen(c, r){
+  const G = (typeof valleyParcel==='function') ? valleyParcel('home_garden') : null;
+  if(G && typeof atlasInParcel==='function' && atlasInParcel(c, r, G)) return true;
+  return false;
+}
+/** Atlas cell for the map thirst mark: painted trough, then pasture pond, never kitchen beds. */
+function mapThirstAtlasCell(P){
+  P = P || (typeof mapThirstParcelForFarm==='function' ? mapThirstParcelForFarm() : null);
+  if(!P) return null;
+  const b = (typeof parcelAtlasBox==='function') ? parcelAtlasBox(P) : null;
+  if(!b) return null;
+  const kitchen = (c,r)=> typeof mapThirstCellIsKitchen==='function' && mapThirstCellIsKitchen(c, r);
+  let trough = null, pond = null, land = null;
+  for(let r=b.r;r<b.r+b.h;r++) for(let c=b.c;c<b.c+b.w;c++){
+    if(kitchen(c, r)) continue;
+    const A = typeof atlasGet==='function' ? atlasGet(c, r) : null;
+    if(!A) continue;
+    if(A.landmark==='house' || A.landmark==='barn' || A.landmark==='coop') continue;
+    if(A.landmark==='trough' && !trough) trough = {c, r};
+    if(!pond && A.water==='pond_site' && A.biome!=='garden' && A.biome!=='ridge' && A.biome!=='marsh') pond = {c, r};
+    if(!land && (A.biome==='pasture' || A.biome==='heartland' || A.biome==='dust' || A.biome==='hay')) land = {c, r};
+  }
+  return trough || pond || land;
+}
+function mapThirstPoint(P){
+  P = P || (typeof mapThirstFolds==='function' ? (mapThirstFolds()[0]||null) : null);
+  if(!P) return null;
+  const cell = mapThirstAtlasCell(P);
+  const b = (typeof parcelAtlasBox==='function') ? parcelAtlasBox(P) : null;
+  if(!b) return null;
+  if(cell){
+    const u = clampUV((cell.c + 0.52 - b.c) / b.w, 0.18, 0.82);
+    const v = clampUV((cell.r + 0.48 - b.r) / b.h, 0.22, 0.82);
+    return parcelSeat(P, u, v);
+  }
+  return parcelSeat(P, 0.42, 0.48);
+}
+function drawMapThirstMark(hctx){
+  if(!hctx) return;
+  const folds = typeof mapThirstFolds==='function' ? mapThirstFolds() : [];
+  folds.forEach(P=>{
+    const p = mapThirstPoint(P);
+    if(!p) return;
+    const s = 4.6;
+    hctx.save();
+    hctx.fillStyle = 'rgba(22,14,8,.28)';
+    hctx.beginPath();
+    hctx.ellipse(p.x, p.y+0.8, s*1.35, Math.max(1.8, s*0.40), 0, 0, 6.29);
+    hctx.fill();
+    // Soft dry halo so the thirsty trough does not vanish into the painted fold.
+    hctx.fillStyle = 'rgba(201,160,112,.36)';
+    hctx.beginPath();
+    hctx.ellipse(p.x, p.y - s*0.50, s*1.25, Math.max(3.6, s*0.78), 0, 0, 6.29);
+    hctx.fill();
+    hctx.fillStyle = '#8a6a40';
+    hctx.beginPath();
+    hctx.ellipse(p.x, p.y-0.15, s*1.10, s*0.38, 0, 0, 6.29);
+    hctx.fill();
+    hctx.fillStyle = '#c9a070';
+    hctx.beginPath();
+    hctx.ellipse(p.x, p.y-s*0.42, s*0.82, s*0.32, 0, 0, 6.29);
+    hctx.fill();
+    hctx.font = '12px "Segoe UI Emoji","Apple Color Emoji",sans-serif';
+    hctx.textAlign = 'center';
+    hctx.textBaseline = 'middle';
+    hctx.fillText('💧', p.x+0.5, p.y-s*1.05);
+    hctx.restore();
+  });
+}
 function paintMapHerd(cv, agents){
   if(!cv) return;
   const hctx = cv.getContext('2d');
@@ -21128,6 +21231,7 @@ function paintMapHerd(cv, agents){
   }
   if(typeof drawMapPileMark==='function') drawMapPileMark(hctx);
   if(typeof drawMapStandMark==='function') drawMapStandMark(hctx);
+  if(typeof drawMapThirstMark==='function') drawMapThirstMark(hctx);
 }
 function mapHerdAtlasCell(ag, u, v){
   const P = typeof valleyParcel==='function' ? valleyParcel(ag && ag.parcelId) : null;
@@ -21216,7 +21320,8 @@ function startMapHerd(cv, agents){
   stopMapHerd();
   const pileOn = typeof mapPileOverlayOn==='function' ? mapPileOverlayOn() : false;
   const standOn = typeof mapStandOverlayOn==='function' ? mapStandOverlayOn() : false;
-  if(!cv || ((!agents || !agents.length) && !pileOn && !standOn)) return;
+  const thirstOn = typeof mapThirstOverlayOn==='function' ? mapThirstOverlayOn() : false;
+  if(!cv || ((!agents || !agents.length) && !pileOn && !standOn && !thirstOn)) return;
   _mapHerd.cv = cv;
   _mapHerd.agents = agents || [];
   _mapHerd.last = 0;
@@ -21235,7 +21340,8 @@ function mountMapHerdOverlay(wrap){
   const agents = buildMapHerdAgents();
   const pileOn = typeof mapPileOverlayOn==='function' ? mapPileOverlayOn() : false;
   const standOn = typeof mapStandOverlayOn==='function' ? mapStandOverlayOn() : false;
-  if(!agents.length && !pileOn && !standOn) return null;
+  const thirstOn = typeof mapThirstOverlayOn==='function' ? mapThirstOverlayOn() : false;
+  if(!agents.length && !pileOn && !standOn && !thirstOn) return null;
   const hv = document.createElement('canvas');
   hv.className = 'vscene-herd';
   hv.width = VALLEY_VIEW.w;
@@ -21263,6 +21369,10 @@ function notePileMapChanged(){
 }
 /** Crate lots or surplus meat change whether neighbors are buying — same remount as the pile. */
 function noteStandMapChanged(){
+  if(typeof noteHerdMapChanged==='function') noteHerdMapChanged();
+}
+/** Trough fill or a thirst tick change dry stock water — same remount as the stand. */
+function noteThirstMapChanged(){
   if(typeof noteHerdMapChanged==='function') noteHerdMapChanged();
 }
 function wireValleyRegion(el, P, ms){
