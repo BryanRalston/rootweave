@@ -2126,7 +2126,7 @@ function leftoverStampStory(feel, P){
   const name = (P && P.name) || 'This fold';
   const desc = (P && P.desc) ? String(P.desc).trim()+' ' : '';
   const line = {
-    hay: 'Hay and cover — cut, feed, and rest this ground. Not a kitchen row.',
+    hay: 'Open hay and cover — cut forage, rest the ground, keep the weather-side windbreak. Not a kitchen row.',
     woodlot: 'Shade and brush. Restore the understory; leave the canopy.',
     wet: 'Wet ground and reeds. Do not farm this like a dry garden.',
     paddock: 'A grazing fold. Manure, rest, and stock water — not a kitchen garden.',
@@ -2145,11 +2145,11 @@ function leftoverStampProfile(feel, grid, spec){
   const healN = Math.max(8, Math.round(g*g*0.14));
   const base = ['select','compost','covercrop','clover','trees','bulldoze'];
   if(feel==='hay'){
-    const hayN = Math.max(5, Math.round(g*0.55));
+    const hayN = Math.max(12, Math.round(g*g*0.14));
     return {
-      tools: base.concat(['wheat','sisters']),
+      tools: base.concat(['wheat']),
       river: false, regen: 1.4, ovs: ['health','om'],
-      goalText: 'Cut hay and feed this cover ground.',
+      goalText: 'Cut hay and rest this cover ground.',
       doneText: name+' is standing hay again.',
       goals: [
         {em:'🌾', desc:'Plant '+hayN+' cover or grain (clover, pioneers, wheat)', prog:()=>[Math.min(hayN, countHayPlanted()), hayN]},
@@ -2603,7 +2603,7 @@ const VALLEY_PARCELS = [
    origin:{c:28, r:54}, size:{w:14, h:10}, teaser:'cover',
    systemsTaught:[], neighborParcels:['school_garden'],
    unlockRules:{type:'coin_deed', cost:56, neighborParcels:['school_garden']}, landmark:'bell',
-   desc:'The lane-side fold south of the school garden — more kitchen ground along the road.'},
+   desc:'The lane-side hay fold south of the school garden — open cover along the road.'},
   {id:'east_pasture', name:'East Pasture', em:'🐎', kind:'plot', buyable:true, stampFeel:'dry_graze', levelId:'east_pasture', lvIndex:null,
    origin:{c:86, r:28}, size:{w:10, h:16}, teaser:'salt',
    systemsTaught:[], neighborParcels:['market_cross','dust_scrub'],
@@ -4217,6 +4217,39 @@ function leftoverOrchardSeatOk(t, g){
   }
   return true;
 }
+/** Interior leftover land that can take a hay / forage start. Leave play edges for windbreak. */
+function leftoverHaySeatOk(t, g){
+  if(!t || !leftoverStampLand(t)) return false;
+  if(t.feature==='path' || t.feature==='swale' || t.feature==='saltflat') return false;
+  if(t.atlasLandmark) return false;
+  if(typeof isFarmEdgeT==='function' && isFarmEdgeT(t)) return false;
+  const side = (g|0) || (typeof GRID==='number' ? GRID : 0);
+  if(side>2){
+    const c = t.c|0, r = t.r|0;
+    if(r===0 || r===side-1 || c===0 || c===side-1) return false;
+  }
+  return true;
+}
+/** Standing hay / cover / grain — not sisters kitchen rows. */
+function leftoverIsHayForageT(t){
+  return !!(t && t.crop && (t.crop.type==='clover' || t.crop.type==='covercrop' || t.crop.type==='wheat'));
+}
+/** Leftover / bought hay folds. Home Patch stays off. */
+function leftoverIsHayFold(P){
+  if(!P) return false;
+  if(P.id==='home_garden' || P.lvIndex===0) return false;
+  const feel = typeof leftoverStampFeelFor==='function' ? leftoverStampFeelFor(P) : (P.stampFeel||'');
+  return feel==='hay' || P.id==='hay_field' || P.id==='south_lane';
+}
+function currentHayFold(s){
+  s = s || (typeof state!=='undefined' ? state : null);
+  if(!s) return false;
+  const L = (typeof LEVELS!=='undefined' && LEVELS[s.lv]) ? LEVELS[s.lv] : null;
+  if(L && L.id==='home') return false;
+  if(L && L.stampFeel==='hay') return true;
+  const P = typeof valleyParcelByLvIndex==='function' ? valleyParcelByLvIndex(s.lv) : null;
+  return leftoverIsHayFold(P);
+}
 /** Atlas orchard / leftover fruit trees — not a woodlot belt, not a hay row. */
 function leftoverIsOrchardGroveT(t){
   if(!t) return false;
@@ -4455,24 +4488,48 @@ function dressLeftoverStamp(s, P){
   const tiles = s.grid;
   const roll = (t, k)=> sr(((t.c+3)*19 + (t.r+7)*41 + (k||0)*13 + (P.id||'').length*8));
   if(feel==='hay'){
-    let planted = 0, bales = 0;
+    // Open fold first — leftover-open tillage stays. Play edges stay free for the windbreak.
     tiles.forEach(t=>{
       if(!leftoverStampLand(t)) return;
-      if(t.terrain==='dead' && roll(t,1)<0.74){
-        seedSoil(t, 38 + roll(t,2)*10, 8);
+      if(t.terrain==='dead' && roll(t,1)<0.78){
+        seedSoil(t, 36 + roll(t,2)*10, 8);
       }
       if(t.terrain==='soil'){
-        t.soil.om = Math.min(100, (t.soil.om||30)+10);
-        t.soil.erosion = Math.min(100, (t.soil.erosion||30)+12);
-        t.soil.nutrients = Math.min(100, (t.soil.nutrients||30)+6);
+        t.soil.om = Math.min(100, (t.soil.om||30)+8);
+        t.soil.erosion = Math.min(100, (t.soil.erosion||30)+10);
+        t.soil.nutrients = Math.min(100, (t.soil.nutrients||30)+4);
         recalc(t);
-        if(planted<2 && roll(t,3)>0.52 && roll(t,3)<0.72){
-          t.crop = {type:'clover', growth:0.38, days:3};
-          planted++;
-        } else if(bales<2 && roll(t,4)>0.84){
-          t.deco = 'deco_haybales';
-          bales++;
-        }
+      }
+    });
+    const g = (s.gridSize|0) || GRID;
+    const wantForage = Math.max(8, Math.round((g*g)*0.10));
+    let forage = tiles.filter(t=>typeof leftoverIsHayForageT==='function' ? leftoverIsHayForageT(t) : false).length;
+    const scoreHay = (t)=>{
+      let n = 0;
+      // Cut swaths: even rows of cover / grain, not a kitchen checkerboard.
+      if(((t.r|0)%2)===0) n += 8;
+      if(t.atlasBiome==='pasture' || t.atlasBiome==='heartland') n += 3;
+      if(t.atlasBiome==='garden') n += 2;
+      n += roll(t, 1) * 1.2;
+      return n;
+    };
+    tiles.filter(t=>leftoverHaySeatOk(t, g)).slice().sort((a,b)=>scoreHay(b)-scoreHay(a)).forEach(t=>{
+      if(forage>=wantForage) return;
+      const strip = ((t.r|0)%2)===0;
+      if(!(strip || forage < Math.round(wantForage*0.45))) return;
+      const pick = roll(t,3);
+      const type = pick<0.42 ? 'clover' : pick<0.78 ? 'covercrop' : 'wheat';
+      t.crop = {type, growth:0.30 + roll(t,4)*0.20, days:2};
+      t.deco = null;
+      forage++;
+    });
+    let bales = tiles.filter(t=>t.deco==='deco_haybales').length;
+    const wantBales = 3;
+    tiles.filter(t=>leftoverHaySeatOk(t, g) && t.terrain==='soil' && !t.crop).slice().sort((a,b)=>roll(b,5)-roll(a,5)).forEach(t=>{
+      if(bales>=wantBales) return;
+      if(roll(t,6)<0.62){
+        t.deco = 'deco_haybales';
+        bales++;
       }
     });
     return;
@@ -6279,6 +6336,9 @@ function simStep(dt){
       if(t.crop){
         const c = CROPS[t.crop.type];
         d = c.diverse ? 0.6*sn.regenMult*lvB : -0.12;   // diversity builds; mono extracts
+        if(typeof currentHayFold==='function' && currentHayFold() && t.crop.type==='wheat'){
+          d = -0.04;                                   // hay fold: open grain tillage is OK
+        }
         if((k==='om'||k==='microbial') && c.diverse) d *= 1.4;
         if(c.cover && (k==='om'||k==='microbial'||k==='erosion')) d *= 1.5;
         if(t.compost>0) d += 0.35;
@@ -6289,6 +6349,15 @@ function simStep(dt){
       if(typeof farmEdgeAdj==='function' && farmEdgeAdj(t)){
         if(k==='erosion') d += 0.04;                 // windbreak / seam: a little more soil hold
         if(k==='water') d += 0.02;                   // less wilt in the lee
+      }
+      if(typeof currentHayFold==='function' && currentHayFold()){
+        const lee = typeof farmEdgeAdj==='function' && farmEdgeAdj(t);
+        const hayHold = t.crop && CROPS[t.crop.type] && (CROPS[t.crop.type].cover || t.crop.type==='wheat');
+        if(k==='erosion'){
+          if(lee) d += 0.08;                         // hay: the weather-side break matters more for dust
+          else if(!hayHold) d -= 0.05;               // bare open hay away from the break blows
+        }
+        if(k==='water' && lee) d += 0.02;
       }
       if(typeof riparianAdj==='function' && riparianAdj(t)){
         if(k==='erosion') d += 0.05;                 // bank buffer: less soil into the river
@@ -10284,7 +10353,8 @@ function showEvent(id){
     bad=true; em='🌪️'; title='Dust Storm!'; kid='A wall of dust rolled off the dead flats and swallowed the sky!';
     let hit=0, safe=0;
     soils.forEach(t=>{
-      if(t.crop || t.soil.erosion>50 || treeAdj(t)){ safe++; }
+      const hayLee = typeof currentHayFold==='function' && currentHayFold() && typeof farmEdgeAdj==='function' && farmEdgeAdj(t);
+      if(t.crop || t.soil.erosion>50 || treeAdj(t) || hayLee){ safe++; }
       else{
         t.soil.water = clamp(t.soil.water-6);
         t.soil.om = clamp(t.soil.om-3);
@@ -10530,7 +10600,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.dustfeel';
+const SHIP_BUILD = '2026-08-22.hayfold';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
