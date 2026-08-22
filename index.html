@@ -1048,6 +1048,13 @@ const COOP_BEDDING_RATE = 0.12; // pile lots/day at 1 hen; scales with sqrt(hens
 const COOP_BEDDING_AUTO = 1;    // at most one dawn pile unit — bedding, not a crate crop
 const WOODLOT_REGEN_DAYS = 8; // clear-cut stump returns as canopy; never an empty plant bed
 const WOODLOT_CLEAR_SOIL = {om:-3, erosion:-4, water:-2, microbial:-1}; // heavy cut nicks the fold
+const STAND_WILLOW_SEASON = [1.14, 0.88, 1.02, 1.12]; // spring withies; summer leafy; fall set; winter rods
+const WILLOW_LOT = 3;   // modest crate lot — like hay / firewood, well under a wheat cut
+const WILLOW_THIN_SET = 0.05; // careful rod / day on a living willow — tap when ready
+const WILLOW_AUTO = 1;        // at most one dawn lot when the trickle fills
+const WILLOW_DAWN_RATE = 0.055; // lots/day at 1 tree; scales with sqrt(stand), stays rare
+const WILLOW_REGEN_DAYS = 8; // strip-cut stump returns as a living willow; never an empty plant bed
+const WILLOW_STRIP_SOIL = {om:-2, erosion:-4, water:-3, microbial:-1}; // strip nicks bank hold and shelter
 const OVERGRAZE_RATES = {om:-0.45, structure:-0.35, nutrients:-0.15, water:0, microbial:-0.1, erosion:-0.5};
 function emptyHerd(){ return {cattle:0, chicken:0, sheep:0, goat:0, pig:0, duckT:0}; }
 function ensureHerd(c){
@@ -1740,7 +1747,8 @@ function standPriceMult(kind){
     : (kind==='fruit' ? STAND_FRUIT_SEASON
     : (kind==='hay' ? STAND_HAY_SEASON
     : (kind==='timber' ? STAND_TIMBER_SEASON
-    : (kind==='forage' ? STAND_FORAGE_SEASON : STAND_GRAIN_SEASON)))));
+    : (kind==='forage' ? STAND_FORAGE_SEASON
+    : (kind==='willow' ? STAND_WILLOW_SEASON : STAND_GRAIN_SEASON))))));
   const base = table[clk.season] || 1;
   const m = base * standLaneWobble();
   return Math.max(STAND_MULT_MIN, Math.min(STAND_MULT_MAX, m));
@@ -1752,6 +1760,7 @@ function crateLotPriceKind(lot){
   if((lot && lot.type)==='hay') return 'hay';
   if((lot && lot.type)==='timber') return 'timber';
   if((lot && lot.type)==='forage') return 'forage';
+  if((lot && lot.type)==='willow') return 'willow';
   return 'grain';
 }
 function crateLotSellPrice(lot){
@@ -1761,12 +1770,13 @@ function crateLotSellPrice(lot){
   let n = Math.max(1, Math.round(base * mult));
   // Modest 🪙3–4 lots round flat across the band — keep cheap/dear as a 1-coin step.
   // Key the step off the season table, not the ±3% daily wobble, so a quiet
-  // market-day mood cannot cancel summer-cheap / winter-dear fruit (or eggs, hay, firewood, forage).
-  if(kind==='egg' || kind==='fruit' || kind==='hay' || kind==='timber' || kind==='forage'){
+  // market-day mood cannot cancel summer-cheap / winter-dear fruit (or eggs, hay, firewood, forage, withies).
+  if(kind==='egg' || kind==='fruit' || kind==='hay' || kind==='timber' || kind==='forage' || kind==='willow'){
     const table = kind==='fruit' ? STAND_FRUIT_SEASON
       : (kind==='hay' ? STAND_HAY_SEASON
       : (kind==='timber' ? STAND_TIMBER_SEASON
-      : (kind==='forage' ? STAND_FORAGE_SEASON : STAND_EGG_SEASON)));
+      : (kind==='forage' ? STAND_FORAGE_SEASON
+      : (kind==='willow' ? STAND_WILLOW_SEASON : STAND_EGG_SEASON))));
     const lane = table[standClock().season] || 1;
     if(lane<=0.94 && n>=base) n = Math.max(1, base-1);
     if(lane>=1.08 && n<=base) n = base+1;
@@ -2069,7 +2079,7 @@ function neighborStandHtml(opts){
         </span>
       </div>`;
       }).join('')
-    : `<div class="nstand-note">Crate is empty. Harvest wheat, sisters, orchard fruit, hay, woodlot firewood, or meadow forage, then bring it here.</div>`;
+    : `<div class="nstand-note">Crate is empty. Harvest wheat, sisters, orchard fruit, hay, woodlot firewood, meadow forage, or willow cuttings, then bring it here.</div>`;
   const pileNote = pileN
     ? `<div class="nstand-note">🪣 ${pileN} leftover compost ready — paint 🪣 Compost on the land (no coins). Crate leftovers${typeof leftoverPileFeedAnd==='function'?leftoverPileFeedAnd():''} feed this pile.</div>`
     : '';
@@ -2521,7 +2531,9 @@ function leftoverStampStory(feel, P){
   const line = {
     hay: 'Open hay and cover — cut forage into the crate, rest the ground, keep the weather-side windbreak. Not a kitchen row.',
     woodlot: 'Shade and brush. Thin a little firewood; leave the canopy. Restore the understory.',
-    wet: 'Wet ground and reeds. Do not farm this like a dry garden.',
+    wet: (P && P.id==='willow_bottom')
+      ? 'Living willow on wet ground. Cut withies into the crate; leave the tree. Strip the stand and the bank loses shelter. Not meadow forage, not firewood.'
+      : 'Wet ground and reeds. Do not farm this like a dry garden.',
     meadow: 'Wet flowery meadow — reeds, clover, and flowers along the creek. Gather wild cuttings into the crate. Not hay, not a kitchen row.',
     paddock: 'A grazing fold. Pasture, manure, rest, and stock water — bedding and droppings feed the compost pile. Not a kitchen garden.',
     orchard: 'Trees and understory. Perennials, not corn rows.',
@@ -3758,6 +3770,7 @@ function defaultCamp(){
     compostStock: 0, // leftover crate / surplus bodies / paddock bedding / coop bedding returned to the pile
     eggAcc: 0, // homestead coop → crate lots (fractional days)
     woodAcc: 0, // woodlot firewood dawn trickle (fractional days)
+    willowAcc: 0, // willow withies dawn trickle (fractional days)
     manureAcc: 0, // leftover paddock bedding → pile lots (fractional days)
     coopBeddingAcc: 0, // homestead coop droppings → pile lots (fractional days)
   };
@@ -4345,7 +4358,7 @@ function genSchoolGarden(s){
   if(typeof ensureAtlasLaneOnCrop==='function') ensureAtlasLaneOnCrop(s, 'school_garden');
 }
 function isFarmEdgeT(t){
-  return !!(t && (t.farmEdge==='windbreak' || t.farmEdge==='hedgerow' || t.farmEdge==='woodlot' || t.farmEdge==='riparian'));
+  return !!(t && (t.farmEdge==='windbreak' || t.farmEdge==='hedgerow' || t.farmEdge==='woodlot' || t.farmEdge==='riparian' || t.farmEdge==='willow'));
 }
 function isRiparianT(t){
   return !!(t && t.farmEdge==='riparian');
@@ -4551,11 +4564,13 @@ function woodlotFoldReady(s){
   if(typeof homePatchCleared==='function' && !homePatchCleared()) return false;
   return currentWoodlotFold(s);
 }
-/** Living woodlot canopy on this fold — not orchard fruit, not a hay windbreak. */
+/** Living woodlot canopy on this fold — not orchard fruit, not a hay windbreak, not willow rods. */
 function isWoodlotTimberT(t, s){
   if(!t || t.terrain!=='trees') return false;
   if(!woodlotFoldReady(s)) return false;
   if(typeof isRiparianT==='function' && isRiparianT(t)) return false;
+  if(t.farmEdge==='willow') return false;
+  if(typeof currentWillowFold==='function' && currentWillowFold(s)) return false;
   return true;
 }
 function leftoverSeedWoodlotTimber(t){
@@ -4708,6 +4723,203 @@ function tickWoodlotTimber(){
     if(harvestWoodlotTile(s.grid[ready[k]], ready[k], {farm:s, auto:true})) n++;
   }
   if(n) camp.woodAcc -= n;
+  return n;
+}
+/** Buyable Willow Bottom only — not Wet Meadow forage, not marsh, not Home. */
+function leftoverIsWillowFold(P){
+  if(!P) return false;
+  if(P.id==='home_garden' || P.lvIndex===0) return false;
+  if(!P.leftover && !P.buyable) return false;
+  return P.id==='willow_bottom' || P.levelId==='willow_bottom';
+}
+/** Field under the player, or the parked willow fold while they are in the yard. */
+function willowCutFarm(){
+  if(typeof homesteadMode!=='undefined' && homesteadMode && typeof plotStateBackup!=='undefined'
+     && plotStateBackup && plotStateBackup.grid && !plotStateBackup.homesteadView){
+    return plotStateBackup;
+  }
+  if(state && !state.homesteadView) return state;
+  return null;
+}
+function currentWillowFold(s){
+  s = s || (typeof willowCutFarm==='function' ? willowCutFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s) return false;
+  if(s.homesteadView) return false;
+  const L = (typeof LEVELS!=='undefined' && LEVELS[s.lv]) ? LEVELS[s.lv] : null;
+  if(L && L.id==='home') return false;
+  if(L && (L.id==='willow_bottom' || L.levelId==='willow_bottom')) return true;
+  const P = typeof valleyParcelByLvIndex==='function' ? valleyParcelByLvIndex(s.lv) : null;
+  return leftoverIsWillowFold(P);
+}
+/** Willow Bottom after Home. First session and non-willow folds stay off. */
+function willowFoldReady(s){
+  if(!camp) return false;
+  if(typeof homePatchCleared==='function' && !homePatchCleared()) return false;
+  return currentWillowFold(s);
+}
+function isWillowT(t){
+  return !!(t && t.farmEdge==='willow');
+}
+/** Living willow on this fold — rods / withies. Tree stays. Not firewood, not meadow forage. */
+function isWillowCutT(t, s){
+  if(!t || t.terrain!=='trees') return false;
+  if(!willowFoldReady(s)) return false;
+  if(typeof isWoodlotT==='function' && isWoodlotT(t)) return false;
+  return true;
+}
+function leftoverSeedWillowCut(t){
+  if(!t || t.terrain!=='trees') return;
+  if(t.willowReady!=null || t.willowSet!=null) return;
+  const u = sr(((t.c|0)*19 + (t.r|0)*41 + 13));
+  t.willowReady = u >= 0.72;
+  t.willowSet = t.willowReady ? 0 : u;
+}
+function willowTileReady(t, s){
+  if(!isWillowCutT(t, s)) return false;
+  leftoverSeedWillowCut(t);
+  return !!(t && t.willowReady);
+}
+function willowThinRate(s){
+  let r = WILLOW_THIN_SET;
+  const season = (s && (s.season|0)) || 0;
+  if(season===0) r *= 1.12; // spring withies
+  if(season===1) r *= 0.82; // summer leafy
+  if(season===3) r *= 1.10; // winter rods
+  return r;
+}
+function willowFloaterIdx(s, i){
+  if(state && state.grid && s && s.grid && state.grid===s.grid && state.grid[i]) return i;
+  if(typeof selected==='number' && selected>=0 && state && state.grid && state.grid[selected]) return selected;
+  if(state && state.grid){
+    for(let k=0;k<state.grid.length;k++){
+      if(state.grid[k] && (state.grid[k].terrain==='nstand' || state.grid[k].terrain==='house' || state.grid[k].terrain==='coop')) return k;
+    }
+  }
+  return (typeof selected==='number' && selected>=0) ? selected : 0;
+}
+function willowCutStory(tier){
+  return '🌿 Living willow rods — withies for the crate, not firewood and not meadow forage. Neighbors pay more in spring plant and winter coppice. The tree stays. '+(tier||'');
+}
+function bankWillowCutLot(t, i, s, opts){
+  const o = opts || {};
+  if(typeof bankHarvestLot==='function') bankHarvestLot({type:'willow', em:'🌿', name:'Willow cuttings', coins:WILLOW_LOT});
+  if(state && state.stats) state.stats.harvests = (state.stats.harvests|0) + 1;
+  const fi = willowFloaterIdx(s, i);
+  if(typeof floater==='function' && state && state.grid && state.grid[fi]){
+    floater(fi, o.stripCut ? '🌿 crate · bank thins' : '🌿 crate', o.stripCut ? '#c9a070' : '#ffd45e', 16);
+  }
+  if(typeof burst==='function' && state && state.grid && state.grid[fi]) burst(fi, o.stripCut ? '#c9b896' : '#c8f0a0', 6);
+  if(typeof SND!=='undefined' && SND && typeof SND.place==='function') SND.place();
+  if(typeof toast==='function'){
+    toast(o.stripCut
+      ? '🌿 Heavy strip — withies in the crate, but the bank lost shelter. Soil thins until the willow returns.'
+      : '🌿 Willow cuttings in the crate by the house. Neighbors pay more in spring and winter — or let them sit for the pile.',
+      {once: o.stripCut ? 'willow_strip_first' : 'willow_cut_first', throttleMs:4000});
+  }
+  if(typeof refreshNeighborStandIfOpen==='function') refreshNeighborStandIfOpen();
+  if(typeof updateHUD==='function') updateHUD();
+}
+/** Tap a ready willow — careful cuttings. The tree stays. */
+function harvestWillowTile(t, i, opts){
+  const o = opts || {};
+  const s = o.farm || (typeof willowCutFarm==='function' ? willowCutFarm() : state);
+  if(!t || t.terrain!=='trees') return false;
+  if(!willowFoldReady(s)) return false;
+  if(!willowTileReady(t, s)) return false;
+  t.willowReady = false;
+  t.willowSet = 0;
+  bankWillowCutLot(t, i, s, o);
+  return true;
+}
+/** Strip the stand: withies now, soil/shelter nick, stump regenerates. Never an empty plant bed. */
+function applyWillowStripSoil(t, s){
+  s = s || (typeof state!=='undefined' ? state : null);
+  if(!t || !t.soil) return 0;
+  const b = WILLOW_STRIP_SOIL;
+  const bump = (tile)=>{
+    if(!tile || !tile.soil) return;
+    tile.soil.om = clamp((tile.soil.om||0) + b.om);
+    tile.soil.erosion = clamp((tile.soil.erosion||0) + b.erosion);
+    tile.soil.water = clamp((tile.soil.water||0) + b.water);
+    tile.soil.microbial = clamp((tile.soil.microbial||0) + b.microbial);
+    if(typeof recalc==='function') recalc(tile);
+  };
+  bump(t);
+  const g = (s && ((s.gridSize|0) || (typeof GRID==='number' ? GRID : 0))) || 0;
+  if(s && s.grid && g>0){
+    const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+    for(let k=0;k<dirs.length;k++){
+      const c = (t.c|0)+dirs[k][0], r = (t.r|0)+dirs[k][1];
+      if(c<0 || r<0 || c>=g || r>=g) continue;
+      bump(s.grid[r*g+c]);
+    }
+  }
+  return 1;
+}
+function stripWillowTree(t, i, opts){
+  const o = opts || {};
+  const s = o.farm || (typeof willowCutFarm==='function' ? willowCutFarm() : state);
+  if(!t || t.terrain!=='trees') return false;
+  if(!willowFoldReady(s)) return false;
+  applyWillowStripSoil(t, s);
+  t.terrain = 'soil';
+  t.deco = 'deco_stump';
+  t.decoRot = 0;
+  t.crop = null;
+  t.farmEdge = 'willow';
+  t.willowReady = false;
+  t.willowSet = 0;
+  t.willowRegen = 0;
+  bankWillowCutLot(t, i, s, {stripCut:true});
+  return true;
+}
+function tickWillowCutGrow(s){
+  if(!s || !s.grid) return;
+  s.grid.forEach(t=>{
+    if(!t) return;
+    if(t.willowRegen!=null && (t.farmEdge==='willow' || typeof isWillowT==='function' && isWillowT(t))){
+      t.willowRegen = (t.willowRegen|0) + 1;
+      if(t.willowRegen >= WILLOW_REGEN_DAYS){
+        t.terrain = 'trees';
+        t.deco = null;
+        t.farmEdge = 'willow';
+        t.willowRegen = null;
+        t.willowReady = false;
+        t.willowSet = 0;
+      }
+      return;
+    }
+    if(t.terrain!=='trees') return;
+    if(!willowFoldReady(s)) return;
+    leftoverSeedWillowCut(t);
+    if(t.willowReady) return;
+    t.willowSet = Math.max(0, +t.willowSet || 0) + willowThinRate(s);
+    if(t.willowSet >= 1){
+      t.willowReady = true;
+      t.willowSet = 0;
+    }
+  });
+}
+/** One sim dawn: a rare withy trickle. Tap still picks ready rods. Tree stays. */
+function tickWillowCut(){
+  if(!camp || !willowFoldReady()) return 0;
+  const s = willowCutFarm();
+  if(!s || !s.grid) return 0;
+  tickWillowCutGrow(s);
+  let trees = 0;
+  const ready = [];
+  s.grid.forEach((t,i)=>{
+    if(isWillowCutT(t, s)) trees++;
+    if(willowTileReady(t, s)) ready.push(i);
+  });
+  if(!trees) return 0;
+  camp.willowAcc = Math.max(0, +camp.willowAcc || 0) + WILLOW_DAWN_RATE * Math.sqrt(trees);
+  if(camp.willowAcc < 1 || !ready.length) return 0;
+  let n = 0;
+  for(let k=0;k<Math.min(WILLOW_AUTO, ready.length);k++){
+    if(harvestWillowTile(s.grid[ready[k]], ready[k], {farm:s, auto:true})) n++;
+  }
+  if(n) camp.willowAcc -= n;
   return n;
 }
 function isSwaleT(t){
@@ -5124,9 +5336,9 @@ function tickPaddockStockThirst(){
 /** Seated / atlas / planted windbreak, hedgerow, or woodlot canopy — not riparian, not a stump. */
 function isWindShelterT(t){
   if(!t) return false;
-  if(t.woodRegen!=null) return false;
+  if(t.woodRegen!=null || t.willowRegen!=null) return false;
   if(typeof isRiparianT==='function' && isRiparianT(t)) return false;
-  if(t.farmEdge==='windbreak' || t.farmEdge==='hedgerow' || t.farmEdge==='woodlot') return true;
+  if(t.farmEdge==='windbreak' || t.farmEdge==='hedgerow' || t.farmEdge==='woodlot' || t.farmEdge==='willow') return true;
   if(typeof isWoodlotT==='function' && isWoodlotT(t)) return true;
   if(t.atlasFeature==='hedgerow' || t.atlasFeature==='windbreak') return true;
   if(t.terrain==='trees' && t.atlasC!=null && typeof atlasGet==='function'){
@@ -5258,6 +5470,7 @@ function leftoverIsMeadowForageFold(P){
   if(!P) return false;
   if(P.id==='home_garden' || P.lvIndex===0) return false;
   if(P.id==='marsh_finger' || P.levelId==='marsh') return false;
+  if(P.id==='willow_bottom' || P.levelId==='willow_bottom') return false;
   const feel = typeof leftoverStampFeelFor==='function' ? leftoverStampFeelFor(P) : (P.stampFeel||'');
   return feel==='meadow' || P.id==='wet_meadow';
 }
@@ -5901,6 +6114,8 @@ function dressLeftoverStamp(s, P){
         if(willows>=2 || t.terrain!=='soil' || !leftoverStampOpen(t)) return;
         if(leftoverWetNear(s,t) || roll(t,5)<0.35){
           t.terrain = 'trees'; carveClear(t);
+          t.farmEdge = 'willow';
+          if(typeof leftoverSeedWillowCut==='function') leftoverSeedWillowCut(t);
           willows++;
         }
       });
@@ -7788,6 +8003,7 @@ function simStep(dt){
     if(typeof tickCoopEggs==='function') tickCoopEggs();
     if(typeof tickOrchardFruit==='function') tickOrchardFruit();
     if(typeof tickWoodlotTimber==='function') tickWoodlotTimber();
+    if(typeof tickWillowCut==='function') tickWillowCut();
     if(typeof tickMeadowForage==='function') tickMeadowForage();
     if(typeof tickPaddockManure==='function') tickPaddockManure();
     if(typeof tickPaddockStockThirst==='function') tickPaddockStockThirst();
@@ -11054,6 +11270,8 @@ function soilStoryLine(t){
     return '💧 Water held on the land — a pond keeps neighbors moist.';
   }
   if(t.terrain==='trees'){
+    if(typeof isWillowCutT==='function' && isWillowCutT(t))
+      return (typeof willowCutStory==='function' ? willowCutStory('') : '🌿 Living willow rods for the crate. The tree stays.');
     if(typeof waterAdj==='function' && waterAdj(t))
       return '🌳 The filter — roots hold the bank and drink the runoff.';
     return '🌳 Living hedge — windbreak, shade, and a home for bees.';
@@ -11203,6 +11421,11 @@ function applyTool(i){
       ringAt(i, '#ffe89a');
       return true;
     }
+    if(t.terrain==='trees' && typeof harvestWillowTile==='function' && harvestWillowTile(t, i)){
+      openInfo();
+      ringAt(i, '#ffe89a');
+      return true;
+    }
     if(t.deco==='deco_haybales' && typeof harvestHayBale==='function' && harvestHayBale(t, i)){
       openInfo();
       ringAt(i, '#ffe89a');
@@ -11251,6 +11474,10 @@ function applyTool(i){
     else if(t.terrain==='trees' && typeof woodlotFoldReady==='function' && woodlotFoldReady()
             && typeof clearCutWoodlotTree==='function'){
       did = ()=>{ clearCutWoodlotTree(t, i); };
+    }
+    else if(t.terrain==='trees' && typeof willowFoldReady==='function' && willowFoldReady()
+            && typeof stripWillowTree==='function'){
+      did = ()=>{ stripWillowTree(t, i); };
     }
     else if(t.terrain==='pond' || t.terrain==='trees') did = ()=>{ t.terrain = 'soil'; };
     else if(BUILD_SET.has(t.terrain)) did = ()=>{ t.terrain = 'soil'; agents = agents.filter(a=>a.tile!==i); };
@@ -11411,6 +11638,11 @@ function applyTool(i){
       t.farmEdge = t.farmEdge || 'woodlot';
       t.woodReady = false;
       t.woodSet = 0;
+    }
+    if(typeof currentWillowFold==='function' && currentWillowFold()){
+      t.farmEdge = t.farmEdge || 'willow';
+      t.willowReady = false;
+      t.willowSet = 0;
     }
     state.stats.trees++;
     floater(i, '🌳 hedgerow!', '#c8f0a0'); burst(i, '#6fae5f', 12); SND.place();
@@ -12022,7 +12254,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-22.hedgelee';
+const SHIP_BUILD = '2026-08-22.willowcut';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -16581,6 +16813,8 @@ function openInfo(refreshOnly){
       chips.push('🌼 wild cuttings — tap when the bloom is ready');
     if(t.woodRegen!=null && (t.farmEdge==='woodlot' || t.atlasFeature==='woodlot'))
       chips.push('🪵 stump after a heavy cut — canopy returns; soil and shelter stay thin until then');
+    if(t.willowRegen!=null && (t.farmEdge==='willow' || (typeof isWillowT==='function' && isWillowT(t))))
+      chips.push('🌿 stump after a strip — the willow returns; bank soil and shelter stay thin until then');
     if(t.graze){
       chips.push(grazeInspectLine(t.graze));
     }
@@ -16640,6 +16874,12 @@ function openInfo(refreshOnly){
       ? 'A thin windbreak on the weather side — neighbors hold soil a little better, and the herd walks around it.'
       : t.farmEdge==='hedgerow'
         ? 'A hedgerow seam from the painting — shelter for the next fold, and the herd walks around it.'
+        : (typeof isWillowCutT==='function' && isWillowCutT(t)) || t.farmEdge==='willow'
+          ? ((t.willowRegen!=null)
+            ? 'A stump after a strip — bank soil and shelter thin until the willow returns. Not an open plant bed.'
+            : (typeof willowTileReady==='function' && willowTileReady(t)
+              ? 'Willow fold — a careful cutting is ready. Tap for withies; the tree stays. Not firewood, not meadow forage.'
+              : 'Willow fold — tap when a rod is ready, or wait for a dawn trickle. Living rods, not firewood. The tree stays.'))
         : t.farmEdge==='woodlot' || (typeof isWoodlotT==='function' && isWoodlotT(t))
           ? ((t.woodRegen!=null)
             ? 'A stump after a heavy cut — soil and shelter thin until the canopy returns. Not an open plant bed.'
