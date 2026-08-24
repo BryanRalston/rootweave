@@ -2659,7 +2659,7 @@ const LEVELS = [
    goals:[
      {em:'🌅', desc:'Revive 4 dead tiles (dead → soil)', prog:()=>[Math.min(4, countRevived()), 4]},
      {em:'🌽', desc:'Plant 3 Three Sisters',            prog:()=>[Math.min(3, countSistersPlanted()), 3]},
-     {em:'💚', desc:'Bring 10 tiles to 55+ health',     prog:()=>[Math.min(10, countHealthyTiles(55)), 10]},
+     {em:'💚', desc:'Bring 6 tiles to 55+ health',      prog:()=>[Math.min(6, countHealthyTiles(55)), 6]},
    ],
    gen:genHomePatch,
    tut:[
@@ -10265,7 +10265,7 @@ function maybeHomeHealthMercy(){
   const sis = typeof countSistersPlanted==='function' ? countSistersPlanted() : (state.stats.sistersPlanted|0);
   if(rev < 4 || sis < 3) return false;
   const have = typeof countHealthyTiles==='function' ? countHealthyTiles(55) : 0;
-  if(have >= 10) return false;
+  if(have >= 6) return false;
   const now = (state.day|0) + (state.dayFrac||0) + ((state.seasonCount|0)*DAYS_PER_SEASON);
   if(now < 8) return false;
   // One almost-ready bed only — never stamp the remaining health goal
@@ -22653,7 +22653,7 @@ function hideJourney(){
 function journeyPick(lv){
   const P = valleyParcelByLvIndex(lv);
   if(P && !parcelIsUnlocked(P, camp)){
-    toast(`🔒 ${P.name} — restore required parcels first (${P.teaser||'…'}).`);
+    toast(`🔒 ${P.name} — ${typeof parcelUnlockHint==='function' ? (parcelUnlockHint(P)||'finish the neighboring field first.') : 'finish the neighboring field first.'}`);
     SND.uhoh(); return;
   }
   if(!P && lv>camp.unlocked){ toast('🔒 Finish the earlier plots to unlock this one!'); SND.uhoh(); return; }
