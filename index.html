@@ -3886,7 +3886,7 @@ const HS_EXPANSIONS = [
   {id:'kit_paths', name:'Mason\'s Kit', cost:35, needDone:0, em:'🪨', unlock:['deco_path','deco_stonewall','deco_gate'],
     desc:'Stone paths, low walls, and a proper gate — bones of a designed yard.'},
   {id:'kit_garden', name:'Grower\'s Kit', cost:45, needDone:0, needParcel:'home_garden', em:'🌱', unlock:['deco_vegbox','deco_herb','berrybush'],
-    desc:'Raised beds, herbs, and berries — after Home Garden.'},
+    desc:'Raised beds, herbs, and berries — after Home Patch.'},
   {id:'kit_water', name:'Water Garden', cost:55, needDone:0, needParcel:'creek_bend', em:'💧', unlock:['deco_fountain','deco_koi','well'],
     desc:'Fountain, koi, well — unlocks when Creek Bend is restored.'},
   {id:'kit_wildlife', name:'Habitat Kit', cost:50, needDone:0, needParcel:'back_paddock', em:'🐝', unlock:['beehive','birdhouse','deco_birdbath'],
@@ -9596,7 +9596,7 @@ function loadSprites(){
   registerSprite('chicken_peck', 'sprites/anim_chicken_peck.webp'+ANIM_V, 4);
   // Wildlife 12-frame packs — same keys as wildWalkCount (bee_w0 ← anim_bee_w00.webp)
   const WILD_V = '?v=wildPack1';
-  ['bee','bird','butterfly','frog','rabbit','heron','dragonfly'].forEach(kind=>{
+  ['bee','bird','butterfly','frog','rabbit','heron','dragonfly','ladybug'].forEach(kind=>{
     for(let i=0;i<12;i++){
       registerSprite(kind+'_w'+i, 'sprites/anim_'+kind+'_w'+String(i).padStart(2,'0')+'.webp'+WILD_V, 4);
     }
@@ -11766,7 +11766,7 @@ function hydrateHomesteadState(){
 }
 function enterHomestead(){
   if(!camp.homestead || !camp.homestead.unlocked){
-    toast('🏡 Finish Home Garden to unlock your Homestead!'); SND.uhoh(); return;
+    toast('🏡 Finish Home Patch to unlock your Homestead!'); SND.uhoh(); return;
   }
   if(homesteadMode){ hideJourney(); return; }
   // park the active plot (if any)
@@ -18238,12 +18238,13 @@ function updateWildlife(dt, bio){
     dragonfly: (pondTiles.length && bio>=25) ? Math.min(3, 1+(bio/30|0)) : 0,
     frog:      (pondTiles.length && bio>=38) ? Math.min(2, pondTiles.length) : 0,
     rabbit:    (lushTiles.length>=8 && bio>=50) ? 2 : lushTiles.length>=4&&bio>=50 ? 1 : 0,
+    ladybug:   (bio>=32 && (lushTiles.length>=2 || targets.length>=2)) ? Math.min(3, 1+(((bio-32)/18)|0)) : 0,
   };
   const anchorFor = (kind)=>{
     let list = targets;
     if(kind==='duck' || kind==='heron') list = wTiles.length?wTiles:targets;
     else if(kind==='dragonfly' || kind==='frog') list = pondTiles.length?pondTiles:targets;
-    else if(kind==='rabbit') list = lushTiles.length?lushTiles:targets;
+    else if(kind==='rabbit' || kind==='ladybug') list = lushTiles.length?lushTiles:targets;
     return tileWorld(list[(Math.random()*list.length)|0]);
   };
   // Motion kits: ground (hop) vs air (flap) vs water (paddle)
@@ -18255,13 +18256,14 @@ function updateWildlife(dt, bio){
     heron:     {sp:6,  fly:false, flapHz:0,  air:false, ground:true,  water:true, tall:true},
     frog:      {sp:11, fly:false, flapHz:0,  air:false, ground:true,  hop:true},
     rabbit:    {sp:18, fly:false, flapHz:0,  air:false, ground:true,  hop:true},
+    ladybug:   {sp:7,  fly:false, flapHz:0,  air:false, ground:true},
   };
   Object.entries(wants).forEach(([kind, want])=>{
     const have = countKind(kind);
     if(have<want && Math.random()<dt*0.5){
       const p = anchorFor(kind);
       const kit = WILD_KIT[kind] || WILD_KIT.bee;
-      const groundY = (kind==='duck'||kind==='frog'||kind==='rabbit'||kind==='heron');
+      const groundY = (kind==='duck'||kind==='frog'||kind==='rabbit'||kind==='heron'||kind==='ladybug');
       wildlife.push({
         kind,
         x: p.x+(Math.random()-0.5)*26,
@@ -18325,6 +18327,11 @@ function updateWildlife(dt, bio){
         w.ty = p.y-3;
         w.retarget = 1.5+Math.random()*2.5;
         if(Math.random()<0.3) w.restT = 0.6+Math.random()*1.2;
+      }else if(w.kind==='ladybug'){
+        w.tx = p.x+(Math.random()-0.5)*18;
+        w.ty = p.y-2;
+        w.retarget = 2.2+Math.random()*2.8;
+        if(Math.random()<0.45) w.restT = 0.8+Math.random()*1.4;
       }else if(w.kind==='dragonfly'){
         w.tx = p.x+(Math.random()-0.5)*40;
         w.ty = p.y-10-Math.random()*18;
@@ -18414,13 +18421,13 @@ const WILD_ART = {
   // Slightly larger so photoreal critters read at board scale
   bee:      {w:18, em:'🐝'}, butterfly:{w:22, em:'🦋'}, duck:{w:20, em:'🦆'}, heron:{w:26, em:'🦩'},
   dragonfly:{w:18, em:'🪰'}, frog:{w:18, em:'🐸'}, rabbit:{w:20, em:'🐇'},
-  bird:     {w:20, em:'🐦'},
+  bird:     {w:20, em:'🐦'}, ladybug:{w:14, em:'🐞'},
 };
 /** Wildlife multi-frame packs allowed only after consistency review. */
 const WILD_PACK_OK = {
   bee: true, butterfly: true, dragonfly: true, bird: true,
   rabbit: true, frog: true, duck: false, heron: true,
-  fish: false, ladybug: false,
+  fish: false, ladybug: true,
 };
 /** Wing / hop / walk frame keys for wildlife multi-frame packs. */
 function wildWalkCount(k){
@@ -22474,7 +22481,7 @@ function buildJourney(){
       SND.pop();
       const hs2 = camp.homestead || defaultHomestead();
       if(hs2.unlocked) enterHomestead();
-      else toast('🏡 Homestead unlocks after Home Garden.');
+      else toast('🏡 Homestead unlocks after Home Patch.');
     });
     path.appendChild(fp);
     // AT3/CZ2 — share brag always beside freeplay banner (first-time soft tip also mentions share)
