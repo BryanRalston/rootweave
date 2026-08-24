@@ -17568,27 +17568,22 @@ function drawBridgeObj(t, time){
     ctx.fillRect(o.x-26, o.y+TH2-6, 52, 10);
   });
 }
+/** Soil/manure mound on a tile seat. Same language as leftover-pile fallback. Never a crate bin. */
+function drawCompostMoundAt(seat, w, hot){
+  const s = (w || 22) / 38;
+  ctx.fillStyle = hot ? '#6a3818' : '#5c4024';
+  ctx.beginPath(); ctx.ellipse(seat.x, seat.y, 10*s, 5.2*s, 0, 0, 6.29); ctx.fill();
+  ctx.fillStyle = hot ? '#8a4e22' : '#7a5b36';
+  ctx.beginPath(); ctx.ellipse(seat.x, seat.y-3.2*s, 8.4*s, 4.4*s, 0, 0, 6.29); ctx.fill();
+  ctx.fillStyle = hot ? '#b06a30' : '#93744a';
+  ctx.beginPath(); ctx.ellipse(seat.x-0.6*s, seat.y-6.4*s, 6.2*s, 3.4*s, 0, 0, 6.29); ctx.fill();
+}
 function drawCompostObj(t){
-  if(useDiorama() && SPRITES['dio_compost']){
-    const b = pt(t, 0.55, 0.55);
-    const L = dioramaLayout();
-    const cellW = Math.hypot(L.plot[1].x-L.plot[0].x, L.plot[1].y-L.plot[0].y)/(GRID||6);
-    const sw = Math.max(32, Math.min(90, cellW*0.7));
-    const sh = spriteH('dio_compost', sw, sw*0.85);
-    drawFootShadow(b.x, b.y+2, sw*0.28, sw*0.08);
-    drawSprite('dio_compost', b.x, b.y+3, sw, sh, ()=>drawEmoji('🪣', b.x, b.y-6, 16));
-    return;
-  }
+  // Painted feed is a bed meal. build_compost / dio_compost are crate bins for the building.
   const seat = tileSeat(t, 0.5, 0.58);
-  const cw = 38;
-  const ch = spriteH('compost', cw, 34);
-  drawFootShadow(seat.x, seat.y + 2, cw * 0.28, cw * 0.1);
-  drawSprite('compost', seat.x, seat.y + 3, cw, ch, ()=>{
-    ctx.fillStyle = '#7a5b36';
-    ctx.beginPath(); ctx.ellipse(seat.x, seat.y-2, 8, 4.2, 0, 0, 6.29); ctx.fill();
-    ctx.fillStyle = '#93744a';
-    ctx.beginPath(); ctx.ellipse(seat.x, seat.y-5, 5.6, 3.0, 0, 0, 6.29); ctx.fill();
-  });
+  const w = 22;
+  if(typeof drawFootShadow==='function') drawFootShadow(seat.x, seat.y + 2, w * 0.32, w * 0.11);
+  drawCompostMoundAt(seat, w, false);
 }
 /** Leftover stock pile by the barn — seated on the diamond, grows with camp.compostStock. */
 function drawLeftoverCompostPile(t){
