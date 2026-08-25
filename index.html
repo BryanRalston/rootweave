@@ -17601,16 +17601,28 @@ function drawCompostMoundAt(seat, w, hot){
 }
 function drawCompostObj(t){
   // Painted feed is a bed meal. build_compost stays the crate building.
-  const seat = tileSeat(t, 0.5, 0.58);
-  const w = 48;
-  if(typeof drawFootShadow==='function') drawFootShadow(seat.x, seat.y + 2, w * 0.34, w * 0.11);
+  // Per-tile seed so four heaps don't photocopy the same eggshells.
+  const seed = ((((t.c|0)*19) ^ ((t.r|0)*47)) + ((t.c|0)*3 + (t.r|0))) >>> 0;
+  const u = 0.48 + ((seed % 7) - 3) * 0.012;
+  const vf = 0.56 + (((seed >> 3) % 5) - 2) * 0.012;
+  const seat = tileSeat(t, u, vf);
+  const w = 36 + (seed % 5);
+  const flip = (seed & 1) ? -1 : 1;
+  const rot = (((seed >> 2) % 9) - 4) * 0.08;
+  const sy = 0.92 + ((seed >> 5) % 5) * 0.025;
+  if(typeof drawFootShadow==='function') drawFootShadow(seat.x, seat.y + 2, w * 0.30, w * 0.10);
   const img = SPRITES['compost_mound'];
   if(img){
     const h = spriteH('compost_mound', w, Math.round(w * 0.55));
-    drawSprite('compost_mound', seat.x, seat.y + 2, w, h);
+    ctx.save();
+    ctx.translate(seat.x, seat.y + 2);
+    ctx.rotate(rot);
+    ctx.scale(flip, sy);
+    ctx.drawImage(img, -w/2, -h, w, h);
+    ctx.restore();
     return;
   }
-  drawCompostMoundAt(seat, 22, false);
+  drawCompostMoundAt(seat, 20, false);
 }
 /** Leftover stock pile by the barn — seated on the diamond, grows with camp.compostStock. */
 function drawLeftoverCompostPile(t){
