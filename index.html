@@ -9020,34 +9020,48 @@ function pondAdj(t, dc, dr){
   const n = state.grid[typeof idx==='function' ? idx(c,r) : r*(GRID|0)+c];
   return !!(n && n.terrain==='pond');
 }
-/** Cover baked mud lips on pond-pond edges so a cluster reads as one pool. */
-function drawPondJoinFills(t, o){
-  if(!t || !o || t.terrain!=='pond') return;
+/** Clip pond sprite so shared edges lose the baked mud lip. Underfill is pond water. */
+function clipPondInnerLips(t, o){
+  if(!t || !o) return false;
   const se = pondAdj(t, 1, 0);
   const sw = pondAdj(t, 0, 1);
   const nw = pondAdj(t, -1, 0);
   const ne = pondAdj(t, 0, -1);
-  if(!(se||sw||nw||ne)) return;
+  if(!(se||sw||nw||ne)) return false;
   const N = {x:o.x, y:o.y};
   const E = {x:o.x+TW2, y:o.y+TH2};
   const S = {x:o.x, y:o.y+TILE_H};
   const W = {x:o.x-TW2, y:o.y+TH2};
   const C = {x:o.x, y:o.y+TH2};
-  const k = 0.36;
-  ctx.fillStyle = '#8a8168';
-  const strip = (A, B)=>{
-    ctx.beginPath();
-    ctx.moveTo(A.x, A.y);
-    ctx.lineTo(B.x, B.y);
-    ctx.lineTo(B.x+(C.x-B.x)*k, B.y+(C.y-B.y)*k);
-    ctx.lineTo(A.x+(C.x-A.x)*k, A.y+(C.y-A.y)*k);
-    ctx.closePath();
-    ctx.fill();
-  };
-  if(se) strip(E, S);
-  if(sw) strip(W, S);
-  if(nw) strip(N, W);
-  if(ne) strip(N, E);
+  const k = 0.16;
+  const inset = (P)=>({x:P.x+(C.x-P.x)*k, y:P.y+(C.y-P.y)*k});
+  const pts = [];
+  const edges = [[N,E,ne],[E,S,se],[S,W,sw],[W,N,nw]];
+  for(let i=0;i<edges.length;i++){
+    const A = edges[i][0], B = edges[i][1];
+    if(edges[i][2]){ pts.push(inset(A), inset(B)); }
+    else { pts.push(A, B); }
+  }
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.closePath();
+  ctx.clip();
+  return true;
+}
+function drawPondTileArt(t, o){
+  const img = SPRITES['tile_water'];
+  if(!img) return false;
+  const joined = pondAdj(t,1,0) || pondAdj(t,0,1) || pondAdj(t,-1,0) || pondAdj(t,0,-1);
+  if(joined){
+    ctx.fillStyle = '#8f8264';
+    diamondPath(o.x, o.y); ctx.fill();
+  }
+  ctx.save();
+  if(joined) clipPondInnerLips(t, o);
+  drawGroundTileArt(img, o);
+  ctx.restore();
+  return true;
 }
 function isLandT(t){ return t.terrain==='soil' || t.terrain==='dead'; }   // restorable ground
 const BUILDINGS = ['market','silo','greenhouse','beehive','orchard','raintank','wetland','stable',
@@ -16946,8 +16960,8 @@ function drawGround(t, time){
     }else if(isWaterT(t) || t.terrain==='riverbed'){
       // keep river art under wash
       if(t.terrain==='pond' && SPRITES['tile_water']){
-        drawGroundTileArt(SPRITES['tile_water'], o);
-        if(typeof drawPondJoinFills==='function') drawPondJoinFills(t, o);
+        if(typeof drawPondTileArt==='function') drawPondTileArt(t, o);
+        else drawGroundTileArt(SPRITES['tile_water'], o);
       }else if(t.terrain==='water' || t.terrain==='riverbed'){
         if(t.terrain==='water'){
           // SHIP_FIVE: flowing water uses ribbon only (no connector sprites)
@@ -16982,8 +16996,8 @@ function drawGround(t, time){
       // built ponds keep the self-contained pond art
       const img = SPRITES['tile_water'];
       if(img){
-        drawGroundTileArt(img, o);
-        if(typeof drawPondJoinFills==='function') drawPondJoinFills(t, o);
+        if(typeof drawPondTileArt==='function') drawPondTileArt(t, o);
+        else drawGroundTileArt(img, o);
         if(q<0.82){
           ctx.globalAlpha = (0.82-q)*0.72;
           ctx.fillStyle = q < 0.4 ? '#5a4828' : '#6e5b31';
