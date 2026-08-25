@@ -16788,47 +16788,51 @@ function drawAlignedChannel(t, o, mode, q, time, seed){
 }
 
 // ---------------------------------------------------------------- ground pass
-/** Continuous soil-bank under the board — sits in the meadow, not a framed table. */
+/** Thin dust bank under the board — warm earth family, not a chocolate cake slab. */
+function boardBankColors(){
+  const winter = !!(state && state.season===3);
+  return {
+    d: 7,
+    sideL: winter ? '#6e7266' : '#9a8670',
+    sideR: winter ? '#5a5e54' : '#7a6654',
+    contact: winter ? 'rgba(58,60,52,.16)' : 'rgba(78,58,40,.14)',
+    stroke: winter ? 'rgba(96,100,88,.26)' : 'rgba(110,88,64,.26)',
+  };
+}
 function drawBoardBorder(){
   if(!state || !GRID || useDiorama()) return;
   const G = GRID;
-  // Outer diamond of the full board (N tip of 0,0 → E tip of G-1,0 → S tip of G-1,G-1 → W tip of 0,G-1)
   const N = {x:0, y:0};
   const E = {x: G*TW2, y: G*TH2};
   const S = {x:0, y: 2*G*TH2};
   const W = {x:-G*TW2, y: G*TH2};
-  const d = TDEPTH + 2;
-  const winter = state.season===3;
-  const sideL = winter ? '#4e5346' : '#2f2a1c';
-  const sideR = winter ? '#3f4338' : '#241e14';
-  // Solid continuous extrusion under the diamond (covers jagged tile sides)
-  ctx.fillStyle = sideL;
+  const C = boardBankColors();
+  const d = C.d;
+  ctx.fillStyle = C.sideL;
   ctx.beginPath();
   ctx.moveTo(W.x, W.y); ctx.lineTo(S.x, S.y); ctx.lineTo(S.x, S.y+d); ctx.lineTo(W.x, W.y+d);
   ctx.closePath(); ctx.fill();
-  ctx.fillStyle = sideR;
+  ctx.fillStyle = C.sideR;
   ctx.beginPath();
   ctx.moveTo(S.x, S.y); ctx.lineTo(E.x, E.y); ctx.lineTo(E.x, E.y+d); ctx.lineTo(S.x, S.y+d);
   ctx.closePath(); ctx.fill();
-  // Soft earth contact under south tip
-  ctx.fillStyle = winter ? 'rgba(40,44,36,.26)' : 'rgba(16,12,8,.26)';
+  ctx.fillStyle = C.contact;
   ctx.beginPath();
   ctx.moveTo(W.x, W.y+d); ctx.lineTo(S.x, S.y+d); ctx.lineTo(E.x, E.y+d);
-  ctx.lineTo(E.x, E.y+d+2); ctx.lineTo(S.x, S.y+d+3); ctx.lineTo(W.x, W.y+d+2);
+  ctx.lineTo(E.x, E.y+d+2); ctx.lineTo(S.x, S.y+d+2); ctx.lineTo(W.x, W.y+d+2);
   ctx.closePath(); ctx.fill();
-  // Dark soil edge — no wood/gold picture-frame
   ctx.save();
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
-  ctx.strokeStyle = winter ? 'rgba(70,74,62,.38)' : 'rgba(36,28,16,.4)';
-  ctx.lineWidth = 2.2;
+  ctx.strokeStyle = C.stroke;
+  ctx.lineWidth = 1.25;
   ctx.beginPath();
   ctx.moveTo(N.x, N.y); ctx.lineTo(E.x, E.y); ctx.lineTo(S.x, S.y); ctx.lineTo(W.x, W.y);
   ctx.closePath();
   ctx.stroke();
   ctx.restore();
 }
-/** After ground: cover sprite-skirt teeth with a soil bank (not a wood picture frame). */
+/** After ground: cover sprite-skirt teeth with the same thin dust bank. */
 function drawBoardRimTop(){
   if(!state || !GRID || useDiorama()) return;
   const G = GRID;
@@ -16836,26 +16840,26 @@ function drawBoardRimTop(){
   const E = {x: G*TW2, y: G*TH2};
   const S = {x:0, y: 2*G*TH2};
   const W = {x:-G*TW2, y: G*TH2};
-  const winter = state.season===3;
-  const d = TDEPTH + 1;
+  const C = boardBankColors();
+  const d = C.d;
   ctx.save();
-  ctx.fillStyle = winter ? '#4a4e42' : '#2a2418';
+  ctx.fillStyle = C.sideL;
   ctx.beginPath();
   ctx.moveTo(W.x, W.y); ctx.lineTo(S.x, S.y); ctx.lineTo(S.x, S.y+d); ctx.lineTo(W.x, W.y+d);
   ctx.closePath(); ctx.fill();
-  ctx.fillStyle = winter ? '#3c4036' : '#1e1a12';
+  ctx.fillStyle = C.sideR;
   ctx.beginPath();
   ctx.moveTo(S.x, S.y); ctx.lineTo(E.x, E.y); ctx.lineTo(E.x, E.y+d); ctx.lineTo(S.x, S.y+d);
   ctx.closePath(); ctx.fill();
-  ctx.fillStyle = winter ? 'rgba(30,32,28,.22)' : 'rgba(12,10,6,.22)';
+  ctx.fillStyle = C.contact;
   ctx.beginPath();
   ctx.moveTo(W.x, W.y+d); ctx.lineTo(S.x, S.y+d); ctx.lineTo(E.x, E.y+d);
-  ctx.lineTo(E.x, E.y+d+2); ctx.lineTo(S.x, S.y+d+3); ctx.lineTo(W.x, W.y+d+2);
+  ctx.lineTo(E.x, E.y+d+2); ctx.lineTo(S.x, S.y+d+2); ctx.lineTo(W.x, W.y+d+2);
   ctx.closePath(); ctx.fill();
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
-  ctx.strokeStyle = winter ? 'rgba(62,66,54,.48)' : 'rgba(34,28,18,.42)';
-  ctx.lineWidth = 2.4;
+  ctx.strokeStyle = C.stroke;
+  ctx.lineWidth = 1.25;
   ctx.beginPath();
   ctx.moveTo(N.x, N.y); ctx.lineTo(E.x, E.y); ctx.lineTo(S.x, S.y); ctx.lineTo(W.x, W.y);
   ctx.closePath();
