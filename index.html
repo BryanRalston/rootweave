@@ -9681,11 +9681,12 @@ function tileSeat(t, u, vFront){
  * Clip to engine block silhouette so soft scale fringes never spill into neighbors.
  * Sub-pixel pad seals hairline gaps without visible overlap rims.
  */
-function drawGroundTileArt(gimg, o){
+function drawGroundTileArt(gimg, o, vary){
   if(!gimg) return;
   const w = TILE_W;
   const h = TILE_H + TDEPTH;
   const pad = 0.55; // seal seams; clip keeps this from stacking as double rims
+  const v = vary|0;
   ctx.save();
   // Exact iso block: top diamond + SW/SE skirts (matches TILE_W/H/TDEPTH)
   const N = {x:o.x, y:o.y};
@@ -9705,10 +9706,27 @@ function drawGroundTileArt(gimg, o){
   const prevQual = ctx.imageSmoothingQuality;
   ctx.imageSmoothingEnabled = true;
   if(prevQual !== undefined) ctx.imageSmoothingQuality = 'high';
+  if(v & 1){
+    ctx.translate(o.x, o.y);
+    ctx.scale(-1, 1);
+    ctx.translate(-o.x, -o.y);
+  }
   // Draw locked to N tip; tiny pad matches clip expand
   ctx.drawImage(gimg, o.x - w/2 - pad * 0.2, o.y - pad * 0.2, w + pad * 0.4, h + pad * 0.4);
   ctx.imageSmoothingEnabled = prevSmooth;
   if(prevQual !== undefined) ctx.imageSmoothingQuality = prevQual;
+  if(v){
+    ctx.globalAlpha = 0.05 + (v % 3) * 0.03;
+    ctx.fillStyle = (v & 2) ? '#5a4a38' : '#3e342c';
+    ctx.beginPath();
+    ctx.moveTo(N.x, N.y);
+    ctx.lineTo(E.x, E.y);
+    ctx.lineTo(S.x, S.y);
+    ctx.lineTo(W.x, W.y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
   ctx.restore();
 }
 /** Floor decos: same plane, slight inset so they sit in the cell not over seams. */
@@ -16879,7 +16897,7 @@ function drawGround(t, time){
         : (t.terrain==='soil' && t.health<=70) ? 'tile_soil' : 'tile_grass');
     const uimg = under ? SPRITES[under] : null;
     if(uimg){
-      drawGroundTileArt(uimg, o);
+      drawGroundTileArt(uimg, o, under==='tile_dead' ? ((t.c|0)+(t.r|0)*3) : 0);
     }else if(isWaterT(t) || t.terrain==='riverbed'){
       // keep river art under wash
       if(t.terrain==='pond' && SPRITES['tile_water']){
@@ -17020,7 +17038,7 @@ function drawGround(t, time){
   const gimg = SPRITES[gname];
   if(gimg){
     // Feet of every ground sprite share the diamond's south tip → flat continuous board
-    drawGroundTileArt(gimg, o);
+    drawGroundTileArt(gimg, o, gname==='tile_dead' ? ((t.c|0)+(t.r|0)*3) : 0);
     // Farm fields only: mid-health tint. Homestead stays clean green.
     // Pad-crop sprites already carry a dirt bed — don't stack a second diamond.
     const cropHasPad = !!(t.crop && CROP_HAS_PAD[t.crop.type]);
