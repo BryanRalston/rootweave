@@ -9694,7 +9694,8 @@ function drawGroundTileArt(gimg, o, vary){
   const pad = 0.55; // seal seams; clip keeps this from stacking as double rims
   const v = vary|0;
   ctx.save();
-  // Exact iso block: top diamond + SW/SE skirts (matches TILE_W/H/TDEPTH)
+  // Top diamond only — per-tile TDEPTH skirts were the SW zipper.
+  // Continuous dust bank (drawBoardBorder / RimTop) is the only extrusion.
   const N = {x:o.x, y:o.y};
   const E = {x:o.x + TW2, y:o.y + TH2};
   const S = {x:o.x, y:o.y + TILE_H};
@@ -9702,9 +9703,7 @@ function drawGroundTileArt(gimg, o, vary){
   ctx.beginPath();
   ctx.moveTo(N.x, N.y - pad * 0.25);
   ctx.lineTo(E.x + pad, E.y);
-  ctx.lineTo(E.x + pad, E.y + TDEPTH + pad);
-  ctx.lineTo(S.x, S.y + TDEPTH + pad);
-  ctx.lineTo(W.x - pad, W.y + TDEPTH + pad);
+  ctx.lineTo(S.x, S.y + pad);
   ctx.lineTo(W.x - pad, W.y);
   ctx.closePath();
   ctx.clip();
