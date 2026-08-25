@@ -9013,6 +9013,42 @@ function genLeftoverStamp(s){
 function soilTiles(){ return state.grid.filter(t=>t.terrain==='soil'); }
 function isWaterT(t){ return t.terrain==='pond' || t.terrain==='water'; }
 function isWetT(t){ return t.terrain==='pond' || t.terrain==='water' || t.terrain==='wetland'; }
+function pondAdj(t, dc, dr){
+  if(!t || !state || !state.grid) return false;
+  const c = (t.c|0)+dc, r = (t.r|0)+dr;
+  if(typeof inGrid==='function' && !inGrid(c,r)) return false;
+  const n = state.grid[typeof idx==='function' ? idx(c,r) : r*(GRID|0)+c];
+  return !!(n && n.terrain==='pond');
+}
+/** Cover baked mud lips on pond-pond edges so a cluster reads as one pool. */
+function drawPondJoinFills(t, o){
+  if(!t || !o || t.terrain!=='pond') return;
+  const se = pondAdj(t, 1, 0);
+  const sw = pondAdj(t, 0, 1);
+  const nw = pondAdj(t, -1, 0);
+  const ne = pondAdj(t, 0, -1);
+  if(!(se||sw||nw||ne)) return;
+  const N = {x:o.x, y:o.y};
+  const E = {x:o.x+TW2, y:o.y+TH2};
+  const S = {x:o.x, y:o.y+TILE_H};
+  const W = {x:o.x-TW2, y:o.y+TH2};
+  const C = {x:o.x, y:o.y+TH2};
+  const k = 0.36;
+  ctx.fillStyle = '#8a8168';
+  const strip = (A, B)=>{
+    ctx.beginPath();
+    ctx.moveTo(A.x, A.y);
+    ctx.lineTo(B.x, B.y);
+    ctx.lineTo(B.x+(C.x-B.x)*k, B.y+(C.y-B.y)*k);
+    ctx.lineTo(A.x+(C.x-A.x)*k, A.y+(C.y-A.y)*k);
+    ctx.closePath();
+    ctx.fill();
+  };
+  if(se) strip(E, S);
+  if(sw) strip(W, S);
+  if(nw) strip(N, W);
+  if(ne) strip(N, E);
+}
 function isLandT(t){ return t.terrain==='soil' || t.terrain==='dead'; }   // restorable ground
 const BUILDINGS = ['market','silo','greenhouse','beehive','orchard','raintank','wetland','stable',
   'wormfarm','birdhouse','well','windmill','solar','mushroom','berrybush'];
@@ -16911,6 +16947,7 @@ function drawGround(t, time){
       // keep river art under wash
       if(t.terrain==='pond' && SPRITES['tile_water']){
         drawGroundTileArt(SPRITES['tile_water'], o);
+        if(typeof drawPondJoinFills==='function') drawPondJoinFills(t, o);
       }else if(t.terrain==='water' || t.terrain==='riverbed'){
         if(t.terrain==='water'){
           // SHIP_FIVE: flowing water uses ribbon only (no connector sprites)
@@ -16946,6 +16983,7 @@ function drawGround(t, time){
       const img = SPRITES['tile_water'];
       if(img){
         drawGroundTileArt(img, o);
+        if(typeof drawPondJoinFills==='function') drawPondJoinFills(t, o);
         if(q<0.82){
           ctx.globalAlpha = (0.82-q)*0.72;
           ctx.fillStyle = q < 0.4 ? '#5a4828' : '#6e5b31';
