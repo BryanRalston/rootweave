@@ -855,7 +855,7 @@ body.reduce-motion #badgeBanner{ transition:none; }
       <button class="hudbtn" id="btnSpeed" title="Game speed" aria-label="Game speed">1×</button>
     </span>
     <span class="hudpill" id="goalPill" title="Plot goals" aria-label="Plot goals">
-      <span id="goalEm">🎯</span> <b id="restoredEl">0/3</b>
+      <span id="goalEm">🎯</span> <b id="restoredEl">Goals 0/3</b>
       <span class="minibar"><span class="minifill" id="goalFill"></span></span>
     </span>
     <span class="hudpill" id="seasonPill" aria-live="polite">🌸 Spring · Y1</span>
@@ -2663,10 +2663,10 @@ const LEVELS = [
    ],
    gen:genHomePatch,
    tut:[
-     {html:'🏡 <b>Dead ground.</b> You start with <b>🪙40</b>. Compost <b>🪙5</b> · Pioneers <b>🪙2</b> · 3 Sisters <b>🪙6</b>.<br><br>🪣 Compost is selected — paint the gray tiles. Taps go through this card onto the land.', on:'feed_dead'},
+     {html:'🏡 <b>Dead ground.</b> You start with <b>🪙40</b>. Two 🪣 composts (🪙5) wake a corner — keep <b>🪙18</b> for 🌽 Three Sisters. 🌿 Pioneers 🪙2 crack more gray.<br><br>🪣 Compost is selected — two paints, then save coins for the crop team. Taps go through this card onto the land.', on:'feed_dead'},
      {html:'🪣 Feeding. Press <b>▶️ Play</b> up top so days pass. A waking tile shows 🌅 <b>REVIVED!</b>', on:'revive'},
      {html:'🌅 Brown soil! Tap a revived tile with 🌽 <b>3 Sisters</b> — one successful plant is the next beat.', on:'plant_crop'},
-     {html:'🎯 Three goals — that strip reads <b>0/3</b> until you finish them. Compost, plant, keep tending.', btn:'I\'ve got this 🌿'},
+     {html:'🎯 Three goals — the strip reads <b>Goals 0/3</b> until you finish them. Compost a corner, plant Sisters, keep tending.', btn:'I\'ve got this 🌿'},
    ]},
   {id:'field', name:'Back Paddock', em:'🐄', grid:8, coins:55, parYears:4, stampFeel:'paddock',
    teaser:'Bring in the animals — hooves, beaks & manure.',
@@ -9065,6 +9065,15 @@ function countSistersPlanted(){
   const stat = (state.stats && state.stats.sistersPlanted)|0;
   return Math.max(live, stat);
 }
+/** Home Patch: leave coins for remaining Sisters so the first session can finish. */
+function homeSistersReserve(){
+  if(!state || homesteadMode) return 0;
+  if((state.lv|0)!==0) return 0;
+  const L = typeof LV==='function' ? LV() : null;
+  if(L && L.id && L.id!=='home') return 0;
+  const have = typeof countSistersPlanted==='function' ? countSistersPlanted() : 0;
+  return Math.max(0, 3 - have) * 6;
+}
 function deadWakeNeed(t){
   return (t && t.feature==='saltflat') ? 30 : 22;
 }
@@ -14329,7 +14338,7 @@ function redirectPaintTarget(i){
       return true;
     });
     if(dead>=0){
-      if(!state._grayWakeToast){
+      if(!state._grayWakeToast && !(typeof tutCoachActive==='function' && tutCoachActive())){
         state._grayWakeToast = true;
         toast('Gray cracked tiles are the ones that wake — paint those first.');
       }
@@ -14917,6 +14926,11 @@ function applyTool(i){
       spendLeftoverCompost();
     }else{
       const cost = state.unlocks.upg_compost ? 2 : td.cost;
+      const reserve = typeof homeSistersReserve==='function' ? homeSistersReserve() : 0;
+      if(reserve>0 && ((state.coins|0) - cost) < reserve){
+        toast('🌽 Keep 🪙'+reserve+' for Three Sisters — the crop team. 🌿 Pioneers 🪙2 still wake gray tiles.', {once:'home_sisters_reserve', throttleMs:4000});
+        SND.uhoh(); return false;
+      }
       if(!spend(cost)) return false;
     }
     applyCompostSoil(t, fromPile);
@@ -19863,12 +19877,12 @@ function updateHUD(){
       const p = g.prog();
       if(p && p[0] >= p[1]) doneN++;
     });
-    document.getElementById('restoredEl').textContent = `${doneN}/${totN}`;
+    document.getElementById('restoredEl').textContent = 'Goals '+doneN+'/'+totN;
     document.getElementById('goalFill').style.width = (totN ? (doneN/totN*100) : 0)+'%';
     if(goalEm) goalEm.textContent = '🎯';
     if(gp){
       gp.title = Lhud.goalText || 'Plot goals';
-      gp.setAttribute('aria-label', 'Plot goals '+doneN+' of '+totN);
+      gp.setAttribute('aria-label', 'Goals '+doneN+' of '+totN);
     }
   }else{
     document.getElementById('restoredEl').textContent = `${f.restored}/${f.totalSoil}`;
@@ -23328,7 +23342,7 @@ function showSplash(){
     <img src="sprites/title_farm.webp" alt="A living valley — the future you're fighting for" style="width:100%; border-radius:14px; border:2px solid var(--line); display:block" onerror="this.style.display='none'">
     <div class="sub" style="text-align:center;margin-top:6px;opacity:.9;font-weight:800">↑ Hope plate — the valley as it can be again</div>
     <div class="eventkid"><b>Right now, the valley is dying.</b> Dust where wheat stood. This is what you're growing back.</div>
-    <div class="lesson">You start with 🪙40. Compost 🪙5 · Pioneers 🪙2 · 3 Sisters 🪙6. Heal land, field by field.</div>
+    <div class="lesson">You start with 🪙40. Two composts wake a corner — keep 🪙18 for 🌽 Three Sisters. 🌿 Pioneers 🪙2 crack more gray.</div>
     <div class="modalbtns" style="flex-direction:column;gap:8px">
       <button class="mbtn big" data-act="splashgo">Wake the Home Patch 🌱</button>
       <button class="mbtn wood" data-act="splashskip" style="font-size:13.5px">I've farmed before — skip coaching ⏩</button>
