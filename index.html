@@ -9013,6 +9013,46 @@ function genLeftoverStamp(s){
 function soilTiles(){ return state.grid.filter(t=>t.terrain==='soil'); }
 function isWaterT(t){ return t.terrain==='pond' || t.terrain==='water'; }
 function isWetT(t){ return t.terrain==='pond' || t.terrain==='water' || t.terrain==='wetland'; }
+/** Home Patch 2×2 pond cluster — one overlay sprite, not four puddle tiles. */
+function homePoolCluster(){
+  if(!state || !state.grid || homesteadMode) return null;
+  if(!SPRITES['home_pool']) return null;
+  const L = typeof LV==='function' ? LV() : null;
+  if(!L || L.id!=='home') return null;
+  const G = GRID|0;
+  for(let r=0;r<G-1;r++) for(let c=0;c<G-1;c++){
+    const a = state.grid[idx(c,r)], b = state.grid[idx(c+1,r)];
+    const d = state.grid[idx(c,r+1)], e = state.grid[idx(c+1,r+1)];
+    if(a && b && d && e && a.terrain==='pond' && b.terrain==='pond' && d.terrain==='pond' && e.terrain==='pond'){
+      return {c, r};
+    }
+  }
+  return null;
+}
+function isHomePoolTile(t){
+  const cl = homePoolCluster();
+  if(!cl || !t || t.terrain!=='pond') return false;
+  return (t.c|0)>=cl.c && (t.c|0)<=cl.c+1 && (t.r|0)>=cl.r && (t.r|0)<=cl.r+1;
+}
+function drawHomePoolOverlay(){
+  const img = SPRITES['home_pool'];
+  const cl = homePoolCluster();
+  if(!img || !cl) return;
+  const t = state.grid[idx(cl.c, cl.r)];
+  if(!t) return;
+  const o = tileOrigin(t);
+  const w = TILE_W * 2, h = TILE_H * 2 + TDEPTH, pad = 0.55;
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(o.x, o.y - pad * 0.25);
+  ctx.lineTo(o.x + TILE_W + pad, o.y + TILE_H);
+  ctx.lineTo(o.x, o.y + TILE_H * 2 + pad);
+  ctx.lineTo(o.x - TILE_W - pad, o.y + TILE_H);
+  ctx.closePath();
+  ctx.clip();
+  ctx.drawImage(img, o.x - w/2 - pad * 0.2, o.y - pad * 0.2, w + pad * 0.4, h + pad * 0.4);
+  ctx.restore();
+}
 function isLandT(t){ return t.terrain==='soil' || t.terrain==='dead'; }   // restorable ground
 const BUILDINGS = ['market','silo','greenhouse','beehive','orchard','raintank','wetland','stable',
   'wormfarm','birdhouse','well','windmill','solar','mushroom','berrybush'];
@@ -9597,6 +9637,7 @@ function loadSprites(){
   // Painted bed meal — not the crate building (build_compost)
   registerSprite('compost_mound', 'sprites/prop_compost_mound.webp?v=mound1', 4);
   registerSprite('tile_water', 'sprites/tile_water_pond.webp?v=pondPhoto1', 5);
+  registerSprite('home_pool', 'sprites/prop_home_pool.webp?v=homePool1', 5);
   registerSprite('tile_dead_b', 'sprites/tile_dead_b.webp?v=deadFace2', 5);
   registerSprite('tile_dead_c', 'sprites/tile_dead_c.webp?v=deadFace2', 5);
   // Wildlife 12-frame packs — same keys as wildWalkCount (bee_w0 ← anim_bee_w00.webp)
@@ -16892,6 +16933,7 @@ function drawGround(t, time){
   // (prevents triangle "teeth" along the outer edge)
   // DATA OVERLAY: translucent wash over real art (IMPROVEMENTS — don't repaint blind)
   if(ov){
+    if(t.terrain==='pond' && typeof isHomePoolTile==='function' && isHomePoolTile(t) && SPRITES['home_pool']) return;
     // still draw ground art underneath when available
     const under = (t.terrain==='dead')
       ? (t.feature==='saltflat'?'tile_saltflat':t.feature==='gully'?'tile_gully':t.feature==='swale'?'tile_swale':deadGroundKey(t))
@@ -16942,6 +16984,7 @@ function drawGround(t, time){
   if(isWaterT(t)){
     const q = Math.max(0, Math.min(1, state.waterQuality/100));
     if(t.terrain==='pond'){
+      if(typeof isHomePoolTile==='function' && isHomePoolTile(t) && SPRITES['home_pool']) return;
       // built ponds keep the self-contained pond art
       const img = SPRITES['tile_water'];
       if(img){
@@ -18933,6 +18976,7 @@ function render(time){
     const t = state.grid[idx(c,r)];
     if(tileVisible(t)) withRevivePop(t, idx(c,r), ()=>drawGround(t, time), true);
   }
+  if(typeof drawHomePoolOverlay==='function') drawHomePoolOverlay();
   // Rim stroke again on top of grass so border reads clean
   drawBoardRimTop();
   // L3 — yard place ghost: green ok / red blocked before commit
