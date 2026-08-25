@@ -9597,6 +9597,8 @@ function loadSprites(){
   // Painted bed meal — not the crate building (build_compost)
   registerSprite('compost_mound', 'sprites/prop_compost_mound.webp?v=mound1', 4);
   registerSprite('tile_water', 'sprites/tile_water_pond.webp?v=pondPhoto1', 5);
+  registerSprite('tile_dead_b', 'sprites/tile_dead_b.webp?v=deadFace1', 5);
+  registerSprite('tile_dead_c', 'sprites/tile_dead_c.webp?v=deadFace1', 5);
   // Wildlife 12-frame packs — same keys as wildWalkCount (bee_w0 ← anim_bee_w00.webp)
   const WILD_V = '?v=wildPack1';
   ['bee','bird','butterfly','frog','rabbit','heron','dragonfly','ladybug'].forEach(kind=>{
@@ -9681,6 +9683,10 @@ function tileSeat(t, u, vFront){
  * Clip to engine block silhouette so soft scale fringes never spill into neighbors.
  * Sub-pixel pad seals hairline gaps without visible overlap rims.
  */
+function deadGroundKey(t){
+  const n = Math.abs(((t.c|0) * 2 + (t.r|0) * 3) % 3);
+  return n===1 ? 'tile_dead_b' : n===2 ? 'tile_dead_c' : 'tile_dead';
+}
 function drawGroundTileArt(gimg, o, vary){
   if(!gimg) return;
   const w = TILE_W;
@@ -16885,7 +16891,7 @@ function drawGround(t, time){
   if(ov){
     // still draw ground art underneath when available
     const under = (t.terrain==='dead')
-      ? (t.feature==='saltflat'?'tile_saltflat':t.feature==='gully'?'tile_gully':t.feature==='swale'?'tile_swale':'tile_dead')
+      ? (t.feature==='saltflat'?'tile_saltflat':t.feature==='gully'?'tile_gully':t.feature==='swale'?'tile_swale':deadGroundKey(t))
       : (t.terrain==='riverbed' ? null
         : isWaterT(t) ? null
         : t.feature==='swale' ? 'tile_swale'
@@ -16897,7 +16903,7 @@ function drawGround(t, time){
         : (t.terrain==='soil' && t.health<=70) ? 'tile_soil' : 'tile_grass');
     const uimg = under ? SPRITES[under] : null;
     if(uimg){
-      drawGroundTileArt(uimg, o, under==='tile_dead' ? ((t.c|0)+(t.r|0)*3) : 0);
+      drawGroundTileArt(uimg, o, (under && String(under).indexOf('tile_dead')===0) ? ((t.c|0)+(t.r|0)*3) : 0);
     }else if(isWaterT(t) || t.terrain==='riverbed'){
       // keep river art under wash
       if(t.terrain==='pond' && SPRITES['tile_water']){
@@ -17008,7 +17014,7 @@ function drawGround(t, time){
     gname = t.feature==='saltflat' ? 'tile_saltflat'
           : t.feature==='gully'    ? 'tile_gully'
           : t.feature==='swale'    ? 'tile_swale'
-          : 'tile_dead';
+          : deadGroundKey(t);
   }else if(t.terrain==='soil'){
     // Homestead is a lawn canvas — not a farm field with dirt/soil stages
     if(homesteadMode){
@@ -17038,7 +17044,7 @@ function drawGround(t, time){
   const gimg = SPRITES[gname];
   if(gimg){
     // Feet of every ground sprite share the diamond's south tip → flat continuous board
-    drawGroundTileArt(gimg, o, gname==='tile_dead' ? ((t.c|0)+(t.r|0)*3) : 0);
+    drawGroundTileArt(gimg, o, (gname && String(gname).indexOf('tile_dead')===0) ? ((t.c|0)+(t.r|0)*3) : 0);
     // Farm fields only: mid-health tint. Homestead stays clean green.
     // Pad-crop sprites already carry a dirt bed — don't stack a second diamond.
     const cropHasPad = !!(t.crop && CROP_HAS_PAD[t.crop.type]);
