@@ -1078,6 +1078,8 @@ const PADDOCK_DRINK_SOIL = {water:1, om:0.25}; // tiny recover when the drink is
 const PADDOCK_EXPOSE_SOIL = {om:-0.6, erosion:-1.0, water:-0.5}; // dawn nick: winter graze with no windbreak in reach
 const PADDOCK_SHELTER_REACH = 2; // chebyshev tiles — herd can walk into the lee
 const PADDOCK_EXPOSE_STAY = 0.12; // modest tired-pad tick; thirst uses 0.15
+const PADDOCK_REST_HOLD_SOIL = {om:0.16, microbial:0.22}; // mild dawn hold on leftover extra-paddock rest; cap so it cannot farm health
+const PADDOCK_REST_NICK_SOIL = {om:-0.2, microbial:-0.16}; // kitchen / overstock — rest nicks until clover or living graze returns
 const WIND_SHELTER_NICK_SOIL = {water:-0.8, erosion:-0.6, om:-0.2}; // dawn nick: weather-edge bare after Home
 const WIND_SHELTER_HOLD_SOIL = {water:0.35, erosion:0.3, om:0.1}; // modest hold when the weather-side break stays
 const DUST_WASH_DRY_SOIL = {water:-2.0, om:-0.5, erosion:-0.8}; // dawn nick: dry season, wash filled / blocked / missing
@@ -3087,7 +3089,7 @@ function leftoverStampStory(feel, P){
         ? 'Wet ground and reeds. Cut reeds into the crate; leave the marsh wet and filtering. Strip the stand and filtration thins. Not meadow forage, not willow.'
         : 'Wet ground and reeds. Do not farm this like a dry garden.',
     meadow: 'Wet flowery meadow — reeds, clover, and flowers along the creek. Standing bloom holds pollinators and soil; till or graze the whole stand and that hold nicks until it returns. A light cutting still feeds the crate. Not hay, not a kitchen row.',
-    paddock: 'A grazing fold. Pasture, manure, rest, and stock water — bedding and droppings feed the compost pile. Gather berries from the living hedge; leave the shelter. Not a kitchen garden.',
+    paddock: 'A grazing fold. Standing rest — clover and living graze cover — holds these extra paddock seats. Treat it as a kitchen or overstock the pads and the hold nicks until rest returns. Bedding and droppings still feed the compost pile. Not a kitchen garden, not East Pasture dry-edge.',
     orchard: 'Trees and understory. Pick fruit into the crate; leave the trees. Strip the stand and the hang is gone until the canopy returns. Perennials, not corn rows.',
     scrub: 'Native thorn scrub breaks the south-east wind while goats browse the open dead brush. Keep enough living patches for shelter; clearing one opens ground now but strips water and cover from its neighbors. Replant a cleared scrub stump with Trees. Not another dust flat.',
     dust: 'Salt, dust, and a dry wash that only runs after rain. Soften it; do not pretend it is lush.',
@@ -3166,7 +3168,7 @@ function leftoverStampProfile(feel, grid, spec){
     const grazeN = Math.max(2, Math.round(g*0.22));
     const padHeal = Math.max(8, Math.round(g*0.55));
     return {
-      tools: ['select','compost','covercrop','clover','cattle','chicken','pond','trees','bulldoze'],
+      tools: ['select','compost','covercrop','clover','sisters','wheat','cattle','chicken','pond','trees','bulldoze'],
       river: false, regen: 1.35, ovs: ['health','om'],
       goalText: 'Graze this fold, keep stock water, and rest the pads.',
       doneText: name+' is working pasture again.',
@@ -8329,6 +8331,251 @@ function currentPaddockFold(s){
   const P = typeof valleyParcelByLvIndex==='function' ? valleyParcelByLvIndex(s.lv) : null;
   return leftoverIsPaddockFold(P);
 }
+/** Leftover North / West folds only. Back Paddock campaign, East Pasture, buyable deeds, and Home stay off. */
+function leftoverIsPaddockRestFold(P){
+  if(!P) return false;
+  if(P.buyable) return false;
+  if(P.id==='home_garden' || P.lvIndex===0) return false;
+  if(P.id==='back_paddock' || P.id==='east_pasture') return false;
+  if(P.id==='north_folds' || P.id==='west_folds') return true;
+  return false;
+}
+/** Field under the player, or the parked leftover fold while they are in the yard. */
+function paddockRestFarm(){
+  if(typeof homesteadMode!=='undefined' && homesteadMode && typeof plotStateBackup!=='undefined'
+     && plotStateBackup && plotStateBackup.grid && !plotStateBackup.homesteadView){
+    return plotStateBackup;
+  }
+  if(state && !state.homesteadView) return state;
+  return null;
+}
+function currentPaddockRestFold(s){
+  s = s || (typeof paddockRestFarm==='function' ? paddockRestFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s) return false;
+  if(s.homesteadView) return false;
+  const L = (typeof LEVELS!=='undefined' && LEVELS[s.lv]) ? LEVELS[s.lv] : null;
+  if(L && L.id==='home') return false;
+  if(L && (L.id==='field' || L.id==='east_pasture' || L.stampFeel==='dry_graze')) return false;
+  if(L && (L.id==='north_folds' || L.id==='west_folds')) return true;
+  const P = typeof valleyParcelByLvIndex==='function' ? valleyParcelByLvIndex(s.lv) : null;
+  return leftoverIsPaddockRestFold(P);
+}
+/** Leftover North / West after Home. First session, Back Paddock, East Pasture, and deeds stay off. */
+function paddockRestFoldReady(s){
+  if(!camp) return false;
+  if(typeof homePatchCleared==='function' && !homePatchCleared()) return false;
+  return currentPaddockRestFold(s);
+}
+/** Kitchen row on leftover extra paddock — wheat / sisters, not clover or living graze cover. */
+function leftoverIsPaddockKitchenT(t){
+  return !!(t && t.crop && (t.crop.type==='wheat' || t.crop.type==='sisters'));
+}
+function leftoverIsPaddockRestStrippedT(t){
+  if(!t || leftoverIsPaddockKitchenT(t)) return false;
+  if(typeof leftoverIsPastureCoverT==='function' && leftoverIsPastureCoverT(t)) return false;
+  return !!t.paddockRestStripped;
+}
+function notePaddockRestStripped(t){
+  if(!t) return;
+  if(typeof currentPaddockRestFold==='function' && currentPaddockRestFold()) t.paddockRestStripped = true;
+}
+function notePaddockRestRestored(t){
+  if(t) t.paddockRestStripped = false;
+}
+/** Living extra-paddock rest — clover / living graze cover already stamped. Kitchen, stripped, and overstock seats do not count. */
+function isPaddockRestLiveT(t){
+  if(!t) return false;
+  if(typeof leftoverIsPaddockKitchenT==='function' && leftoverIsPaddockKitchenT(t)) return false;
+  if(typeof leftoverIsPaddockRestStrippedT==='function' && leftoverIsPaddockRestStrippedT(t)) return false;
+  if(typeof leftoverIsPaddockOverstockT==='function' && leftoverIsPaddockOverstockT(t)) return false;
+  if(typeof leftoverIsPastureCoverT==='function' && leftoverIsPastureCoverT(t)) return true;
+  if(t.graze) return false;
+  if(t.terrain==='soil' || t.terrain==='dead'){
+    if(t.feature==='path' || t.feature==='swale' || t.feature==='saltflat') return false;
+    if(typeof leftoverPaddockSeatOk==='function' && leftoverPaddockSeatOk(t)) return true;
+    return typeof leftoverStampLand==='function' ? leftoverStampLand(t) : true;
+  }
+  return false;
+}
+/** Living herd mark on a leftover rest seat with no clover / graze cover — overstock, not a light walk on rest. */
+function leftoverIsPaddockOverstockT(t){
+  if(!t || !t.graze) return false;
+  if(typeof leftoverIsPastureCoverT==='function' && leftoverIsPastureCoverT(t)) return false;
+  if(typeof leftoverIsPaddockKitchenT==='function' && leftoverIsPaddockKitchenT(t)) return true;
+  if(typeof leftoverIsPaddockRestStrippedT==='function' && leftoverIsPaddockRestStrippedT(t)) return true;
+  if(t.terrain!=='soil' && t.terrain!=='dead') return false;
+  if(t.feature==='path' || t.feature==='swale' || t.feature==='saltflat') return false;
+  return typeof leftoverStampLand==='function' ? leftoverStampLand(t) : true;
+}
+function paddockRestCoverCount(s){
+  let live = 0, kitchen = 0, land = 0, overstock = 0;
+  s = s || (typeof paddockRestFarm==='function' ? paddockRestFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return {live, kitchen, land, overstock};
+  const g = (s.gridSize|0) || (typeof GRID==='number' ? GRID : 0);
+  s.grid.forEach(t=>{
+    if(!t) return;
+    if(t.terrain!=='soil' && t.terrain!=='dead') return;
+    if(t.feature==='path' || t.feature==='swale') return;
+    const restT = typeof leftoverIsPastureCoverT==='function' && leftoverIsPastureCoverT(t);
+    const kitchenT = typeof leftoverIsPaddockKitchenT==='function' && leftoverIsPaddockKitchenT(t);
+    const stripT = typeof leftoverIsPaddockRestStrippedT==='function' && leftoverIsPaddockRestStrippedT(t);
+    const stockT = typeof leftoverIsPaddockOverstockT==='function' && leftoverIsPaddockOverstockT(t);
+    const seat = typeof leftoverPaddockSeatOk==='function' && leftoverPaddockSeatOk(t, g);
+    const landT = (typeof leftoverStampLand==='function' ? leftoverStampLand(t) : true)
+      || seat || restT || kitchenT || stripT || stockT;
+    if(!landT) return;
+    land++;
+    if(kitchenT || stripT) kitchen++;
+    else if(typeof isPaddockRestLiveT==='function' ? isPaddockRestLiveT(t) : restT) live++;
+    if(stockT) overstock++;
+  });
+  return {live, kitchen, land, overstock};
+}
+/** Leftover North / West after Home. First session stays off. */
+function paddockRestReady(s){
+  if(typeof paddockRestFoldReady==='function' ? !paddockRestFoldReady(s) : true) return false;
+  const n = paddockRestCoverCount(s);
+  return (n.land|0) > 0;
+}
+/** Rest cover holds ≥ ~50% of rest seats. Kitchen or overstock on bare / kitchen seats nicks that hold. */
+function paddockRestUsable(s){
+  if(!paddockRestReady(s)) return false;
+  const n = paddockRestCoverCount(s);
+  if((n.land|0) <= 0) return false;
+  if((n.live|0) < Math.max(1, Math.ceil(n.land * 0.5))) return false;
+  if((n.kitchen|0) >= Math.max(1, Math.ceil(n.land * 0.5))) return false;
+  if((n.overstock|0) >= Math.max(1, Math.ceil(n.land * 0.5))) return false;
+  return true;
+}
+function paddockRestNeed(s){
+  return !!(paddockRestReady(s) && !paddockRestUsable(s));
+}
+/** Extra-paddock land the rest hold still feeds — clover, living graze, kitchen, stripped seats, and herd pads. */
+function paddockRestSoilTiles(s){
+  const tiles = [];
+  s = s || (typeof paddockRestFarm==='function' ? paddockRestFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return tiles;
+  const g = (s.gridSize|0) || (typeof GRID==='number' ? GRID : 0);
+  s.grid.forEach((t, i)=>{
+    if(!t || !t.soil) return;
+    if(t.terrain!=='soil' && t.terrain!=='dead') return;
+    if(t.feature==='path' || t.feature==='swale') return;
+    const land = typeof leftoverStampLand==='function' ? leftoverStampLand(t) : true;
+    const seat = typeof leftoverPaddockSeatOk==='function' && leftoverPaddockSeatOk(t, g);
+    const live = typeof isPaddockRestLiveT==='function' && isPaddockRestLiveT(t);
+    const kitchen = typeof leftoverIsPaddockKitchenT==='function' && leftoverIsPaddockKitchenT(t);
+    const strip = typeof leftoverIsPaddockRestStrippedT==='function' && leftoverIsPaddockRestStrippedT(t);
+    const stock = typeof leftoverIsPaddockOverstockT==='function' && leftoverIsPaddockOverstockT(t);
+    if(!(land || seat || live || kitchen || strip || stock)) return;
+    tiles.push({t, i});
+  });
+  return tiles;
+}
+function paddockRestFloaterIdx(s){
+  s = s || (typeof paddockRestFarm==='function' ? paddockRestFarm() : (typeof state!=='undefined' ? state : null));
+  if(state && state.grid && s && s.grid && state.grid===s.grid){
+    const beds = paddockRestSoilTiles(s);
+    for(let i=0;i<beds.length;i++){
+      if(leftoverIsPaddockKitchenT(beds[i].t) || leftoverIsPaddockRestStrippedT(beds[i].t)
+         || leftoverIsPaddockOverstockT(beds[i].t) || !isPaddockRestLiveT(beds[i].t))
+        return beds[i].i;
+    }
+    if(beds.length && beds[0] && beds[0].i>=0) return beds[0].i;
+  }
+  if(typeof selected==='number' && selected>=0 && state && state.grid && state.grid[selected]) return selected;
+  return (typeof selected==='number' && selected>=0) ? selected : 0;
+}
+function paddockRestStory(t, opts){
+  opts = opts || {};
+  const ready = typeof paddockRestReady==='function' && paddockRestReady();
+  const need = typeof paddockRestNeed==='function' && paddockRestNeed();
+  const hold = ready && !need;
+  const live = typeof isPaddockRestLiveT==='function' && isPaddockRestLiveT(t);
+  const kitchen = typeof leftoverIsPaddockKitchenT==='function' && leftoverIsPaddockKitchenT(t);
+  const strip = typeof leftoverIsPaddockRestStrippedT==='function' && leftoverIsPaddockRestStrippedT(t);
+  const stock = typeof leftoverIsPaddockOverstockT==='function' && leftoverIsPaddockOverstockT(t);
+  const cover = typeof leftoverIsPastureCoverT==='function' && leftoverIsPastureCoverT(t);
+  if(!ready) return '';
+  if(opts.needOnly && !need) return '';
+  if(kitchen)
+    return need
+      ? '🌿 This kitchen row on extra paddock — standing rest is gone. Cover nicks until clover or living graze returns. Not hay, not meadow bloom, not East Pasture salt.'
+      : '🌿 A kitchen row on extra paddock — not standing rest. Leave clover and living graze so these leftover folds can hold.';
+  if(stock)
+    return need
+      ? '🌿 Overstock on a nicked extra paddock — the herd is on bare or kitchen seats. Rest or clover so the fold can hold again. Light manure still walks to the pile.'
+      : '🌿 Light graze on extra paddock rest — a little manure for the pile. Clover and living graze still hold. Not a kitchen row.';
+  if(strip)
+    return need
+      ? '🌿 Stripped rest on extra paddock — tractor or plow took the stand. Cover nicks until clover or living graze returns. Not hay, not East Pasture salt.'
+      : '🌿 Rest was stripped on this extra paddock. Clover or living graze keeps the leftover fold from nicking.';
+  if(cover || live)
+    return need
+      ? '🌿 Extra paddock rest is thin — a kitchen row or overstock nicked this cover. Rest or clover so the leftover fold can hold again. Not hay, not meadow bloom, not East Pasture salt.'
+      : '🌿 Extra paddock rest — clover and living graze hold these leftover seats. Treat it as a kitchen or overstock the pads and the hold nicks. Not hay, not meadow bloom, not East Pasture salt, not a kitchen row.';
+  if(t && t.graze)
+    return need
+      ? '🌿 Light graze on nicked extra paddock — rest is gone. Clover or living graze so the leftover fold can hold again.'
+      : '🌿 Light graze on extra paddock rest — leave enough clover and living graze so the leftover fold still holds.';
+  if(t && (t.terrain==='soil' || t.terrain==='dead')){
+    if(need) return '🌿 Open extra paddock — kitchen or overstock nicked this rest. Clover or living graze so the leftover fold can hold.';
+    if(hold && !opts.needOnly) return '🌿 Beside extra paddock rest — clover and living graze still hold this leftover fold.';
+  }
+  return '';
+}
+function getTileName(t){
+  if(!t) return '';
+  if(typeof paddockRestReady==='function' && paddockRestReady()){
+    if(typeof leftoverIsPaddockKitchenT==='function' && leftoverIsPaddockKitchenT(t))
+      return 'Kitchen row';
+    if(typeof leftoverIsPaddockOverstockT==='function' && leftoverIsPaddockOverstockT(t))
+      return 'Overstock pad';
+    if((typeof leftoverIsPastureCoverT==='function' && leftoverIsPastureCoverT(t))
+       || (typeof isPaddockRestLiveT==='function' && isPaddockRestLiveT(t)))
+      return 'Extra paddock rest';
+    if(typeof leftoverIsPaddockRestStrippedT==='function' && leftoverIsPaddockRestStrippedT(t))
+      return 'Stripped paddock rest';
+  }
+  if(t.crop && typeof CROPS!=='undefined' && CROPS[t.crop.type]) return CROPS[t.crop.type].name;
+  return '';
+}
+/** One sim dawn: leftover North / West rest holds om / cover; kitchen or overstock nicks them. First session stays off. */
+function tickPaddockRestWork(){
+  if(!camp || !paddockRestReady()) return 0;
+  const s = typeof paddockRestFarm==='function' ? paddockRestFarm() : (typeof state!=='undefined' ? state : null);
+  if(!s || !s.grid) return 0;
+  const tiles = paddockRestSoilTiles(s);
+  if(!tiles.length) return 0;
+  const open = paddockRestUsable(s);
+  if(open){
+    const b = (typeof PADDOCK_REST_HOLD_SOIL!=='undefined') ? PADDOCK_REST_HOLD_SOIL : {om:0.16, microbial:0.22};
+    tiles.forEach(({t})=>{
+      if(!t || !t.soil) return;
+      if((t.soil.om||0) < 72) t.soil.om = clamp((t.soil.om||0) + (b.om||0));
+      if((t.soil.microbial||0) < 74) t.soil.microbial = clamp((t.soil.microbial||0) + (b.microbial||0));
+      if(typeof recalc==='function') recalc(t);
+    });
+    if(typeof toast==='function'){
+      toast('🌿 Extra paddock rest holds — clover and living graze keep these leftover folds. A kitchen row or overstock nicks it.', {once:'paddock_rest_hold_first', throttleMs:4000});
+    }
+    return tiles.length;
+  }
+  const b = (typeof PADDOCK_REST_NICK_SOIL!=='undefined') ? PADDOCK_REST_NICK_SOIL : {om:-0.2, microbial:-0.16};
+  tiles.forEach(({t})=>{
+    if(!t || !t.soil) return;
+    t.soil.om = clamp((t.soil.om||0) + (b.om||0));
+    t.soil.microbial = clamp((t.soil.microbial||0) + (b.microbial||0));
+    if(typeof recalc==='function') recalc(t);
+  });
+  const fi = paddockRestFloaterIdx(s);
+  if(typeof floater==='function' && state && state.grid && state.grid[fi]){
+    floater(fi, 'rest nicks', '#c9a070');
+  }
+  if(typeof toast==='function'){
+    toast('🌿 Extra paddock was treated as a kitchen or overstocked — standing rest is gone. Clover or living graze so the leftover fold can hold again.', {once:'paddock_rest_need_first', throttleMs:4000});
+  }
+  return tiles.length;
+}
 /** Field under the player, or the parked paddock fold while they are in the yard. */
 function paddockManureFarm(){
   if(typeof homesteadMode!=='undefined' && homesteadMode && typeof plotStateBackup!=='undefined'
@@ -12403,6 +12650,7 @@ function simStep(dt){
     if(typeof tickPaddockManure==='function') tickPaddockManure();
     if(typeof tickPaddockStockThirst==='function') tickPaddockStockThirst();
     if(typeof tickPaddockWindShelter==='function') tickPaddockWindShelter();
+    if(typeof tickPaddockRestWork==='function') tickPaddockRestWork();
     if(typeof tickDryGrazeStandWork==='function') tickDryGrazeStandWork();
     if(typeof tickWindShelterWork==='function') tickWindShelterWork();
     if(typeof tickHedgeCorridorWork==='function') tickHedgeCorridorWork();
@@ -15777,10 +16025,14 @@ let decoIdx = 0;
 /** Human-readable name for whatever is blocking a placement (toast copy). */
 function tileBlockerName(t){
   if(!t) return 'that tile';
-  if(t.crop){
-    const c = CROPS && CROPS[t.crop.type];
-    return (c && c.name) ? c.name : 'crop';
-  }
+    if(t.crop){
+      if(typeof getTileName==='function'){
+        const restName = getTileName(t);
+        if(restName) return restName;
+      }
+      const c = CROPS && CROPS[t.crop.type];
+      return (c && c.name) ? c.name : 'crop';
+    }
   if(t.graze){
     const g = {cattle:'cattle', chicken:'chickens', sheep:'sheep', goat:'goats', pig:'pigs', duckT:'ducks', team:'herd'};
     return g[t.graze.kind] || 'grazing animals';
@@ -15939,6 +16191,10 @@ function soilStoryLine(t){
       const dg = dryGrazeStandStory(t);
       if(dg) return dg;
     }
+    if(typeof paddockRestStory==='function'){
+      const pr = paddockRestStory(t);
+      if(pr) return pr;
+    }
     if(typeof hayStandStory==='function'){
       const hy = hayStandStory(t);
       if(hy) return hy;
@@ -15977,6 +16233,10 @@ function soilStoryLine(t){
     if(typeof orchardStandStory==='function'){
       const os = orchardStandStory(t);
       if(os) return os;
+    }
+    if(typeof paddockRestStory==='function'){
+      const pr = paddockRestStory(t, {needOnly:true});
+      if(pr) return pr;
     }
     if(typeof hayStandStory==='function'){
       const hy = hayStandStory(t, {needOnly:true});
@@ -16141,6 +16401,10 @@ function soilStoryLine(t){
       const dg = dryGrazeStandStory(t);
       if(dg) return dg+' '+tier;
     }
+    if(typeof paddockRestStory==='function'){
+      const pr = paddockRestStory(t);
+      if(pr) return pr+' '+tier;
+    }
     if(typeof hayStandStory==='function'){
       const hy = hayStandStory(t);
       if(hy) return hy+' '+tier;
@@ -16191,6 +16455,10 @@ function soilStoryLine(t){
     if(typeof dryGrazeStandStory==='function'){
       const dg = dryGrazeStandStory(t);
       if(dg) return (edgeNeed?edgeNeed+' ':'')+dg+' '+tier;
+    }
+    if(typeof paddockRestStory==='function'){
+      const pr = paddockRestStory(t);
+      if(pr) return (edgeNeed?edgeNeed+' ':'')+pr+' '+tier;
     }
     if(typeof hayStandStory==='function'){
       const hy = hayStandStory(t);
@@ -16246,6 +16514,10 @@ function soilStoryLine(t){
   }
   if(typeof leftoverIsMeadowForageT==='function' && leftoverIsMeadowForageT(t))
     return (typeof meadowForageStory==='function' ? meadowForageStory(tier) : '🌼 Wild meadow cuttings for the crate. '+tier);
+  if(typeof paddockRestStory==='function'){
+    const pr = paddockRestStory(t);
+    if(pr) return pr+' '+tier;
+  }
   if(typeof hayStandStory==='function'){
     const hy = hayStandStory(t);
     if(hy) return hy+' '+tier;
@@ -16487,8 +16759,10 @@ function applyTool(i){
          && typeof leftoverIsMeadowBloomT==='function' && leftoverIsMeadowBloomT(t)))) did = ()=>{
       const mowMeadow = typeof meadowFoldReady==='function' && meadowFoldReady()
         && typeof leftoverIsMeadowBloomT==='function' && leftoverIsMeadowBloomT(t);
+      const restCover = typeof leftoverIsPastureCoverT==='function' && leftoverIsPastureCoverT(t);
       if(mowMeadow) t.flowers = Math.min(t.flowers||0, 0.04);
       if(t.crop) t.crop = null;
+      if(restCover && typeof notePaddockRestStripped==='function') notePaddockRestStripped(t);
       if(mowMeadow && typeof toast==='function'){
         toast('🌼 That cut took the dress — a light harvest still leaves the meadow standing.', {once:'meadow_mow_first', throttleMs:4000});
       }
@@ -16746,6 +17020,7 @@ function applyTool(i){
     if(tool==='clover' || tool==='covercrop'){
       state.stats.coverPlanted = (state.stats.coverPlanted|0) + 1;
       if(typeof noteDryEdgeRestored==='function') noteDryEdgeRestored(t);
+      if(typeof notePaddockRestRestored==='function') notePaddockRestRestored(t);
     }
     if(tool==='wheat') state.stats.wheatPlanted = (state.stats.wheatPlanted|0) + 1;
     SOIL_ATTRS.forEach(k=>t.soil[k]=clamp(t.soil[k]));
@@ -17634,7 +17909,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-26.whatsnew2';
+const SHIP_BUILD = '2026-08-26.paddockrest';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -17784,7 +18059,7 @@ function openAboutCredits(){
   if(showNew) camp.tipsShown['whats_new_'+ver] = true;
   const whatsNew = showNew
     ? `<div class="lesson" style="text-align:left;margin-top:6px;border-color:rgba(234,181,67,.45)">
-        <b>What's new (${ver}):</b><br>🐎 East Pasture: salt-crust and sparse cover hold the dry edge; wheat or sisters nicks until rest or cover returns; a light graze still feeds the pile.<br>🐝 Valley map: bees, butterflies, and birds sit on the fold they came back to (same 30 / 45 / 60 as the chips); strip that fold and they leave.<br>🌾 Hay Field: standing forage holds cover after Home; strip or plant sisters and it nicks; a light crate cut leaves the stand. Unbought South Lane stays a deed.<br>🍎 Orchard Block / Orchard Slope: the living grove holds the slope; strip or plant a kitchen and it nicks; a light fruit pick leaves the tree.<br><br>After Home Patch the journey map shows the farm you run — living herd marks (cattle, hens, ducks, goats, sheep, pigs) on owned paddocks, yard, and marsh; leftover compost on the homestead pile; the neighbor stand when crate lots or surplus meat are ready. Surplus meat is a herd tradeoff. Adjacent leftover folds can be bought with coins. Wildlife chips still return at 30 / 45 / 60. The high-dry lane, barn compost yard, garden–orchard coop, weather-side windbreak, living hedges, ridge woodlot, wet meadow forage, and Dust Scrub browse play as land you run. Campaign Marsh Finger plays as a standing filter — the reed belt and the open marsh ponds each have to hold. A light crate cut still leaves the dress; strip the reeds or fill the ponds and filtration nicks until wetland returns. Creek Bend is a working tributary. Fogged land and the first-session garden stay empty. Play stays free; no pay-to-revive.
+        <b>What's new (${ver}):</b><br>🌿 North Folds / West Folds: standing rest (clover and living graze cover) holds these leftover extra-paddock seats after Home; a kitchen row or overstock nicks until rest returns. Light manure still feeds the pile. Not East Pasture dry-edge, not Back Paddock.<br>🐎 East Pasture: salt-crust and sparse cover hold the dry edge; wheat or sisters nicks until rest or cover returns; a light graze still feeds the pile.<br>🐝 Valley map: bees, butterflies, and birds sit on the fold they came back to (same 30 / 45 / 60 as the chips); strip that fold and they leave.<br>🌾 Hay Field: standing forage holds cover after Home; strip or plant sisters and it nicks; a light crate cut leaves the stand. Unbought South Lane stays a deed.<br>🍎 Orchard Block / Orchard Slope: the living grove holds the slope; strip or plant a kitchen and it nicks; a light fruit pick leaves the tree.<br><br>After Home Patch the journey map shows the farm you run — living herd marks (cattle, hens, ducks, goats, sheep, pigs) on owned paddocks, yard, and marsh; leftover compost on the homestead pile; the neighbor stand when crate lots or surplus meat are ready. Surplus meat is a herd tradeoff. Adjacent leftover folds can be bought with coins. Wildlife chips still return at 30 / 45 / 60. The high-dry lane, barn compost yard, garden–orchard coop, weather-side windbreak, living hedges, ridge woodlot, wet meadow forage, and Dust Scrub browse play as land you run. Campaign Marsh Finger plays as a standing filter — the reed belt and the open marsh ponds each have to hold. A light crate cut still leaves the dress; strip the reeds or fill the ponds and filtration nicks until wetland returns. Creek Bend is a working tributary. Fogged land and the first-session garden stay empty. Play stays free; no pay-to-revive.
       </div>`
     : '';
   // CD — first About open literacy (in-modal; no toast spam)
@@ -22352,7 +22627,10 @@ function openInfo(refreshOnly){
     const chips = [];
     if(t.crop){
       const c = CROPS[t.crop.type];
-      const hayLabel = (typeof hayFoldForageWheat==='function' && hayFoldForageWheat(t)) ? 'Hay' : c.name;
+      const restName = (typeof getTileName==='function') ? getTileName(t) : '';
+      const hayLabel = restName
+        ? restName
+        : ((typeof hayFoldForageWheat==='function' && hayFoldForageWheat(t)) ? 'Hay' : c.name);
       chips.push(`${c.em} ${hayLabel} — ${Math.round(Math.min(1,t.crop.growth)*100)}% grown`);
     }
     if(t.deco==='deco_haybales' && typeof hayBaleReady==='function' && hayBaleReady(t))
@@ -22455,6 +22733,11 @@ function openInfo(refreshOnly){
     else if(typeof dryGrazeStandReady==='function' && dryGrazeStandReady()
          && typeof isDryEdgeLiveT==='function' && isDryEdgeLiveT(t))
       chips.push('🐎 dry-edge pasture — salt-crust and sparse cover hold the edge');
+    if(typeof paddockRestNeed==='function' && paddockRestNeed())
+      chips.push('🌿 extra paddock rest is thin — kitchen or overstock nicks until clover or living graze returns');
+    else if(typeof paddockRestReady==='function' && paddockRestReady()
+         && typeof isPaddockRestLiveT==='function' && isPaddockRestLiveT(t))
+      chips.push('🌿 extra paddock rest — clover and living graze hold these leftover seats');
     if(typeof hayStandNeed==='function' && hayStandNeed())
       chips.push('🌾 standing hay is thin — cover nicks until clover or the stand returns');
     else if(typeof hayStandReady==='function' && hayStandReady()
