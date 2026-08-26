@@ -8382,20 +8382,13 @@ function notePaddockRestStripped(t){
 function notePaddockRestRestored(t){
   if(t) t.paddockRestStripped = false;
 }
-/** Living extra-paddock rest — clover / living graze cover already stamped. Kitchen, stripped, and overstock seats do not count. */
+/** Living extra-paddock rest — clover / living graze cover already stamped. Bare leftover soil, kitchen, stripped, and overstock seats do not count. */
 function isPaddockRestLiveT(t){
   if(!t) return false;
   if(typeof leftoverIsPaddockKitchenT==='function' && leftoverIsPaddockKitchenT(t)) return false;
   if(typeof leftoverIsPaddockRestStrippedT==='function' && leftoverIsPaddockRestStrippedT(t)) return false;
   if(typeof leftoverIsPaddockOverstockT==='function' && leftoverIsPaddockOverstockT(t)) return false;
-  if(typeof leftoverIsPastureCoverT==='function' && leftoverIsPastureCoverT(t)) return true;
-  if(t.graze) return false;
-  if(t.terrain==='soil' || t.terrain==='dead'){
-    if(t.feature==='path' || t.feature==='swale' || t.feature==='saltflat') return false;
-    if(typeof leftoverPaddockSeatOk==='function' && leftoverPaddockSeatOk(t)) return true;
-    return typeof leftoverStampLand==='function' ? leftoverStampLand(t) : true;
-  }
-  return false;
+  return typeof leftoverIsPastureCoverT==='function' && leftoverIsPastureCoverT(t);
 }
 /** Living herd mark on a leftover rest seat with no clover / graze cover — overstock, not a light walk on rest. */
 function leftoverIsPaddockOverstockT(t){
@@ -8421,8 +8414,8 @@ function paddockRestCoverCount(s){
     const stripT = typeof leftoverIsPaddockRestStrippedT==='function' && leftoverIsPaddockRestStrippedT(t);
     const stockT = typeof leftoverIsPaddockOverstockT==='function' && leftoverIsPaddockOverstockT(t);
     const seat = typeof leftoverPaddockSeatOk==='function' && leftoverPaddockSeatOk(t, g);
-    const landT = (typeof leftoverStampLand==='function' ? leftoverStampLand(t) : true)
-      || seat || restT || kitchenT || stripT || stockT;
+    // Rest seats only — leftover stamp soil that is not a paddock seat does not pad the hold.
+    const landT = seat || restT || kitchenT || stripT || stockT;
     if(!landT) return;
     land++;
     if(kitchenT || stripT) kitchen++;
@@ -8437,12 +8430,12 @@ function paddockRestReady(s){
   const n = paddockRestCoverCount(s);
   return (n.land|0) > 0;
 }
-/** Rest cover holds ≥ ~50% of rest seats. Kitchen or overstock on bare / kitchen seats nicks that hold. */
+/** Living clover / graze cover still stands, and kitchen or overstock stay below ~50% of rest seats. Bare leftover soil is not a hold. */
 function paddockRestUsable(s){
   if(!paddockRestReady(s)) return false;
   const n = paddockRestCoverCount(s);
   if((n.land|0) <= 0) return false;
-  if((n.live|0) < Math.max(1, Math.ceil(n.land * 0.5))) return false;
+  if((n.live|0) <= 0) return false;
   if((n.kitchen|0) >= Math.max(1, Math.ceil(n.land * 0.5))) return false;
   if((n.overstock|0) >= Math.max(1, Math.ceil(n.land * 0.5))) return false;
   return true;
@@ -17909,7 +17902,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-26.paddockrest';
+const SHIP_BUILD = '2026-08-26.paddockrestfix';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
