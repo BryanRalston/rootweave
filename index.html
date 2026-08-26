@@ -2899,7 +2899,7 @@ function leftoverStampStory(feel, P){
     meadow: 'Wet flowery meadow — reeds, clover, and flowers along the creek. Standing bloom holds pollinators and soil; till or graze the whole stand and that hold nicks until it returns. A light cutting still feeds the crate. Not hay, not a kitchen row.',
     paddock: 'A grazing fold. Pasture, manure, rest, and stock water — bedding and droppings feed the compost pile. Gather berries from the living hedge; leave the shelter. Not a kitchen garden.',
     orchard: 'Trees and understory. Pick fruit into the crate; leave the trees. Strip the stand and the hang is gone until the canopy returns. Perennials, not corn rows.',
-    scrub: 'Native thorn scrub breaks the south-east wind while goats browse the open dead brush. Keep enough living patches for shelter; clearing one opens ground now but strips water and cover from its neighbors. Not another dust flat.',
+    scrub: 'Native thorn scrub breaks the south-east wind while goats browse the open dead brush. Keep enough living patches for shelter; clearing one opens ground now but strips water and cover from its neighbors. Replant a cleared scrub stump with Trees. Not another dust flat.',
     dust: 'Salt, dust, and a dry wash that only runs after rain. Soften it; do not pretend it is lush.',
     dry_graze: 'Dry pasture at the quarter-section edge. Sparse graze and salt-crust — a little manure for the pile when the herd walks. Not a garden.',
     river: 'The live stem and the wash. Keep the banks rooted.',
@@ -3006,13 +3006,13 @@ function leftoverStampProfile(feel, grid, spec){
     const keepN = Math.max(5, Math.round(g*0.38));
     const revive = Math.max(7, Math.round(g*0.55));
     return {
-      tools: ['select','compost','covercrop','clover','goat','bulldoze'],
+      tools: ['select','compost','covercrop','clover','goat','trees','bulldoze'],
       river: false, regen: 1.0, ovs: ['health','bio'],
       goalText: 'Browse the open brush; keep the living scrub wind cover.',
       doneText: name+' holds a working mosaic of browse and shelter.',
       goals: [
-        {em:'🐐', desc:'Browse '+browseN+' open dead-scrub tiles with goats', prog:()=>[Math.min(browseN, (state.stats && state.stats.grazes)|0), browseN]},
-        {em:'🌵', desc:'Keep '+keepN+' native thorn patches standing', prog:()=>[Math.min(keepN, countNativeScrub()), keepN]},
+        {em:'🐐', desc:'Browse '+browseN+' distinct dead-scrub tiles with goats', prog:()=>[Math.min(browseN, (state.stats && state.stats.scrubBrowsed)|0), browseN]},
+        {em:'🌵', desc:'Keep or replant '+keepN+' native thorn patches', prog:()=>[Math.min(keepN, countNativeScrub()), keepN]},
         {em:'🌅', desc:'Revive '+revive+' dead tiles around the scrub', prog:()=>[Math.min(revive, countRevived()), revive]},
       ]
     };
@@ -4353,7 +4353,8 @@ function recalc(t){
   t.health = SOIL_ATTRS.reduce((a,k)=>a+t.soil[k],0) / SOIL_ATTRS.length;
 }
 const DEFAULT_STATS = {planted:0, harvests:0, coinsEarned:0, synergy:0, cattle:0, chickens:0, ponds:0, trees:0,
-  composts:0, coverPlanted:0, wheatPlanted:0, revived:0, buffers:0, grazes:0, sistersPlanted:0, buildings:0, decos:0, saltRevived:0};
+  composts:0, coverPlanted:0, wheatPlanted:0, revived:0, buffers:0, grazes:0, scrubBrowsed:0,
+  sistersPlanted:0, buildings:0, decos:0, saltRevived:0};
 function playGridForLevel(lv){
   const L = LEVELS[lv];
   const P = typeof valleyParcelByLvIndex==='function' ? valleyParcelByLvIndex(lv) : null;
@@ -8825,25 +8826,7 @@ function dressLeftoverStamp(s, P){
         recalc(t);
       }
     });
-    const g = (s.gridSize|0) || GRID;
-    const wantScrub = Math.max(7, Math.round(g*0.52));
-    let scrub = tiles.filter(t=>typeof isNativeScrubT==='function' && isNativeScrubT(t)).length;
-    const scoreScrub = (t)=>{
-      let n = 0;
-      if(t.atlasBiome==='dust') n += 3;
-      if((t.c|0) >= Math.round(g*0.55)) n += 4;
-      if(((t.c|0)+(t.r|0))%3===0) n += 3;
-      n += roll(t,4)*1.2;
-      return n;
-    };
-    tiles.filter(t=>leftoverStampLand(t) && t.feature!=='saltflat' && t.feature!=='gully')
-      .slice().sort((a,b)=>scoreScrub(b)-scoreScrub(a)).forEach(t=>{
-        if(scrub>=wantScrub) return;
-        t.terrain = 'berrybush';
-        carveClear(t);
-        t.nativeScrub = true;
-        scrub++;
-      });
+    if(typeof ensureNativeScrubPatches==='function') ensureNativeScrubPatches(s, P);
     return;
   }
   if(feel==='dust'){
@@ -9764,12 +9747,48 @@ function countGroveTiles(){
   if(!state || !state.grid) return 0;
   return state.grid.filter(t=>t.terrain==='trees' || t.terrain==='orchard' || t.terrain==='berrybush').length;
 }
+function currentNativeScrubFold(s){
+  s = s || state;
+  if(!s || s.homesteadView) return false;
+  const P = typeof valleyParcelByLvIndex==='function' ? valleyParcelByLvIndex(s.lv) : null;
+  return !!(P && P.id==='dust_scrub');
+}
+function isNativeScrubMarkT(t){
+  return !!(t && t.nativeScrub);
+}
 function isNativeScrubT(t){
-  return !!(t && t.nativeScrub && t.terrain==='berrybush');
+  return !!(isNativeScrubMarkT(t) && t.terrain==='berrybush');
 }
 function countNativeScrub(){
   if(!state || !state.grid) return 0;
   return state.grid.filter(t=>isNativeScrubT(t)).length;
+}
+/** Seat the named fold's retained scrub. Existing marks win so cleared player choices persist. */
+function ensureNativeScrubPatches(s, P){
+  if(!s || !s.grid || !P || P.id!=='dust_scrub') return 0;
+  const marked = s.grid.filter(t=>isNativeScrubMarkT(t));
+  if(marked.length) return marked.filter(t=>isNativeScrubT(t)).length;
+  const g = (s.gridSize|0) || GRID;
+  const want = Math.max(7, Math.round(g*0.52));
+  const roll = (t, k)=>sr(((t.c+3)*19 + (t.r+7)*41 + (k||0)*13 + P.id.length*8));
+  const score = (t)=>{
+    let n = 0;
+    if(t.atlasBiome==='dust') n += 3;
+    if((t.c|0) >= Math.round(g*0.55)) n += 4;
+    if(((t.c|0)+(t.r|0))%3===0) n += 3;
+    return n + roll(t,4)*1.2;
+  };
+  let scrub = 0;
+  s.grid.filter(t=>leftoverStampOpen(t) && (t.terrain==='soil' || t.terrain==='dead')
+      && !t.crop && !t.graze && !t.deco && t.feature!=='saltflat' && t.feature!=='gully')
+    .slice().sort((a,b)=>score(b)-score(a)).forEach(t=>{
+      if(scrub>=want) return;
+      t.terrain = 'berrybush';
+      carveClear(t);
+      t.nativeScrub = true;
+      scrub++;
+    });
+  return scrub;
 }
 /** Clearing native scrub buys an open pad now, but exposes the neighboring dry ground. */
 function clearNativeScrub(t, s){
@@ -9786,11 +9805,11 @@ function clearNativeScrub(t, s){
     n.soil.om = clamp((n.soil.om||0)-0.5);
     recalc(n);
   });
-  t.nativeScrub = false;
+  t.nativeScrub = true;
   t.terrain = 'soil';
-  t.deco = null;
+  t.deco = 'deco_stump';
   t.feature = null;
-  toast('🌵 Clearing thorn scrub opens a pad, but its neighbors lose wind cover and water.', {once:'native_scrub_clear', throttleMs:3000});
+  toast('🌵 Clearing thorn scrub opens a pad, but its neighbors lose wind cover and water. Replant this stump with Trees.', {once:'native_scrub_clear', throttleMs:3000});
 }
 function countWetTiles(){
   if(!state || !state.grid) return 0;
@@ -14529,6 +14548,13 @@ function occupyGraze(kind, i, isMove){
     floater(i, words[kind], '#ffe0b0');
   }
 }
+function markNativeScrubBrowse(kind, t){
+  if(kind!=='goat' || !t || t.terrain!=='dead' || t.scrubBrowsed) return false;
+  if(typeof currentNativeScrubFold==='function' && !currentNativeScrubFold()) return false;
+  t.scrubBrowsed = true;
+  state.stats.scrubBrowsed = (state.stats.scrubBrowsed|0) + 1;
+  return true;
+}
 function moveHerd(kind, toIdx){
   const dest = state.grid[toIdx];
   if(!dest || grazeHasKind(dest.graze, kind)) return false;
@@ -14544,6 +14570,7 @@ function moveHerd(kind, toIdx){
     n++;
   });
   if(n===0) spawnAnimals(toIdx, ak, herdSpawnCount(kind));
+  if(typeof markNativeScrubBrowse==='function') markNativeScrubBrowse(kind, dest);
   occupyGraze(kind, toIdx, true);
   state.stats.grazes = (state.stats.grazes|0) + 1;
   burst(toIdx, '#c8f0a0', 12);
@@ -14562,6 +14589,7 @@ function moveHerd(kind, toIdx){
   return true;
 }
 function placeHerd(kind, i){
+  if(typeof markNativeScrubBrowse==='function') markNativeScrubBrowse(kind, state.grid[i]);
   occupyGraze(kind, i, false);
   spawnAnimals(i, GRAZE_TOOLS[kind], herdSpawnCount(kind));
   if(kind==='cattle') state.stats.cattle = (state.stats.cattle|0) + 1;
@@ -15566,6 +15594,16 @@ function applyTool(i){
       ringAt(i, '#6fae5f'); SND.uhoh(); return false;
     }
     if(!spend(td.cost)) return false;
+    if(t.terrain==='soil' && typeof isNativeScrubMarkT==='function' && isNativeScrubMarkT(t)
+       && typeof currentNativeScrubFold==='function' && currentNativeScrubFold()){
+      t.terrain = 'berrybush';
+      t.deco = null;
+      t.feature = null;
+      t.flowers = Math.max(t.flowers||0, 0.2);
+      floater(i, '🌵 scrub replanted!', '#c8f0a0'); burst(i, '#6fae5f', 12); SND.place();
+      toast('🌵 Native scrub is standing again — wind cover returns to this fold.', {once:'native_scrub_replant', throttleMs:3000});
+      afterBuild(); return true;
+    }
     if(typeof rememberHomeWaterMarks==='function') rememberHomeWaterMarks(t);
     if(typeof rememberAtlasLaneMark==='function') rememberAtlasLaneMark(t);
     const woodlotNeedBefore = typeof currentWoodlotFold==='function' && currentWoodlotFold()
@@ -20981,6 +21019,8 @@ function openInfo(refreshOnly){
       chips.push('💧 dry trough — the herd needs a drink they can stand beside');
     if(typeof hayStandBare==='function' && hayStandBare() && !t.crop && !t.graze && !(typeof isHayStubbleT==='function' && isHayStubbleT(t)))
       chips.push('🌾 the hay stand is gone — graze waits until cover returns');
+    if(typeof isNativeScrubMarkT==='function' && isNativeScrubMarkT(t) && !isNativeScrubT(t))
+      chips.push('🌵 cleared native scrub — replant this marked stump with Trees to restore wind cover');
     if(!t.crop && !t.graze) chips.push('💤 resting & regenerating');
     if(t.feature==='swale'){
       const swaleChip = (typeof homeWaterStory==='function' && homeWaterStory(t)) || '〰️ contour — holds water for the beds below';
@@ -21682,6 +21722,9 @@ function loadLevelState(d){
       recalc(t);
       return t;
     });
+    if(resumeP && resumeP.id==='dust_scrub' && typeof ensureNativeScrubPatches==='function'){
+      ensureNativeScrubPatches(state, resumeP);
+    }
     if(typeof sweepWakeDeadTiles==='function') sweepWakeDeadTiles();
     // respawn animals
     agents = [];
