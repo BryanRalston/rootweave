@@ -1119,6 +1119,8 @@ const REED_AUTO = 1;        // at most one dawn lot when the trickle fills
 const REED_DAWN_RATE = 0.055; // lots/day at 1 reed tile; scales with sqrt(stand), stays rare
 const REED_REGEN_DAYS = 8; // strip-cut bed returns as wetland; never an empty plant bed
 const REED_STRIP_SOIL = {om:-2, erosion:-3, water:-4, microbial:-2}; // strip nicks wet hold and filtration
+const MARSH_HOLD_SOIL = {water:0.28, erosion:0.4, om:0.12}; // mild dawn hold on pond-feed banks; cap so it cannot farm health
+const MARSH_NICK_SOIL = {water:-0.6, erosion:-0.65, om:-0.18}; // stand gone / ponds filled — filtration thins
 const OVERGRAZE_RATES = {om:-0.45, structure:-0.35, nutrients:-0.15, water:0, microbial:-0.1, erosion:-0.5};
 function emptyHerd(){ return {cattle:0, chicken:0, sheep:0, goat:0, pig:0, duckT:0}; }
 function ensureHerd(c){
@@ -2948,7 +2950,7 @@ function leftoverStampProfile(feel, grid, spec){
       tools: base.concat(['wetland','pond']),
       river: true, regen: 1.2, ovs: ['health','water','runoff'],
       goalText: 'Keep this ground wet and breathing.',
-      doneText: name+' is a living wet meadow again.',
+      doneText: name+' is a living wetland again.',
       goals: [
         {em:'🦢', desc:'Hold '+wetN+' wet tiles (water, pond, or reeds)', prog:()=>[Math.min(wetN, countWetTiles()), wetN]},
         {em:'💚', desc:'Heal '+bankN+' wet-bank tiles to 50+', prog:()=>[Math.min(bankN, countWetBankHealthy(50)), bankN]},
@@ -5424,6 +5426,75 @@ function isMarshPondT(t){
   if(t.marshPond) return true;
   return t.atlasWater==='pond_site' && t.atlasBiome==='marsh';
 }
+/** Painted marsh pond site — survives fill / block. Not the garden pond, not a ridge high pond. */
+function isMarshPondMarkedT(t){
+  if(!t) return false;
+  if(t.highPond) return false;
+  if(t.atlasBiome==='garden' || t.atlasBiome==='ridge' || t.atlasBiome==='pasture') return false;
+  if(t.marshPond) return true;
+  if(t.atlasWater==='pond_site' && t.atlasBiome==='marsh') return true;
+  if(t.atlasC!=null && typeof atlasGet==='function'){
+    const A = atlasGet(t.atlasC, t.atlasR);
+    if(A && A.water==='pond_site' && A.biome==='marsh') return true;
+  }
+  return false;
+}
+/** Open marsh pond: still water on the painted marsh site. Trees / wetland / buildings / soil fill it. */
+function isMarshPondOpenT(t){
+  if(typeof isMarshPondMarkedT==='function' ? !isMarshPondMarkedT(t) : true) return false;
+  if(t.crop || t.graze) return false;
+  if(typeof BUILD_SET!=='undefined' && BUILD_SET.has(t.terrain)) return false;
+  if(t.terrain==='trees' || t.terrain==='wetland') return false;
+  return t.terrain==='pond';
+}
+function rememberMarshPondMark(t){
+  if(!t) return;
+  if(t.atlasC!=null && typeof atlasGet==='function'){
+    const A = atlasGet(t.atlasC, t.atlasR);
+    if(A && A.water==='pond_site' && A.biome==='marsh'){
+      t.atlasWater = 'pond_site';
+      t.atlasBiome = 'marsh';
+      t.marshPond = true;
+      t.highPond = false;
+    }
+  }
+  if((t.marshPond || (t.atlasWater==='pond_site' && t.atlasBiome==='marsh')) && !t.atlasWater) t.atlasWater = 'pond_site';
+}
+/** Trees / wetland / buildings / soil on the painted marsh pond are a plug, not a new basin. */
+function isMarshPondFillT(t){
+  return !!(t && typeof isMarshPondMarkedT==='function' && isMarshPondMarkedT(t) && !isMarshPondOpenT(t));
+}
+function marshPondShouldReopen(t){
+  return !!(t && typeof isMarshPondFillT==='function' && isMarshPondFillT(t));
+}
+/** Pond-feed bank of a marked marsh pond — still names the seat after a fill. */
+function marshPondFeedOfMarked(t, s){
+  s = s || (typeof state!=='undefined' ? state : null);
+  if(!t || !s || !s.grid) return false;
+  if(typeof isMarshPondMarkedT==='function' && isMarshPondMarkedT(t)) return false;
+  const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+  for(let i=0;i<dirs.length;i++){
+    const c = (t.c|0)+dirs[i][0], r = (t.r|0)+dirs[i][1];
+    if(typeof inGrid==='function' && !inGrid(c,r)) continue;
+    const n = s.grid[typeof idx==='function' ? idx(c,r) : (r*(s.gridSize||GRID||0)+c)];
+    if(typeof isMarshPondMarkedT==='function' && isMarshPondMarkedT(n)) return true;
+  }
+  return false;
+}
+function shedsTowardMarshPondMarked(t, s){
+  s = s || (typeof state!=='undefined' ? state : null);
+  if(!t || !s || !s.grid) return false;
+  if(typeof isMarshPondMarkedT==='function' && isMarshPondMarkedT(t)) return false;
+  if(t.terrain==='water') return false;
+  for(let dr=-2; dr<=2; dr++) for(let dc=-2; dc<=2; dc++){
+    if(!dc && !dr) continue;
+    const c = (t.c|0)+dc, r = (t.r|0)+dr;
+    if(typeof inGrid==='function' && !inGrid(c,r)) continue;
+    const n = s.grid[typeof idx==='function' ? idx(c,r) : (r*(s.gridSize||GRID||0)+c)];
+    if(typeof isMarshPondMarkedT==='function' && isMarshPondMarkedT(n)) return true;
+  }
+  return false;
+}
 function leftoverPlayOrParcelBox(P){
   if(typeof leftoverPlayBox==='function'){
     const box = leftoverPlayBox(P);
@@ -5660,6 +5731,7 @@ function highPondShouldReopen(t){
 function terrainAfterClearPlug(t){
   if(typeof gardenPondShouldReopen==='function' && gardenPondShouldReopen(t)) return 'pond';
   if(typeof highPondShouldReopen==='function' && highPondShouldReopen(t)) return 'pond';
+  if(typeof marshPondShouldReopen==='function' && marshPondShouldReopen(t)) return 'pond';
   if(typeof dustWashShouldReopen==='function' && dustWashShouldReopen(t)) return 'riverbed';
   return 'soil';
 }
@@ -6673,6 +6745,167 @@ function tickMarshReed(){
   }
   if(n) camp.reedAcc -= n;
   return n;
+}
+/** Living wetland reeds plus open marsh ponds. Returning reed beds and filled / blocked ponds do not count. */
+function isMarshStandLiveT(t, s){
+  if(!t) return false;
+  if(typeof isMarshPondFillT==='function' && isMarshPondFillT(t)) return false;
+  if(typeof isReedT==='function' && isReedT(t) && t.terrain!=='wetland') return false;
+  if(typeof isMarshReedT==='function' && isMarshReedT(t, s)) return true;
+  if(typeof isMarshPondT==='function' && isMarshPondT(t)) return true;
+  return false;
+}
+/** Kitchen row that replaced a reed seat. Not a light crate cut. */
+function leftoverIsMarshKitchenT(t){
+  if(!t) return false;
+  if(t.farmEdge!=='reed' && t.reedRegen==null) return false;
+  return !!(t.crop && (t.crop.type==='sisters' || t.crop.type==='wheat'));
+}
+function isMarshStandLostT(t, s){
+  if(!t || isMarshStandLiveT(t, s)) return false;
+  if(typeof isMarshPondFillT==='function' && isMarshPondFillT(t)) return true;
+  if(typeof isReedT==='function' && isReedT(t)) return true;
+  if(t.farmEdge==='reed') return true;
+  if(typeof leftoverIsMarshKitchenT==='function' && leftoverIsMarshKitchenT(t)) return true;
+  return false;
+}
+function marshStandCoverCount(s){
+  let live = 0, lost = 0;
+  s = s || (typeof marshReedFarm==='function' ? marshReedFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return {live, lost};
+  s.grid.forEach(t=>{
+    if(isMarshStandLiveT(t, s)) live++;
+    else if(isMarshStandLostT(t, s)) lost++;
+  });
+  return {live, lost};
+}
+/** Leftover / campaign marsh after Home. First session and non-marsh folds stay off. */
+function marshStandReady(s){
+  if(typeof marshFoldReady==='function' ? !marshFoldReady(s) : true) return false;
+  const n = marshStandCoverCount(s);
+  return (n.live + n.lost) > 0;
+}
+/** Stand holds when live reeds + open ponds stay ≥ ~50% of (live + stripped / filled). A light crate tap does not drop this. */
+function marshStandUsable(s){
+  if(!marshStandReady(s)) return false;
+  const n = marshStandCoverCount(s);
+  if(n.live<=0) return false;
+  const total = n.live + n.lost;
+  return n.live >= Math.max(1, Math.ceil(total * 0.5));
+}
+function marshStandNeed(s){
+  return !!(marshStandReady(s) && !marshStandUsable(s));
+}
+function marshStandFeedBankAt(t, s){
+  if(!t) return false;
+  if(t.terrain!=='soil' && t.terrain!=='dead') return false;
+  if(t.feature==='path' || t.feature==='swale' || t.feature==='saltflat') return false;
+  s = s || (typeof marshReedFarm==='function' ? marshReedFarm() : (typeof state!=='undefined' ? state : null));
+  if(typeof marshPondFeedAdj==='function' && marshPondFeedAdj(t, s)) return true;
+  if(typeof shedsTowardMarshPond==='function' && shedsTowardMarshPond(t, s)) return true;
+  if(typeof marshPondFeedOfMarked==='function' && marshPondFeedOfMarked(t, s)) return true;
+  if(typeof shedsTowardMarshPondMarked==='function' && shedsTowardMarshPondMarked(t, s)) return true;
+  return false;
+}
+/** Pond-feed banks — soil / dead, not path / swale. */
+function marshStandSoilTiles(s){
+  const tiles = [];
+  s = s || (typeof marshReedFarm==='function' ? marshReedFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return tiles;
+  s.grid.forEach((t, i)=>{
+    if(!t || !t.soil) return;
+    if(!marshStandFeedBankAt(t, s)) return;
+    tiles.push({t, i});
+  });
+  return tiles;
+}
+function marshStandFloaterIdx(s){
+  s = s || (typeof marshReedFarm==='function' ? marshReedFarm() : (typeof state!=='undefined' ? state : null));
+  if(state && state.grid && s && s.grid && state.grid===s.grid){
+    for(let i=0;i<s.grid.length;i++){
+      const t = s.grid[i];
+      if(typeof isMarshPondFillT==='function' && isMarshPondFillT(t)) return i;
+    }
+    for(let i=0;i<s.grid.length;i++){
+      const t = s.grid[i];
+      if(typeof isReedT==='function' && isReedT(t)) return i;
+    }
+    const beds = marshStandSoilTiles(s);
+    if(beds.length && beds[0] && beds[0].i>=0) return beds[0].i;
+  }
+  if(typeof selected==='number' && selected>=0 && state && state.grid && state.grid[selected]) return selected;
+  return (typeof selected==='number' && selected>=0) ? selected : 0;
+}
+function marshStandStory(t, opts){
+  opts = opts || {};
+  const ready = typeof marshStandReady==='function' && marshStandReady();
+  const need = typeof marshStandNeed==='function' && marshStandNeed();
+  const hold = ready && !need;
+  const liveReed = typeof isMarshReedT==='function' && isMarshReedT(t)
+    && !(typeof isMarshPondFillT==='function' && isMarshPondFillT(t));
+  const openPond = typeof isMarshPondT==='function' && isMarshPondT(t);
+  const filled = typeof isMarshPondFillT==='function' && isMarshPondFillT(t);
+  const stripped = typeof isReedT==='function' && isReedT(t);
+  const feed = typeof marshStandFeedBankAt==='function' && marshStandFeedBankAt(t);
+  if(!ready && !liveReed && !openPond && !filled && !stripped && !feed) return '';
+  if(!ready) return '';
+  if(opts.needOnly && !need) return '';
+  if(filled)
+    return '🌾 This filled a marsh pond — runoff no longer settles here. Reopen it so the wetland can filter again. Not meadow forage, not willow.';
+  if(liveReed)
+    return need
+      ? '🌾 Marsh reeds are thin — runoff slips the pond-feed banks until wetland returns. Not meadow forage, not willow.'
+      : '🌾 Standing marsh reeds filter runoff on the pond-feed banks. A light crate cut still leaves the dress; strip the stand or fill the ponds and filtration nicks.';
+  if(openPond)
+    return need
+      ? '🌾 This marsh pond is still open, but the stand is gone — filtration thins until wetland returns. Not a ridge high pond.'
+      : '🌾 Open marsh pond — runoff settles here before the river. Standing reeds keep the filter. Not meadow forage, not willow.';
+  if(stripped)
+    return '🌾 Stripped reed bed — filtration thins until wetland returns. Ponds that stay open are not wiped. Not a kitchen row.';
+  if(feed){
+    if(need) return '🌾 Pond-feed bank — the marsh stand is gone, so this soil no longer filters runoff. Return wetland or reopen the ponds.';
+    if(hold && !opts.needOnly) return '🌾 Pond-feed bank — standing reeds and open marsh ponds filter runoff before the river.';
+  }
+  return '';
+}
+/** One sim dawn: standing leftover / campaign marsh holds pond-feed banks; a stripped or filled stand nicks them. First session stays off. */
+function tickMarshStandWork(){
+  if(!camp || !marshStandReady()) return 0;
+  const s = typeof marshReedFarm==='function' ? marshReedFarm() : (typeof state!=='undefined' ? state : null);
+  if(!s || !s.grid) return 0;
+  const tiles = marshStandSoilTiles(s);
+  if(!tiles.length) return 0;
+  const open = marshStandUsable(s);
+  if(open){
+    const b = (typeof MARSH_HOLD_SOIL!=='undefined') ? MARSH_HOLD_SOIL : {water:0.28, erosion:0.4, om:0.12};
+    tiles.forEach(({t})=>{
+      if(!t || !t.soil) return;
+      if((t.soil.water||0) < 70) t.soil.water = clamp((t.soil.water||0) + (b.water||0));
+      if((t.soil.erosion||0) < 80) t.soil.erosion = clamp((t.soil.erosion||0) + (b.erosion||0));
+      if((t.soil.om||0) < 70) t.soil.om = clamp((t.soil.om||0) + (b.om||0));
+      if(typeof recalc==='function') recalc(t);
+    });
+    if(typeof toast==='function'){
+      toast('🌾 The marsh still filters — standing reeds and open ponds hold the pond-feed banks. A light crate cut leaves the dress.', {once:'marsh_stand_hold_first', throttleMs:4000});
+    }
+    return tiles.length;
+  }
+  const b = (typeof MARSH_NICK_SOIL!=='undefined') ? MARSH_NICK_SOIL : {water:-0.6, erosion:-0.65, om:-0.18};
+  tiles.forEach(({t})=>{
+    if(!t || !t.soil) return;
+    t.soil.water = clamp((t.soil.water||0) + (b.water||0));
+    t.soil.erosion = clamp((t.soil.erosion||0) + (b.erosion||0));
+    t.soil.om = clamp((t.soil.om||0) + (b.om||0));
+    if(typeof recalc==='function') recalc(t);
+  });
+  const fi = marshStandFloaterIdx(s);
+  if(typeof floater==='function' && state && state.grid && state.grid[fi]){
+    floater(fi, 'filter thins', '#c9a070');
+  }
+  if(typeof toast==='function'){
+    toast('🌾 The marsh stand is gone — reeds stripped or ponds filled. Filtration thins until wetland returns.', {once:'marsh_stand_need_first', throttleMs:4000});
+  }
+  return tiles.length;
 }
 /** Field under the player, or the parked marsh fold while they are in the yard. */
 function marshDuckFarm(){
@@ -8643,7 +8876,10 @@ function dressLeftoverStamp(s, P){
       });
     }
     const campaignMarsh = P && (P.id==='marsh_finger' || P.levelId==='marsh') && !P.leftover && !P.buyable;
-    const wantReed = campaignMarsh ? 0 : ((atlasPonds || liveWater) ? Math.max(4, Math.round(GRID*0.4)) : 0);
+    // Leftover-style reed belt so crate/strip/filter can play. Campaign keeps Place-3 wetlands open (2 seated).
+    const wantReed = campaignMarsh
+      ? ((atlasPonds || liveWater) ? 2 : 0)
+      : ((atlasPonds || liveWater) ? Math.max(4, Math.round((((s && s.gridSize)|0) || GRID)*0.4)) : 0);
     let reeds = tiles.filter(t=>t.terrain==='wetland').length;
     const scoreReed = (t)=>{
       let n = 0;
@@ -11278,6 +11514,7 @@ function simStep(dt){
     if(typeof tickWillowCut==='function') tickWillowCut();
     if(typeof tickHedgeBerry==='function') tickHedgeBerry();
     if(typeof tickMarshReed==='function') tickMarshReed();
+    if(typeof tickMarshStandWork==='function') tickMarshStandWork();
     if(typeof tickMarshDuckEggs==='function') tickMarshDuckEggs();
     if(typeof tickMeadowForage==='function') tickMeadowForage();
     if(typeof tickMeadowStandWork==='function') tickMeadowStandWork();
@@ -14845,6 +15082,10 @@ function soilStoryLine(t){
       const ms = meadowStandStory(t, {needOnly:true});
       if(ms) return ms;
     }
+    if(typeof marshStandStory==='function'){
+      const mf = marshStandStory(t, {needOnly:true});
+      if(mf) return mf;
+    }
     if(typeof dustWashNeed==='function' && dustWashNeed())
       return '🏜️ Dry wash is blocked — drought nicks these flats. Keep the bed open so rare water can move.';
     return '💀 Sleeping soil — the living community is gone until you feed it.';
@@ -14863,8 +15104,10 @@ function soilStoryLine(t){
       const hw = homeWaterStory(t);
       if(hw) return hw;
     }
-    if(typeof isMarshPondT==='function' && isMarshPondT(t))
-      return '🌾 Marsh pond — runoff settles here before it reaches the main river.';
+    if(typeof isMarshPondT==='function' && isMarshPondT(t)){
+      const mf = (typeof marshStandStory==='function') ? marshStandStory(t) : '';
+      return mf || '🌾 Marsh pond — runoff settles here before it reaches the main river.';
+    }
     return '💧 Water held on the land — a pond keeps neighbors moist.';
   }
   if(t.terrain==='trees'){
@@ -14911,6 +15154,17 @@ function soilStoryLine(t){
     return '🌳 Living hedge — windbreak, shade, and a home for bees.';
   }
   if(t.terrain==='wetland'){
+    if(typeof isMarshPondFillT==='function' && isMarshPondFillT(t)
+       && typeof marshFoldReady==='function' && marshFoldReady()){
+      const mf = (typeof marshStandStory==='function') ? marshStandStory(t) : '';
+      if(mf) return mf;
+    }
+    if(typeof marshStandStory==='function' && typeof marshFoldReady==='function' && marshFoldReady()
+       && ((typeof isMarshReedT==='function' && isMarshReedT(t))
+          || (typeof isMarshStandLiveT==='function' && isMarshStandLiveT(t)))){
+      const mf = marshStandStory(t);
+      if(mf) return mf;
+    }
     if(typeof isMarshReedT==='function' && isMarshReedT(t))
       return (typeof marshReedStory==='function' ? marshReedStory('') : '🌾 Living marsh reeds for the crate. The stand stays wet and filtering.');
     if(typeof isHighPondFillT==='function' && isHighPondFillT(t)
@@ -14962,6 +15216,10 @@ function soilStoryLine(t){
       const ms = meadowStandStory(t);
       if(ms) return ms+' '+tier;
     }
+    if(typeof marshStandStory==='function'){
+      const mf = marshStandStory(t);
+      if(mf) return mf+' '+tier;
+    }
     if(g.kind==='team' || g.synergy) return '🐄🐔 Follow the herd — hooves open the sod; chickens follow. That\'s how prairie stayed fertile. '+tier;
     if(g.kind==='cattle' || g.kind==='cow') return '🐄 Cattle remaking this pad — send 🐔 chickens next. '+tier;
     if(g.kind==='chicken') return '🐔 Chickens working the surface. '+tier;
@@ -14989,6 +15247,10 @@ function soilStoryLine(t){
       const ms = meadowStandStory(t);
       if(ms) return (edgeNeed?edgeNeed+' ':'')+ms+' '+tier;
     }
+    if(typeof marshStandStory==='function'){
+      const mf = marshStandStory(t);
+      if(mf) return (edgeNeed?edgeNeed+' ':'')+mf+' '+tier;
+    }
     if(t.crop.type==='wheat' || (!c.diverse && !c.cover)){
       const days = t.crop.days||0;
       if(days >= 1)
@@ -15013,6 +15275,10 @@ function soilStoryLine(t){
   if(typeof meadowStandStory==='function'){
     const ms = meadowStandStory(t);
     if(ms) return ms+' '+tier;
+  }
+  if(typeof marshStandStory==='function'){
+    const mf = marshStandStory(t);
+    if(mf) return mf+' '+tier;
   }
   if(typeof highPondNeed==='function' && highPondNeed()
      && typeof isHighPondFillT==='function' && isHighPondFillT(t))
@@ -15276,13 +15542,37 @@ function applyTool(i){
       did = ()=>{ clearNativeScrub(t, state); };
     }
     else if(t.terrain==='pond' && typeof isMarshPondT==='function' && isMarshPondT(t)){
-      toast('🌾 That marsh pond filters runoff — leave it wet.');
-      SND.uhoh(); return false;
+      if(typeof marshFoldReady==='function' && marshFoldReady()){
+        did = ()=>{
+          if(typeof rememberMarshPondMark==='function') rememberMarshPondMark(t);
+          t.terrain = 'soil';
+          t.crop = null;
+          t.graze = null;
+          t.deco = null;
+          t.feature = null;
+        };
+      }else{
+        toast('🌾 That marsh pond filters runoff — leave it wet.');
+        SND.uhoh(); return false;
+      }
+    }
+    else if((t.terrain==='wetland' || t.terrain==='trees')
+            && typeof marshPondShouldReopen==='function' && marshPondShouldReopen(t)){
+      did = ()=>{
+        if(typeof rememberMarshPondMark==='function') rememberMarshPondMark(t);
+        t.terrain = 'pond';
+        t.farmEdge = (t.farmEdge==='reed') ? null : t.farmEdge;
+        t.reedRegen = null;
+        t.reedReady = false;
+        t.reedSet = 0;
+        if(typeof carveClear==='function') carveClear(t);
+      };
     }
     else if(t.terrain==='wetland' && typeof marshFoldReady==='function' && marshFoldReady()
             && typeof stripMarshReed==='function'
             && !(typeof isRiparianMarkedT==='function' && isRiparianMarkedT(t))
             && !(typeof isHighPondFillT==='function' && isHighPondFillT(t))
+            && !(typeof isMarshPondFillT==='function' && isMarshPondFillT(t))
             && !(typeof isGardenPondFillT==='function' && isGardenPondFillT(t))
             && !(typeof isHomeSwaleFillT==='function' && isHomeSwaleFillT(t))){
       did = ()=>{ stripMarshReed(t, i); };
@@ -15293,6 +15583,7 @@ function applyTool(i){
       if(typeof rememberHedgeCorridorMark==='function') rememberHedgeCorridorMark(t);
       if(typeof rememberHomeWaterMarks==='function') rememberHomeWaterMarks(t);
       if(typeof rememberHighPondMark==='function') rememberHighPondMark(t);
+      if(typeof rememberMarshPondMark==='function') rememberMarshPondMark(t);
       if(typeof rememberAtlasLaneMark==='function') rememberAtlasLaneMark(t);
       t.terrain = (typeof terrainAfterClearPlug==='function') ? terrainAfterClearPlug(t) : 'soil';
       if(t.terrain==='pond' && typeof carveClear==='function') carveClear(t);
@@ -15307,6 +15598,7 @@ function applyTool(i){
     else if(BUILD_SET.has(t.terrain)) did = ()=>{
       if(typeof rememberHomeWaterMarks==='function') rememberHomeWaterMarks(t);
       if(typeof rememberHighPondMark==='function') rememberHighPondMark(t);
+      if(typeof rememberMarshPondMark==='function') rememberMarshPondMark(t);
       if(typeof rememberAtlasLaneMark==='function') rememberAtlasLaneMark(t);
       t.terrain = (typeof terrainAfterClearPlug==='function') ? terrainAfterClearPlug(t) : 'soil';
       if(t.terrain==='pond' && typeof carveClear==='function') carveClear(t);
@@ -15333,6 +15625,13 @@ function applyTool(i){
     else if(isLandT(t) && typeof highPondShouldReopen==='function' && highPondShouldReopen(t)) did = ()=>{
       if(typeof rememberHighPondMark==='function') rememberHighPondMark(t);
       t.terrain = 'pond';
+      if(typeof carveClear==='function') carveClear(t);
+    };
+    else if(isLandT(t) && typeof marshPondShouldReopen==='function' && marshPondShouldReopen(t)) did = ()=>{
+      if(typeof rememberMarshPondMark==='function') rememberMarshPondMark(t);
+      t.terrain = 'pond';
+      t.farmEdge = (t.farmEdge==='reed') ? null : t.farmEdge;
+      t.reedRegen = null;
       if(typeof carveClear==='function') carveClear(t);
     };
     else if(isLandT(t) && typeof laneShouldReopen==='function' && laneShouldReopen(t)) did = ()=>{
@@ -15564,7 +15863,12 @@ function applyTool(i){
     }
     if(!spend(td.cost)) return false;
     if(typeof rememberHomeWaterMarks==='function') rememberHomeWaterMarks(t);
+    if(typeof rememberMarshPondMark==='function') rememberMarshPondMark(t);
     if(typeof rememberAtlasLaneMark==='function') rememberAtlasLaneMark(t);
+    if(t.terrain==='wetland' && typeof marshFoldReady==='function' && marshFoldReady()
+       && !(typeof isMarshPondMarkedT==='function' && isMarshPondMarkedT(t))){
+      t.farmEdge = 'reed';
+    }
     t.terrain = 'pond'; t.flowers = 0; t.deco = null; t.feature = null;
     state.stats.ponds++;
     floater(i, '💧 pond dug!', '#bfe3ff'); burst(i, '#7fc4ee', 14); SND.splash();
@@ -15605,7 +15909,12 @@ function applyTool(i){
       afterBuild(); return true;
     }
     if(typeof rememberHomeWaterMarks==='function') rememberHomeWaterMarks(t);
+    if(typeof rememberMarshPondMark==='function') rememberMarshPondMark(t);
     if(typeof rememberAtlasLaneMark==='function') rememberAtlasLaneMark(t);
+    if(t.terrain==='wetland' && typeof marshFoldReady==='function' && marshFoldReady()
+       && !(typeof isMarshPondMarkedT==='function' && isMarshPondMarkedT(t))){
+      t.farmEdge = 'reed';
+    }
     const woodlotNeedBefore = typeof currentWoodlotFold==='function' && currentWoodlotFold()
       && typeof woodlotStandNeed==='function' && woodlotStandNeed();
     t.terrain = 'trees'; t.flowers = Math.min(1, t.flowers+0.3); t.deco = null;
@@ -15777,7 +16086,8 @@ function applyTool(i){
       toast('🌿 That willow is returning — not a plant bed. Tend the bank beside it.');
       ringAt(i, '#6fae5f'); SND.uhoh(); return false;
     }
-    if(typeof isReedT==='function' && isReedT(t)){
+    if(typeof isReedT==='function' && isReedT(t)
+       && !(tool==='wetland' && typeof marshFoldReady==='function' && marshFoldReady())){
       toast('🌾 That reed stand is returning — not a plant bed. Leave the marsh wet.');
       ringAt(i, '#6fae5f'); SND.uhoh(); return false;
     }
@@ -15796,7 +16106,19 @@ function applyTool(i){
     }
     if(!spend(td.cost)) return false;
     if(typeof rememberHomeWaterMarks==='function') rememberHomeWaterMarks(t);
+    if(typeof rememberMarshPondMark==='function') rememberMarshPondMark(t);
     if(typeof rememberAtlasLaneMark==='function') rememberAtlasLaneMark(t);
+    if(tool==='wetland' && typeof isReedT==='function' && isReedT(t)
+       && typeof marshFoldReady==='function' && marshFoldReady()){
+      t.farmEdge = null;
+      t.reedRegen = null;
+      t.reedReady = false;
+      t.reedSet = 0;
+    }else if(t.terrain==='wetland' && tool!=='wetland'
+             && typeof marshFoldReady==='function' && marshFoldReady()
+             && !(typeof isMarshPondMarkedT==='function' && isMarshPondMarkedT(t))){
+      t.farmEdge = 'reed';
+    }
     t.terrain = tool; t.deco = null; t.feature = null; t.crop = null;
     if(tool==='orchard'){
       t.orchardAge = 0;
@@ -16295,7 +16617,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-26.scrub';
+const SHIP_BUILD = '2026-08-26.marsh';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -16445,7 +16767,7 @@ function openAboutCredits(){
   if(showNew) camp.tipsShown['whats_new_'+ver] = true;
   const whatsNew = showNew
     ? `<div class="lesson" style="text-align:left;margin-top:6px;border-color:rgba(234,181,67,.45)">
-        <b>What's new (${ver}):</b> After Home Patch the leftover wet meadow plays as wild forage — standing flowers hold pollinators and soil; tilling, close graze, or mowing the dress nicks that hold until the stand returns. A light crate cut still leaves the flowers. Dust Scrub now asks you to browse open brush with goats while keeping or replanting native thorn shelter.
+        <b>What's new (${ver}):</b> After Home Patch, campaign Marsh Finger plays as a standing filter — living reeds and open marsh ponds hold runoff on the pond-feed banks. A light crate cut still leaves the dress; strip the stand or fill the ponds and filtration nicks until wetland returns.
       </div>`
     : '';
   // CD — first About open literacy (in-modal; no toast spam)
@@ -20947,6 +21269,10 @@ function openInfo(refreshOnly){
       : (BUILD_INFO[t.terrain]||'')}</div>`;
     if(nativeScrub){
       body += `<div class="chiprow">🌵 ${countNativeScrub()} native patches still stand in this fold.</div>`;
+    }else if(t.terrain==='wetland' && typeof isMarshPondFillT==='function' && isMarshPondFillT(t)
+              && typeof marshFoldReady==='function' && marshFoldReady()){
+      const story = (typeof soilStoryLine==='function') ? soilStoryLine(t) : '';
+      body = `<div class="chiprow">${story || 'This wetland filled a marsh pond — runoff no longer settles here. Clear it to reopen the filter.'}</div>`;
     }else if(t.terrain==='wetland' && typeof isMarshReedT==='function' && isMarshReedT(t)){
       const story = (typeof soilStoryLine==='function') ? soilStoryLine(t) : '';
       const ready = typeof marshReedTileReady==='function' && marshReedTileReady(t);
@@ -21059,8 +21385,12 @@ function openInfo(refreshOnly){
       chips.push('💧 high pond blocked — runoff nicks downhill soil');
     else if(typeof highPondReady==='function' && highPondReady() && typeof highPondDownhillAdj==='function' && highPondDownhillAdj(t))
       chips.push('💧 downhill of the high pond — water filters before it runs downhill');
-    if(typeof marshPondFeedAdj==='function' && marshPondFeedAdj(t)) chips.push('🌾 feeds a marsh pond — runoff filters before the river');
-    else if(typeof shedsTowardMarshPond==='function' && shedsTowardMarshPond(t)) chips.push('🌾 sheds toward a marsh pond — cleaner than a bare drain');
+    {
+      const mfLine = (typeof marshStandStory==='function') ? marshStandStory(t) : '';
+      if(mfLine) chips.push(mfLine);
+      else if(typeof marshPondFeedAdj==='function' && marshPondFeedAdj(t)) chips.push('🌾 feeds a marsh pond — runoff filters before the river');
+      else if(typeof shedsTowardMarshPond==='function' && shedsTowardMarshPond(t)) chips.push('🌾 sheds toward a marsh pond — cleaner than a bare drain');
+    }
     {
       const ripLine = (typeof riparianBufferStory==='function') ? riparianBufferStory(t) : '';
       if(ripLine) chips.push(ripLine);
@@ -21080,6 +21410,11 @@ function openInfo(refreshOnly){
     else if(typeof meadowStandReady==='function' && meadowStandReady()
          && typeof isMeadowStandLiveT==='function' && isMeadowStandLiveT(t))
       chips.push('🌼 standing meadow — pollinators hold this soil');
+    if(typeof marshStandNeed==='function' && marshStandNeed())
+      chips.push('🌾 marsh stand is gone — filtration thins until wetland returns');
+    else if(typeof marshStandReady==='function' && marshStandReady()
+         && typeof isMarshStandLiveT==='function' && isMarshStandLiveT(t))
+      chips.push('🌾 standing marsh — runoff filters on this fold');
     if(t.flowers>0.3) chips.push('🌼 wildflowers');
     if(t.soil.microbial>=70) chips.push('🪱 worms!');
     if(t.health>=70) chips.push('💚 restored!');
@@ -21115,7 +21450,7 @@ function openInfo(refreshOnly){
       : (garden || gardenFilled) && gardenReady && gardenLine
         ? `<div class="chiprow">${gardenLine}${gardenNeed?'':' Not a ridge high pond.'}</div>`
       : marsh
-        ? `<div class="chiprow">A marsh pond — runoff settles here before it reaches the main river. Reeds and wet soil feed it. Not a kitchen bed.</div>`
+        ? `<div class="chiprow">${(typeof marshStandStory==='function' && marshStandStory(t)) || 'A marsh pond — runoff settles here before it reaches the main river. Reeds and wet soil feed it. Not a kitchen bed.'}</div>`
       : washFilled
         ? `<div class="chiprow">${washNeed?'This pond filled the dry wash — drought nicks the flats. Clear it to open the bed again. Not a second river.':'This pond sits in the dry wash. Clear it to open the bed again. Not a second river.'}</div>`
       : (typeof isLaneFloodedT==='function' && isLaneFloodedT(t) && typeof laneWorkReady==='function' && laneWorkReady())
