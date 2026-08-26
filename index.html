@@ -7716,11 +7716,15 @@ function currentHayFold(s){
   const P = typeof valleyParcelByLvIndex==='function' ? valleyParcelByLvIndex(s.lv) : null;
   return leftoverIsHayFold(P);
 }
-/** Leftover / buyable hay folds after Home. Home Patch first session stays off. */
+/** Leftover hay after Home, or bought hay once the deed is signed. Unbought South Lane stays off. */
 function hayFoldReady(s){
   if(!camp) return false;
   if(typeof homePatchCleared==='function' && !homePatchCleared()) return false;
-  return currentHayFold(s);
+  if(!currentHayFold(s)) return false;
+  const farm = s || (typeof hayCutFarm==='function' ? hayCutFarm() : (typeof state!=='undefined' ? state : null));
+  const P = (farm && typeof valleyParcelByLvIndex==='function') ? valleyParcelByLvIndex(farm.lv) : null;
+  if(P && P.buyable && typeof parcelIsBought==='function' && !parcelIsBought(P)) return false;
+  return true;
 }
 function hayBaleReady(t, s){
   return !!(t && t.deco==='deco_haybales' && hayFoldReady(s));
@@ -17416,7 +17420,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-26.haystand';
+const SHIP_BUILD = '2026-08-26.haystandfix';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
