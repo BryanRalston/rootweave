@@ -16295,7 +16295,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-26.meadowfix';
+const SHIP_BUILD = '2026-08-26.scrub';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -16445,7 +16445,7 @@ function openAboutCredits(){
   if(showNew) camp.tipsShown['whats_new_'+ver] = true;
   const whatsNew = showNew
     ? `<div class="lesson" style="text-align:left;margin-top:6px;border-color:rgba(234,181,67,.45)">
-        <b>What's new (${ver}):</b> After Home Patch the leftover wet meadow plays as wild forage — standing flowers hold pollinators and soil; tilling, close graze, or mowing the dress nicks that hold until the stand returns. A light crate cut still leaves the flowers.
+        <b>What's new (${ver}):</b> After Home Patch the leftover wet meadow plays as wild forage — standing flowers hold pollinators and soil; tilling, close graze, or mowing the dress nicks that hold until the stand returns. A light crate cut still leaves the flowers. Dust Scrub now asks you to browse open brush with goats while keeping or replanting native thorn shelter.
       </div>`
     : '';
   // CD — first About open literacy (in-modal; no toast spam)
