@@ -5250,17 +5250,19 @@ function rememberCreekSpineMark(t){
     t.creekSpine = true;
     if(!t.atlasWater || t.atlasWater==='main') t.atlasWater = 'creek';
   }
-  if(t.creekSpine || t.atlasWater==='creek' || t.terrain==='water' || t.terrain==='riverbed'){
+  if(t.creekSpine || t.atlasWater==='creek'){
     t.creekSpine = true;
     if(!t.atlasWater || t.atlasWater==='main') t.atlasWater = 'creek';
   }
 }
 /** Painted / seated creek bed — survives a tractor plug. Not the stem, not a wash, not a pond. */
-function isCreekSpineMarkedT(t){
+function isCreekSpineMarkedT(t, s){
   if(!t || creekSpineIsOtherWaterT(t)) return false;
-  if(t.creekSpine || t.atlasWater==='creek') return true;
-  if(t.atlasC!=null && typeof atlasIsCreekSpineCell==='function' && atlasIsCreekSpineCell(t.atlasC, t.atlasR)) return true;
-  return false;
+  if(!(t.creekSpine || t.atlasWater==='creek'
+     || (t.atlasC!=null && typeof atlasIsCreekSpineCell==='function' && atlasIsCreekSpineCell(t.atlasC, t.atlasR)))) return false;
+  // Atlas polyline continues into River Reach / Marsh Finger — only this fold plays it.
+  if(typeof currentCreekFold==='function' && !currentCreekFold(s)) return false;
+  return true;
 }
 function ensureCreekSpineKeep(s, P){
   s = s || (typeof creekSpineFarm==='function' ? creekSpineFarm() : (typeof state!=='undefined' ? state : null));
@@ -5273,10 +5275,7 @@ function ensureCreekSpineKeep(s, P){
       rememberCreekSpineMark(t);
       return;
     }
-    if(t.terrain==='water' || t.terrain==='riverbed'){
-      t.creekSpine = true;
-      if(!t.atlasWater || t.atlasWater==='main') t.atlasWater = 'creek';
-    }
+    if(t.creekSpine || t.atlasWater==='creek') rememberCreekSpineMark(t);
   });
   if(s._creekSpine){ s._creekSpine = null; s._creekSpineTag = ''; }
 }
@@ -5291,8 +5290,8 @@ function creekFoldReady(s){
   return true;
 }
 /** Open tributary bed: still water or a live riverbed on the marked spine. */
-function isCreekSpineLiveT(t){
-  if(!isCreekSpineMarkedT(t)) return false;
+function isCreekSpineLiveT(t, s){
+  if(!isCreekSpineMarkedT(t, s)) return false;
   if(t.crop || t.graze) return false;
   if(typeof BUILD_SET!=='undefined' && BUILD_SET.has(t.terrain)) return false;
   if(t.terrain==='trees' || t.terrain==='pond' || t.terrain==='wetland') return false;
@@ -5339,13 +5338,13 @@ function creekSpineNeed(s){
 function creekSpineAdj(t, s){
   s = s || (typeof creekSpineFarm==='function' ? creekSpineFarm() : (typeof state!=='undefined' ? state : null));
   if(!t || !s || !s.grid) return false;
-  if(isCreekSpineMarkedT(t)) return false;
+  if(isCreekSpineMarkedT(t, s)) return false;
   const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
   for(let i=0;i<dirs.length;i++){
     const c = (t.c|0)+dirs[i][0], r = (t.r|0)+dirs[i][1];
     if(typeof inGrid==='function' && !inGrid(c,r)) continue;
     const n = s.grid[typeof idx==='function' ? idx(c,r) : (r*(s.gridSize||GRID||0)+c)];
-    if(isCreekSpineMarkedT(n)) return true;
+    if(isCreekSpineMarkedT(n, s)) return true;
   }
   return false;
 }
@@ -5357,7 +5356,7 @@ function creekFeedBedAt(t, s){
   if(!t) return false;
   if(t.terrain!=='soil' && t.terrain!=='dead') return false;
   if(t.feature==='path' || t.feature==='swale' || t.feature==='saltflat') return false;
-  if(isCreekSpineMarkedT(t)) return false;
+  if(isCreekSpineMarkedT(t, s)) return false;
   s = s || (typeof creekSpineFarm==='function' ? creekSpineFarm() : (typeof state!=='undefined' ? state : null));
   if(typeof marshStandFeedBankAt==='function' && marshStandFeedBankAt(t, s)) return false;
   if(typeof marshPondFeedAdj==='function' && marshPondFeedAdj(t, s)) return false;
@@ -16973,7 +16972,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-26.creek';
+const SHIP_BUILD = '2026-08-26.creekfix';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
