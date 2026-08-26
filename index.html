@@ -17634,7 +17634,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-26.orchardstandfix';
+const SHIP_BUILD = '2026-08-26.whatsnew2';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -17784,7 +17784,7 @@ function openAboutCredits(){
   if(showNew) camp.tipsShown['whats_new_'+ver] = true;
   const whatsNew = showNew
     ? `<div class="lesson" style="text-align:left;margin-top:6px;border-color:rgba(234,181,67,.45)">
-        <b>What's new (${ver}):</b> After Home Patch, campaign Marsh Finger plays as a standing filter — the reed belt and the open marsh ponds each have to hold. A light crate cut still leaves the dress; strip the reeds or fill the ponds and filtration nicks until wetland returns.
+        <b>What's new (${ver}):</b><br>🐎 East Pasture: salt-crust and sparse cover hold the dry edge; wheat or sisters nicks until rest or cover returns; a light graze still feeds the pile.<br>🐝 Valley map: bees, butterflies, and birds sit on the fold they came back to (same 30 / 45 / 60 as the chips); strip that fold and they leave.<br>🌾 Hay Field: standing forage holds cover after Home; strip or plant sisters and it nicks; a light crate cut leaves the stand. Unbought South Lane stays a deed.<br>🍎 Orchard Block / Orchard Slope: the living grove holds the slope; strip or plant a kitchen and it nicks; a light fruit pick leaves the tree.<br><br>After Home Patch the journey map shows the farm you run — living herd marks (cattle, hens, ducks, goats, sheep, pigs) on owned paddocks, yard, and marsh; leftover compost on the homestead pile; the neighbor stand when crate lots or surplus meat are ready. Surplus meat is a herd tradeoff. Adjacent leftover folds can be bought with coins. Wildlife chips still return at 30 / 45 / 60. The high-dry lane, barn compost yard, garden–orchard coop, weather-side windbreak, living hedges, ridge woodlot, wet meadow forage, and Dust Scrub browse play as land you run. Campaign Marsh Finger plays as a standing filter — the reed belt and the open marsh ponds each have to hold. A light crate cut still leaves the dress; strip the reeds or fill the ponds and filtration nicks until wetland returns. Creek Bend is a working tributary. Fogged land and the first-session garden stay empty. Play stays free; no pay-to-revive.
       </div>`
     : '';
   // CD — first About open literacy (in-modal; no toast spam)
