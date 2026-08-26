@@ -1048,6 +1048,8 @@ const ORCHARD_GROW_DAYS = 8;    // player-planted saplings settle before they fr
 const ORCHARD_AUTO_PICK = 1;    // light dawn trickle — tap can pick the rest
 const ORCHARD_REGEN_DAYS = 8; // strip-cut stump returns as a living fruit tree; never an empty plant bed
 const ORCHARD_STRIP_SOIL = {om:-2, erosion:-3, water:-1, microbial:-1}; // strip nicks the hang; not firewood
+const ORCHARD_STAND_HOLD_SOIL = {om:0.16, microbial:0.22}; // mild dawn hold on standing grove; cap so it cannot farm health
+const ORCHARD_STAND_NICK_SOIL = {om:-0.2, microbial:-0.16}; // strip / kitchen — slope nicks until canopy or clover returns
 const STAND_HAY_SEASON   = [1.06, 0.88, 0.92, 1.18]; // last stores; summer cut; fall still plenty; winter feed
 const HAY_LOT = 3;   // modest crate lot — like eggs, well under a wheat cut
 const HAY_THIN_SET = 0.10; // cuttings / day on a living hay stand — the dress stays
@@ -1792,6 +1794,183 @@ function tickOrchardFruit(){
     if(harvestOrchardTile(s.grid[ready[k]], ready[k], {farm:s, auto:true})) n++;
   }
   return n;
+}
+/** Living orchard mark / fruit tree that is not a returning stump. Not woodlot timber. */
+function isOrchardStandLiveT(t, s){
+  if(!t || t.orchardRegen!=null) return false;
+  if(typeof isWoodlotT==='function' && isWoodlotT(t)) return false;
+  if(typeof isWoodlotStandLiveT==='function' && isWoodlotStandLiveT(t)) return false;
+  if(typeof leftoverIsHayForageT==='function' && leftoverIsHayForageT(t)) return false;
+  if(typeof leftoverIsMeadowBloomT==='function' && leftoverIsMeadowBloomT(t)) return false;
+  if(typeof leftoverIsOrchardGroveT==='function' && leftoverIsOrchardGroveT(t)) return true;
+  if(typeof isOrchardFruitT==='function' && isOrchardFruitT(t, s)) return true;
+  if(typeof isOrchardMarkedT==='function' && isOrchardMarkedT(t)
+     && (t.terrain==='orchard' || t.terrain==='trees')) return true;
+  return false;
+}
+/** Sisters / wheat rows on orchard land — the fold treated as a kitchen. */
+function leftoverIsOrchardKitchenT(t, s){
+  if(!t || !t.crop) return false;
+  if(t.crop.type!=='sisters' && t.crop.type!=='wheat') return false;
+  if(typeof currentOrchardFold==='function' && !currentOrchardFold(s)) return false;
+  if(typeof leftoverIsHayForageT==='function' && leftoverIsHayForageT(t)
+     && typeof currentHayFold==='function' && currentHayFold(s)) return false;
+  if(typeof leftoverIsMeadowPlowT==='function' && leftoverIsMeadowPlowT(t)
+     && typeof currentMeadowFold==='function' && currentMeadowFold(s)) return false;
+  if(typeof leftoverStampLand==='function' && leftoverStampLand(t)) return true;
+  if(typeof leftoverOrchardSeatOk==='function' && leftoverOrchardSeatOk(t)) return true;
+  if(typeof isOrchardMarkedT==='function' && isOrchardMarkedT(t)) return true;
+  if(typeof leftoverIsOrchardGroveT==='function' && leftoverIsOrchardGroveT(t)) return true;
+  return false;
+}
+function orchardStandCoverCount(s){
+  let live = 0, kitchen = 0, land = 0, stump = 0;
+  s = s || (typeof orchardFruitFarm==='function' ? orchardFruitFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return {live, kitchen, land, stump};
+  s.grid.forEach(t=>{
+    if(!t) return;
+    if(typeof isWoodlotT==='function' && isWoodlotT(t)) return;
+    if(typeof leftoverIsHayForageT==='function' && leftoverIsHayForageT(t)
+       && typeof currentHayFold==='function' && currentHayFold(s)) return;
+    if(typeof leftoverIsMeadowBloomT==='function' && leftoverIsMeadowBloomT(t)
+       && typeof currentMeadowFold==='function' && currentMeadowFold(s)) return;
+    const liveT = isOrchardStandLiveT(t, s);
+    const kitchenT = leftoverIsOrchardKitchenT(t, s);
+    const stumpT = typeof isOrchardT==='function' && isOrchardT(t);
+    const markT = (typeof isOrchardMarkedT==='function' && isOrchardMarkedT(t))
+      || (typeof leftoverIsOrchardGroveT==='function' && leftoverIsOrchardGroveT(t));
+    if(!(liveT || kitchenT || stumpT || markT)) return;
+    if(liveT || stumpT || markT) land++;
+    if(kitchenT) kitchen++;
+    else if(liveT) live++;
+    else if(stumpT) stump++;
+  });
+  return {live, kitchen, land, stump};
+}
+/** Leftover / campaign orchard after Home. First session stays off. */
+function orchardStandReady(s){
+  if(!camp) return false;
+  if(typeof homePatchCleared==='function' && !homePatchCleared()) return false;
+  if(typeof currentOrchardFold==='function' ? !currentOrchardFold(s) : true) return false;
+  const n = orchardStandCoverCount(s);
+  return (n.land|0) > 0;
+}
+/** Living canopy still stands and kitchen seats stay below ~50% of the fold's orchard land. A light fruit pick does not drop this. */
+function orchardStandUsable(s){
+  if(!orchardStandReady(s)) return false;
+  const n = orchardStandCoverCount(s);
+  if((n.land|0) <= 0) return false;
+  if((n.live|0) < Math.max(1, Math.ceil(n.land * 0.5))) return false;
+  if((n.kitchen|0) >= Math.max(1, Math.ceil(n.land * 0.5))) return false;
+  return true;
+}
+function orchardStandNeed(s){
+  return !!(orchardStandReady(s) && !orchardStandUsable(s));
+}
+/** Open orchard soil the stand still feeds — understory, kitchen, and returning stumps. Not woodlot / hay / meadow beds. */
+function orchardStandSoilTiles(s){
+  const tiles = [];
+  s = s || (typeof orchardFruitFarm==='function' ? orchardFruitFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return tiles;
+  const g = (s.gridSize|0) || (typeof GRID==='number' ? GRID : 0);
+  s.grid.forEach((t, i)=>{
+    if(!t || !t.soil) return;
+    if(t.terrain!=='soil' && t.terrain!=='dead') return;
+    if(t.feature==='path' || t.feature==='swale' || t.feature==='saltflat') return;
+    if(typeof isWoodlotT==='function' && isWoodlotT(t)) return;
+    if(typeof isWoodlotStandLiveT==='function' && isWoodlotStandLiveT(t)) return;
+    if(typeof leftoverIsHayForageT==='function' && leftoverIsHayForageT(t)
+       && typeof currentHayFold==='function' && currentHayFold(s)) return;
+    if(typeof leftoverIsMeadowBloomT==='function' && leftoverIsMeadowBloomT(t)
+       && typeof currentMeadowFold==='function' && currentMeadowFold(s)) return;
+    const seat = typeof leftoverOrchardSeatOk==='function' && leftoverOrchardSeatOk(t, g);
+    const near = typeof leftoverCanopyNear==='function' && leftoverCanopyNear(s, t);
+    const land = typeof leftoverStampLand==='function' && leftoverStampLand(t);
+    const kitchen = leftoverIsOrchardKitchenT(t, s);
+    const stub = typeof isOrchardT==='function' && isOrchardT(t);
+    if(!(seat || near || kitchen || stub || land)) return;
+    tiles.push({t, i});
+  });
+  return tiles;
+}
+function orchardStandFloaterIdx(s){
+  s = s || (typeof orchardFruitFarm==='function' ? orchardFruitFarm() : (typeof state!=='undefined' ? state : null));
+  if(state && state.grid && s && s.grid && state.grid===s.grid){
+    const beds = orchardStandSoilTiles(s);
+    for(let i=0;i<beds.length;i++){
+      if(leftoverIsOrchardKitchenT(beds[i].t, s) || (typeof isOrchardT==='function' && isOrchardT(beds[i].t))
+         || !isOrchardStandLiveT(beds[i].t, s))
+        return beds[i].i;
+    }
+    if(beds.length && beds[0] && beds[0].i>=0) return beds[0].i;
+  }
+  if(typeof selected==='number' && selected>=0 && state && state.grid && state.grid[selected]) return selected;
+  return (typeof selected==='number' && selected>=0) ? selected : 0;
+}
+function orchardStandStory(t, opts){
+  opts = opts || {};
+  const ready = typeof orchardStandReady==='function' && orchardStandReady();
+  const need = typeof orchardStandNeed==='function' && orchardStandNeed();
+  const hold = ready && !need;
+  const live = typeof isOrchardStandLiveT==='function' && isOrchardStandLiveT(t);
+  const kitchen = typeof leftoverIsOrchardKitchenT==='function' && leftoverIsOrchardKitchenT(t);
+  const stub = typeof isOrchardT==='function' && isOrchardT(t);
+  if(!ready) return '';
+  if(opts.needOnly && !need) return '';
+  if(kitchen)
+    return need
+      ? '🍎 This kitchen row on orchard land — the standing grove is gone. Cover nicks until trees or clover return. Not hay, not meadow bloom.'
+      : '🍎 A kitchen row on orchard land — not the standing grove. Leave living trees so the slope can hold.';
+  if(stub)
+    return need
+      ? '🍎 Stump after a strip — the orchard returns; the slope nicks until the canopy comes back. Not an open plant bed. Not woodlot timber.'
+      : '🍎 Stump after a strip — the orchard returns. A light fruit pick would have left the standing grove.';
+  if(live)
+    return need
+      ? '🍎 Standing grove is thin — the hang was stripped or the fold was treated as a kitchen. Cover nicks until the canopy returns. Not hay, not woodlot timber, not meadow bloom.'
+      : '🍎 Living orchard — standing grove holds the slope. A light fruit pick leaves the hang; strip the canopy or plant a kitchen and it nicks. Not hay, not woodlot timber, not meadow bloom, not a kitchen row.';
+  if(t && (t.terrain==='soil' || t.terrain==='dead')){
+    if(need) return '🍎 Open orchard — the standing grove was stripped or treated as a kitchen. Rest or clover so the slope can hold.';
+    if(hold && !opts.needOnly) return '🍎 Beside the standing grove — living orchard still holds this slope.';
+  }
+  return '';
+}
+/** One sim dawn: standing leftover orchard holds om / cover; a stripped or kitchen fold nicks them. First session stays off. */
+function tickOrchardStandWork(){
+  if(!camp || !orchardStandReady()) return 0;
+  const s = typeof orchardFruitFarm==='function' ? orchardFruitFarm() : (typeof state!=='undefined' ? state : null);
+  if(!s || !s.grid) return 0;
+  const tiles = orchardStandSoilTiles(s);
+  if(!tiles.length) return 0;
+  const open = orchardStandUsable(s);
+  if(open){
+    const b = (typeof ORCHARD_STAND_HOLD_SOIL!=='undefined') ? ORCHARD_STAND_HOLD_SOIL : {om:0.16, microbial:0.22};
+    tiles.forEach(({t})=>{
+      if(!t || !t.soil) return;
+      if((t.soil.om||0) < 72) t.soil.om = clamp((t.soil.om||0) + (b.om||0));
+      if((t.soil.microbial||0) < 74) t.soil.microbial = clamp((t.soil.microbial||0) + (b.microbial||0));
+      if(typeof recalc==='function') recalc(t);
+    });
+    if(typeof toast==='function'){
+      toast('🍎 Standing grove holds the slope — leave the living orchard. A light fruit pick leaves the hang; a kitchen row or strip nicks it.', {once:'orchard_stand_hold_first', throttleMs:4000});
+    }
+    return tiles.length;
+  }
+  const b = (typeof ORCHARD_STAND_NICK_SOIL!=='undefined') ? ORCHARD_STAND_NICK_SOIL : {om:-0.2, microbial:-0.16};
+  tiles.forEach(({t})=>{
+    if(!t || !t.soil) return;
+    t.soil.om = clamp((t.soil.om||0) + (b.om||0));
+    t.soil.microbial = clamp((t.soil.microbial||0) + (b.microbial||0));
+    if(typeof recalc==='function') recalc(t);
+  });
+  const fi = orchardStandFloaterIdx(s);
+  if(typeof floater==='function' && state && state.grid && state.grid[fi]){
+    floater(fi, 'stand nicks', '#c9a070');
+  }
+  if(typeof toast==='function'){
+    toast('🍎 The standing grove was stripped or treated as a kitchen — the slope nicks until the canopy returns.', {once:'orchard_stand_need_first', throttleMs:4000});
+  }
+  return tiles.length;
 }
 /** Remember the live field calendar so homestead (frozen spring) still pays today's lane. */
 function rememberLaneClock(src){
@@ -3001,7 +3180,7 @@ function leftoverStampProfile(feel, grid, spec){
     const groveN = Math.max(4, Math.round(g*0.35));
     const underN = Math.max(6, Math.round(g*0.45));
     return {
-      tools: base.concat(['orchard','berrybush']),
+      tools: base.concat(['sisters','wheat','orchard','berrybush']),
       river: false, regen: 1.3, ovs: ['health','bio'],
       goalText: 'Bring the understory back under the trees.',
       doneText: name+' is a grove again.',
@@ -12208,6 +12387,7 @@ function simStep(dt){
     if(typeof rememberLaneClock==='function') rememberLaneClock();
     if(typeof tickCoopEggs==='function') tickCoopEggs();
     if(typeof tickOrchardFruit==='function') tickOrchardFruit();
+    if(typeof tickOrchardStandWork==='function') tickOrchardStandWork();
     if(typeof tickWoodlotTimber==='function') tickWoodlotTimber();
     if(typeof tickWoodlotStandWork==='function') tickWoodlotStandWork();
     if(typeof tickWillowCut==='function') tickWillowCut();
@@ -15762,6 +15942,10 @@ function soilStoryLine(t){
       const hy = hayStandStory(t);
       if(hy) return hy;
     }
+    if(typeof orchardStandStory==='function'){
+      const os = orchardStandStory(t);
+      if(os) return os;
+    }
     if(t.feature==='saltflat') return '🧂 Salt memory — leftover irrigation and drought. Extra life and time are the only rinse.';
     if(typeof highPondNeed==='function' && highPondNeed()
        && typeof isHighPondFillT==='function' && isHighPondFillT(t))
@@ -15788,6 +15972,10 @@ function soilStoryLine(t){
     if(typeof woodlotStandStory==='function'){
       const wl = woodlotStandStory(t);
       if(wl) return wl;
+    }
+    if(typeof orchardStandStory==='function'){
+      const os = orchardStandStory(t);
+      if(os) return os;
     }
     if(typeof hayStandStory==='function'){
       const hy = hayStandStory(t, {needOnly:true});
@@ -15838,6 +16026,10 @@ function soilStoryLine(t){
     return '💧 Water held on the land — a pond keeps neighbors moist.';
   }
   if(t.terrain==='trees'){
+    if(typeof orchardStandStory==='function'){
+      const os = orchardStandStory(t);
+      if(os) return os;
+    }
     if(typeof isOrchardFruitT==='function' && isOrchardFruitT(t))
       return (typeof orchardFruitStory==='function' ? orchardFruitStory('') : '🍎 Living orchard fruit for the crate. The tree stays.');
     if(typeof isWillowCutT==='function' && isWillowCutT(t))
@@ -15923,6 +16115,15 @@ function soilStoryLine(t){
     }
     return '🌾 A living filter — reeds clean runoff before it reaches the river.';
   }
+  if(t.terrain==='orchard'){
+    if(typeof orchardStandStory==='function'){
+      const os = orchardStandStory(t);
+      if(os) return os;
+    }
+    if(typeof isOrchardFruitT==='function' && isOrchardFruitT(t))
+      return (typeof orchardFruitStory==='function' ? orchardFruitStory('') : '🍎 Living orchard fruit for the crate. The tree stays.');
+    return '';
+  }
   if(t.terrain!=='soil') return '';
   const h = t.health|0;
   const tier = h >= 80 ? '🌟 Rich living soil — keep diversity and rest; it pays you back.'
@@ -15942,6 +16143,10 @@ function soilStoryLine(t){
     if(typeof hayStandStory==='function'){
       const hy = hayStandStory(t);
       if(hy) return hy+' '+tier;
+    }
+    if(typeof orchardStandStory==='function'){
+      const os = orchardStandStory(t);
+      if(os) return os+' '+tier;
     }
     if(typeof paddockStockThirstNeed==='function' && paddockStockThirstNeed())
       return '💧 Dry fold — the herd needs stock water they can stand beside. '+tier;
@@ -15989,6 +16194,10 @@ function soilStoryLine(t){
     if(typeof hayStandStory==='function'){
       const hy = hayStandStory(t);
       if(hy) return (edgeNeed?edgeNeed+' ':'')+hy+' '+tier;
+    }
+    if(typeof orchardStandStory==='function'){
+      const os = orchardStandStory(t);
+      if(os) return (edgeNeed?edgeNeed+' ':'')+os+' '+tier;
     }
     if(t.crop.type==='sisters')
       return (edgeNeed?edgeNeed+' ':'')+'🌽 The guild — corn is the pole, beans feed nitrogen, squash shades weeds. A team feeds the soil. '+tier;
@@ -16039,6 +16248,10 @@ function soilStoryLine(t){
   if(typeof hayStandStory==='function'){
     const hy = hayStandStory(t);
     if(hy) return hy+' '+tier;
+  }
+  if(typeof orchardStandStory==='function'){
+    const os = orchardStandStory(t);
+    if(os) return os+' '+tier;
   }
   if(typeof meadowStandStory==='function'){
     const ms = meadowStandStory(t);
@@ -17420,7 +17633,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-26.haystandfix';
+const SHIP_BUILD = '2026-08-26.orchardstand';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -21991,7 +22204,12 @@ function openInfo(refreshOnly){
   const treeName = ((typeof isWoodlotT==='function' && isWoodlotT(t))
     || (typeof isWoodlotStandLiveT==='function' && isWoodlotStandLiveT(t))
     || (typeof isWoodlotStandMarkT==='function' && isWoodlotStandMarkT(t)))
-    ? 'Woodlot 🌲' : 'Hedgerow 🌳';
+    ? 'Woodlot 🌲'
+    : ((typeof orchardStandReady==='function' && orchardStandReady()
+        && ((typeof isOrchardStandLiveT==='function' && isOrchardStandLiveT(t))
+           || (typeof isOrchardMarkedT==='function' && isOrchardMarkedT(t))
+           || (typeof leftoverIsOrchardGroveT==='function' && leftoverIsOrchardGroveT(t))))
+      ? 'Living orchard 🍎' : 'Hedgerow 🌳');
   const nativeScrub = typeof isNativeScrubT==='function' && isNativeScrubT(t);
   const names = {soil:'Field', dead:'Dead Ground 💀', riverbed:'Dry Creekbed 🏜️', pond:'Pond 💧', water:'The River 🌊',
     trees:treeName, barn:'The Barn 🏠', coop:'Chicken Coop 🐔',
@@ -22112,14 +22330,18 @@ function openInfo(refreshOnly){
         ? `<div class="chiprow">This wetland filled the dry wash — drought nicks the flats. Clear it to open the bed again. Not a second river.</div>`
         : `<div class="chiprow">This wetland sits in the dry wash. Clear it to open the bed again. Not a second river.</div>`;
     }
-    if(t.terrain==='orchard' && typeof orchardFruitReady==='function' && orchardFruitReady()
-       && typeof isOrchardFruitT==='function' && isOrchardFruitT(t)){
-      if(typeof orchardTileReady==='function' && orchardTileReady(t))
-        body += `<div class="chiprow">🍎 fruit ready — tap to pick into the crate</div>`;
-      else if(typeof orchardTreeMature==='function' && orchardTreeMature(t))
-        body += `<div class="chiprow">🍎 fruit is setting — a crate lot trickles at dawn, or tap when ready</div>`;
-      else
-        body += `<div class="chiprow">🍎 sapling — fruit after it settles in</div>`;
+    if(t.terrain==='orchard'){
+      const osLine = (typeof orchardStandStory==='function') ? orchardStandStory(t) : '';
+      if(osLine) body = `<div class="istory">${osLine}</div>` + body;
+      if(typeof orchardFruitReady==='function' && orchardFruitReady()
+         && typeof isOrchardFruitT==='function' && isOrchardFruitT(t)){
+        if(typeof orchardTileReady==='function' && orchardTileReady(t))
+          body += `<div class="chiprow">🍎 fruit ready — tap to pick into the crate</div>`;
+        else if(typeof orchardTreeMature==='function' && orchardTreeMature(t))
+          body += `<div class="chiprow">🍎 fruit is setting — a crate lot trickles at dawn, or tap when ready</div>`;
+        else
+          body += `<div class="chiprow">🍎 sapling — fruit after it settles in</div>`;
+      }
     }
     if(typeof coopCorridorStory==='function'){
       const coopLine = coopCorridorStory(t);
@@ -22237,6 +22459,11 @@ function openInfo(refreshOnly){
     else if(typeof hayStandReady==='function' && hayStandReady()
          && typeof isHayStandLiveT==='function' && isHayStandLiveT(t))
       chips.push('🌾 standing hay — clover, pioneers, and wheat hold this cover');
+    if(typeof orchardStandNeed==='function' && orchardStandNeed())
+      chips.push('🍎 standing grove is thin — the slope nicks until the canopy returns');
+    else if(typeof orchardStandReady==='function' && orchardStandReady()
+         && typeof isOrchardStandLiveT==='function' && isOrchardStandLiveT(t))
+      chips.push('🍎 living orchard — standing grove holds this slope');
     if(typeof meadowStandNeed==='function' && meadowStandNeed())
       chips.push('🌼 meadow stand is thin — pollinators miss this fold');
     else if(typeof meadowStandReady==='function' && meadowStandReady()
@@ -22313,12 +22540,14 @@ function openInfo(refreshOnly){
       ? ((typeof windShelterStory==='function' && windShelterStory(t))
         || 'A thin windbreak on the weather side — neighbors hold soil a little better, and the herd walks around it.')
       : (typeof orchardFruitReady==='function' && orchardFruitReady()
-         && ((typeof isOrchardFruitT==='function' && isOrchardFruitT(t)) || t.farmEdge==='orchard'))
-        ? ((t.orchardRegen!=null)
+         && ((typeof isOrchardFruitT==='function' && isOrchardFruitT(t)) || t.farmEdge==='orchard'
+             || (typeof isOrchardStandLiveT==='function' && isOrchardStandLiveT(t))))
+        ? ((typeof orchardStandStory==='function' && orchardStandStory(t))
+          || ((t.orchardRegen!=null)
           ? 'A stump after a strip — fruit waits until the canopy returns. Not an open plant bed. Not firewood.'
           : (typeof orchardTileReady==='function' && orchardTileReady(t)
             ? 'Living orchard — fruit is ready. Tap for a crate lot; the tree stays. Not firewood, not a kitchen row.'
-            : 'Living orchard — tap when fruit is ready, or wait for a dawn trickle. The tree stays. Not firewood.'))
+            : 'Living orchard — tap when fruit is ready, or wait for a dawn trickle. The tree stays. Not firewood.')))
       : t.farmEdge==='hedgerow' || (typeof isHedgerowT==='function' && isHedgerowT(t))
         ? ((t.hedgeRegen!=null)
           ? ((typeof hedgeCorridorStory==='function' && hedgeCorridorStory(t))
