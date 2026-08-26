@@ -24115,7 +24115,7 @@ function wildlifeLandName(P){
   const n = String(P.name||'').trim();
   if(!n) return 'this fold';
   if(/^(the|home)\b/i.test(n)) return n;
-  return 'the '+n.charAt(0).toLowerCase()+n.slice(1);
+  return 'the '+n.toLowerCase();
 }
 function parcelWildlifeInspectLine(){
   if(typeof homePatchCleared==='function' && !homePatchCleared()) return '';
