@@ -1121,6 +1121,8 @@ const REED_REGEN_DAYS = 8; // strip-cut bed returns as wetland; never an empty p
 const REED_STRIP_SOIL = {om:-2, erosion:-3, water:-4, microbial:-2}; // strip nicks wet hold and filtration
 const MARSH_HOLD_SOIL = {water:0.28, erosion:0.4, om:0.12}; // mild dawn hold on pond-feed banks; cap so it cannot farm health
 const MARSH_NICK_SOIL = {water:-0.6, erosion:-0.65, om:-0.18}; // stand gone / ponds filled — filtration thins
+const CREEK_HOLD_SOIL = {water:0.28, om:0.12}; // mild dawn hold on creek-feed beds; cap so it cannot farm health
+const CREEK_NICK_SOIL = {water:-0.6, om:-0.18}; // plugged spine — feed beds nick until the tributary reopens
 const OVERGRAZE_RATES = {om:-0.45, structure:-0.35, nutrients:-0.15, water:0, microbial:-0.1, erosion:-0.5};
 function emptyHerd(){ return {cattle:0, chicken:0, sheep:0, goat:0, pig:0, duckT:0}; }
 function ensureHerd(c){
@@ -5082,6 +5084,7 @@ function genCreek(s){
     if(deco) t.deco = deco;
     if(biome) t.atlasBiome = biome;
   });
+  if(typeof ensureCreekSpineKeep==='function') ensureCreekSpineKeep(s);
 }
 // LEVEL 4 — Dust Flats: dry wash from the atlas, no invented river
 function genDustFlats(s){
@@ -5174,6 +5177,279 @@ function riparianStrippedAdj(t, s){
 /** Live stem / creek on this crop — not a pond, not the dry wash. */
 function leftoverHasLiveRiver(s){
   return !!(s && s.grid && s.grid.some(t=>t && t.terrain==='water'));
+}
+/** Painted creek polyline cells — not the NS stem, not the dry wash, not a pond. */
+function atlasCreekSpineSet(){
+  if(typeof atlasPolylinePts!=='function' || typeof ATLAS_GEO==='undefined') return new Set();
+  const pts = atlasPolylinePts(ATLAS_GEO.creek || []);
+  const set = new Set();
+  pts.forEach(p=>{
+    if(!p) return;
+    if(typeof atlasGet==='function'){
+      const A = atlasGet(p.c, p.r);
+      if(A && (A.water==='wash' || A.water==='pond_site')) return;
+    }
+    set.add((p.c|0)+','+(p.r|0));
+  });
+  return set;
+}
+function atlasIsCreekSpineCell(c, r){
+  if(typeof atlasGet==='function'){
+    const A = atlasGet(c, r);
+    if(A && A.water==='wash') return false;
+    if(A && A.water==='pond_site') return false;
+    if(A && A.water==='creek') return true;
+  }
+  return atlasCreekSpineSet().has((c|0)+','+(r|0));
+}
+/** Creek Bend campaign only. Home, marsh, wet meadow, south-reach stem, dust wash stay off. */
+function leftoverIsCreekFold(P){
+  if(!P) return false;
+  if(P.id==='home_garden' || P.lvIndex===0) return false;
+  if(P.id==='wet_meadow' || P.stampFeel==='meadow') return false;
+  if(P.id==='marsh_finger' || P.levelId==='marsh') return false;
+  if(P.id==='south_reach' || P.stampFeel==='river') return false;
+  if(P.id==='river_reach' || P.levelId==='valley') return false;
+  if(P.id==='dust_flats' || P.levelId==='flats' || P.stampFeel==='dust' || P.stampFeel==='scrub') return false;
+  return !!(P.id==='creek_bend' || P.levelId==='creek');
+}
+/** Field under the player, or the parked creek fold while they are in the yard. */
+function creekSpineFarm(){
+  if(typeof homesteadMode!=='undefined' && homesteadMode && typeof plotStateBackup!=='undefined'
+     && plotStateBackup && plotStateBackup.grid && !plotStateBackup.homesteadView){
+    return plotStateBackup;
+  }
+  if(state && !state.homesteadView) return state;
+  return null;
+}
+function currentCreekFold(s){
+  s = s || (typeof creekSpineFarm==='function' ? creekSpineFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s) return false;
+  if(s.homesteadView) return false;
+  const L = (typeof LEVELS!=='undefined' && LEVELS[s.lv]) ? LEVELS[s.lv] : null;
+  if(L && L.id==='home') return false;
+  if(L && (L.id==='marsh' || L.id==='wet_meadow' || L.id==='willow_bottom')) return false;
+  if(L && (L.id==='flats' || L.id==='south_reach' || L.id==='valley' || L.id==='dust_scrub')) return false;
+  if(L && L.id==='creek') return true;
+  const P = typeof valleyParcelByLvIndex==='function' ? valleyParcelByLvIndex(s.lv) : null;
+  return leftoverIsCreekFold(P);
+}
+function creekSpineIsOtherWaterT(t){
+  if(!t) return true;
+  if(typeof isDustWashMarkedT==='function' && isDustWashMarkedT(t)) return true;
+  if(typeof isHighPondMarkedT==='function' && isHighPondMarkedT(t)) return true;
+  if(typeof isGardenPondMarkedT==='function' && isGardenPondMarkedT(t)) return true;
+  if(typeof isMarshPondMarkedT==='function' && isMarshPondMarkedT(t)) return true;
+  if(t.terrain==='pond' && (t.highPond || t.gardenPond || t.marshPond || t.atlasWater==='pond_site')) return true;
+  return false;
+}
+function rememberCreekSpineMark(t){
+  if(!t) return;
+  if(creekSpineIsOtherWaterT(t) && !t.creekSpine && t.atlasWater!=='creek') return;
+  if(t.atlasC!=null && typeof atlasIsCreekSpineCell==='function' && atlasIsCreekSpineCell(t.atlasC, t.atlasR)){
+    t.creekSpine = true;
+    if(!t.atlasWater || t.atlasWater==='main') t.atlasWater = 'creek';
+  }
+  if(t.creekSpine || t.atlasWater==='creek' || t.terrain==='water' || t.terrain==='riverbed'){
+    t.creekSpine = true;
+    if(!t.atlasWater || t.atlasWater==='main') t.atlasWater = 'creek';
+  }
+}
+/** Painted / seated creek bed — survives a tractor plug. Not the stem, not a wash, not a pond. */
+function isCreekSpineMarkedT(t){
+  if(!t || creekSpineIsOtherWaterT(t)) return false;
+  if(t.creekSpine || t.atlasWater==='creek') return true;
+  if(t.atlasC!=null && typeof atlasIsCreekSpineCell==='function' && atlasIsCreekSpineCell(t.atlasC, t.atlasR)) return true;
+  return false;
+}
+function ensureCreekSpineKeep(s, P){
+  s = s || (typeof creekSpineFarm==='function' ? creekSpineFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return;
+  if(P && typeof leftoverIsCreekFold==='function' && !leftoverIsCreekFold(P)) return;
+  if(!P && typeof currentCreekFold==='function' && !currentCreekFold(s)) return;
+  s.grid.forEach(t=>{
+    if(!t || creekSpineIsOtherWaterT(t)) return;
+    if(t.atlasC!=null && typeof atlasIsCreekSpineCell==='function' && atlasIsCreekSpineCell(t.atlasC, t.atlasR)){
+      rememberCreekSpineMark(t);
+      return;
+    }
+    if(t.terrain==='water' || t.terrain==='riverbed'){
+      t.creekSpine = true;
+      if(!t.atlasWater || t.atlasWater==='main') t.atlasWater = 'creek';
+    }
+  });
+  if(s._creekSpine){ s._creekSpine = null; s._creekSpineTag = ''; }
+}
+/** Home cleared + this fold is the painted creek. First session and other hydrology folds stay off. */
+function creekFoldReady(s){
+  if(!camp) return false;
+  if(typeof homePatchCleared==='function' && !homePatchCleared()) return false;
+  s = s || (typeof creekSpineFarm==='function' ? creekSpineFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return false;
+  if(!currentCreekFold(s)) return false;
+  if(typeof ensureCreekSpineKeep==='function') ensureCreekSpineKeep(s);
+  return true;
+}
+/** Open tributary bed: still water or a live riverbed on the marked spine. */
+function isCreekSpineLiveT(t){
+  if(!isCreekSpineMarkedT(t)) return false;
+  if(t.crop || t.graze) return false;
+  if(typeof BUILD_SET!=='undefined' && BUILD_SET.has(t.terrain)) return false;
+  if(t.terrain==='trees' || t.terrain==='pond' || t.terrain==='wetland') return false;
+  if(t.terrain==='water') return true;
+  return t.terrain==='riverbed';
+}
+function isCreekSpineFillT(t){
+  return !!(t && isCreekSpineMarkedT(t) && !isCreekSpineLiveT(t));
+}
+function creekSpineShouldReopen(t){
+  return !!(t && typeof isCreekSpineFillT==='function' && isCreekSpineFillT(t));
+}
+function creekSpinePartHolds(live, plugged){
+  const total = (live|0) + (plugged|0);
+  if(total<=0) return true;
+  if((live|0)<=0) return false;
+  return live >= Math.max(1, Math.ceil(total * 0.5));
+}
+function creekSpineCoverCount(s){
+  let live = 0, plugged = 0;
+  s = s || (typeof creekSpineFarm==='function' ? creekSpineFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return {live, plugged};
+  s.grid.forEach(t=>{
+    if(isCreekSpineLiveT(t)) live++;
+    else if(isCreekSpineFillT(t)) plugged++;
+  });
+  return {live, plugged};
+}
+function creekSpineReady(s){
+  if(typeof creekFoldReady==='function' ? !creekFoldReady(s) : true) return false;
+  const n = creekSpineCoverCount(s);
+  return (n.live + n.plugged) > 0;
+}
+/** Live spine stays ≥ ~50% of (live + plugged). A light crate tap does not drop this. */
+function creekSpineUsable(s){
+  if(!creekSpineReady(s)) return false;
+  const n = creekSpineCoverCount(s);
+  if((n.live|0) <= 0) return false;
+  return creekSpinePartHolds(n.live, n.plugged);
+}
+function creekSpineNeed(s){
+  return !!(creekSpineReady(s) && !creekSpineUsable(s));
+}
+function creekSpineAdj(t, s){
+  s = s || (typeof creekSpineFarm==='function' ? creekSpineFarm() : (typeof state!=='undefined' ? state : null));
+  if(!t || !s || !s.grid) return false;
+  if(isCreekSpineMarkedT(t)) return false;
+  const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+  for(let i=0;i<dirs.length;i++){
+    const c = (t.c|0)+dirs[i][0], r = (t.r|0)+dirs[i][1];
+    if(typeof inGrid==='function' && !inGrid(c,r)) continue;
+    const n = s.grid[typeof idx==='function' ? idx(c,r) : (r*(s.gridSize||GRID||0)+c)];
+    if(isCreekSpineMarkedT(n)) return true;
+  }
+  return false;
+}
+/** Adjacent soil that sheds toward the marked spine — not a 2-tile pond catchment. */
+function shedsTowardCreekSpine(t, s){
+  return creekSpineAdj(t, s);
+}
+function creekFeedBedAt(t, s){
+  if(!t) return false;
+  if(t.terrain!=='soil' && t.terrain!=='dead') return false;
+  if(t.feature==='path' || t.feature==='swale' || t.feature==='saltflat') return false;
+  if(isCreekSpineMarkedT(t)) return false;
+  s = s || (typeof creekSpineFarm==='function' ? creekSpineFarm() : (typeof state!=='undefined' ? state : null));
+  if(typeof marshStandFeedBankAt==='function' && marshStandFeedBankAt(t, s)) return false;
+  if(typeof marshPondFeedAdj==='function' && marshPondFeedAdj(t, s)) return false;
+  if(typeof shedsTowardMarshPond==='function' && shedsTowardMarshPond(t, s)) return false;
+  if(typeof isRiparianMarkedT==='function' && isRiparianMarkedT(t)) return false;
+  return creekSpineAdj(t, s);
+}
+function creekSpineSoilTiles(s){
+  const tiles = [];
+  s = s || (typeof creekSpineFarm==='function' ? creekSpineFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return tiles;
+  s.grid.forEach((t, i)=>{
+    if(!t || !t.soil) return;
+    if(!creekFeedBedAt(t, s)) return;
+    tiles.push({t, i});
+  });
+  return tiles;
+}
+function creekSpineFloaterIdx(s){
+  s = s || (typeof creekSpineFarm==='function' ? creekSpineFarm() : (typeof state!=='undefined' ? state : null));
+  if(state && state.grid && s && s.grid && state.grid===s.grid){
+    for(let i=0;i<s.grid.length;i++){
+      if(isCreekSpineFillT(s.grid[i])) return i;
+    }
+    const beds = creekSpineSoilTiles(s);
+    if(beds.length && beds[0] && beds[0].i>=0) return beds[0].i;
+    for(let i=0;i<s.grid.length;i++){
+      if(isCreekSpineMarkedT(s.grid[i])) return i;
+    }
+  }
+  if(typeof selected==='number' && selected>=0 && state && state.grid && state.grid[selected]) return selected;
+  return (typeof selected==='number' && selected>=0) ? selected : 0;
+}
+function creekSpineStory(t, opts){
+  opts = opts || {};
+  const ready = typeof creekSpineReady==='function' && creekSpineReady();
+  const need = typeof creekSpineNeed==='function' && creekSpineNeed();
+  const hold = ready && !need;
+  const live = typeof isCreekSpineLiveT==='function' && isCreekSpineLiveT(t);
+  const plugged = typeof isCreekSpineFillT==='function' && isCreekSpineFillT(t);
+  const feed = typeof creekFeedBedAt==='function' && creekFeedBedAt(t);
+  if(!ready && !live && !plugged && !feed) return '';
+  if(!ready) return '';
+  if(opts.needOnly && !need) return '';
+  if(plugged)
+    return '🏞️ This plugged the creek — the tributary no longer feeds the beds that shed toward it. Reopen the spine so water can move. Not bank trees, not a marsh pond, not the dry wash.';
+  if(live)
+    return need
+      ? '🏞️ This creek bed is still open, but the tributary is blocked — feed soils nick until the spine runs again. Not bank trees, not a marsh filter.'
+      : '🏞️ Open creek bed — a working tributary. Water on this spine feeds the beds that shed toward it. Fill or block enough of the bed and those soils nick until it reopens.';
+  if(feed){
+    if(need) return '🏞️ Feed bed of the working tributary — the creek is plugged, so this soil nicks until the bed reopens. Not bank-tree runoff, not a marsh pond-feed.';
+    if(hold && !opts.needOnly) return '🏞️ Feed bed of the working tributary — open creek water holds this soil. Keep the spine open. Not bank trees, not marsh reeds.';
+  }
+  return '';
+}
+/** One sim dawn: open spine holds feed beds; a plugged stand nicks them. First session stays off. */
+function tickCreekSpineWork(){
+  if(!camp || !creekSpineReady()) return 0;
+  const s = typeof creekSpineFarm==='function' ? creekSpineFarm() : (typeof state!=='undefined' ? state : null);
+  if(!s || !s.grid) return 0;
+  const tiles = creekSpineSoilTiles(s);
+  if(!tiles.length) return 0;
+  const open = creekSpineUsable(s);
+  if(open){
+    const b = (typeof CREEK_HOLD_SOIL!=='undefined') ? CREEK_HOLD_SOIL : {water:0.28, om:0.12};
+    tiles.forEach(({t})=>{
+      if(!t || !t.soil) return;
+      if((t.soil.water||0) < 70) t.soil.water = clamp((t.soil.water||0) + (b.water||0));
+      if((t.soil.om||0) < 70) t.soil.om = clamp((t.soil.om||0) + (b.om||0));
+      if(typeof recalc==='function') recalc(t);
+    });
+    if(typeof toast==='function'){
+      toast('🏞️ The creek still runs — open bed holds the feed soils. Keep the tributary open.', {once:'creek_spine_hold_first', throttleMs:4000});
+    }
+    return tiles.length;
+  }
+  const b = (typeof CREEK_NICK_SOIL!=='undefined') ? CREEK_NICK_SOIL : {water:-0.6, om:-0.18};
+  tiles.forEach(({t})=>{
+    if(!t || !t.soil) return;
+    t.soil.water = clamp((t.soil.water||0) + (b.water||0));
+    t.soil.om = clamp((t.soil.om||0) + (b.om||0));
+    if(typeof recalc==='function') recalc(t);
+  });
+  const fi = creekSpineFloaterIdx(s);
+  if(typeof floater==='function' && state && state.grid && state.grid[fi]){
+    floater(fi, 'plugged', '#c9a070');
+  }
+  if(typeof toast==='function'){
+    toast('🏞️ The creek is plugged — feed beds nick until the tributary reopens.', {once:'creek_spine_need_first', throttleMs:4000});
+  }
+  return tiles.length;
 }
 function parcelWantsRiparian(P){
   if(!P || P.kind!=='plot') return false;
@@ -5732,6 +6008,7 @@ function terrainAfterClearPlug(t){
   if(typeof gardenPondShouldReopen==='function' && gardenPondShouldReopen(t)) return 'pond';
   if(typeof highPondShouldReopen==='function' && highPondShouldReopen(t)) return 'pond';
   if(typeof marshPondShouldReopen==='function' && marshPondShouldReopen(t)) return 'pond';
+  if(typeof creekSpineShouldReopen==='function' && creekSpineShouldReopen(t)) return 'water';
   if(typeof dustWashShouldReopen==='function' && dustWashShouldReopen(t)) return 'riverbed';
   return 'soil';
 }
@@ -7100,6 +7377,7 @@ function laneShouldReopen(t){
   if(typeof gardenPondShouldReopen==='function' && gardenPondShouldReopen(t)) return false;
   if(typeof highPondShouldReopen==='function' && highPondShouldReopen(t)) return false;
   if(typeof dustWashShouldReopen==='function' && dustWashShouldReopen(t)) return false;
+  if(typeof creekSpineShouldReopen==='function' && creekSpineShouldReopen(t)) return false;
   if(typeof homeSwaleShouldReopen==='function' && homeSwaleShouldReopen(t)) return false;
   return true;
 }
@@ -11554,6 +11832,7 @@ function simStep(dt){
     if(typeof tickHomeWaterWork==='function') tickHomeWaterWork();
     if(typeof tickLaneWork==='function') tickLaneWork();
     if(typeof tickRiparianBufferWork==='function') tickRiparianBufferWork();
+    if(typeof tickCreekSpineWork==='function') tickCreekSpineWork();
     if(typeof tickCoopBedding==='function') tickCoopBedding();
     if(typeof tickCoopCorridor==='function') tickCoopCorridor();
     if(typeof refreshNeighborStandIfOpen==='function') refreshNeighborStandIfOpen();
@@ -15111,11 +15390,19 @@ function soilStoryLine(t){
       const mf = marshStandStory(t, {needOnly:true});
       if(mf) return mf;
     }
+    if(typeof creekSpineStory==='function'){
+      const ck = creekSpineStory(t, {needOnly:true});
+      if(ck) return ck;
+    }
     if(typeof dustWashNeed==='function' && dustWashNeed())
       return '🏜️ Dry wash is blocked — drought nicks these flats. Keep the bed open so rare water can move.';
     return '💀 Sleeping soil — the living community is gone until you feed it.';
   }
   if(t.terrain==='water'){
+    if(typeof creekSpineStory==='function'){
+      const ck = creekSpineStory(t);
+      if(ck) return ck;
+    }
     return '💧 The filter — trees on the bank hold soil and drink the runoff. Clean water is a crop you grow.';
   }
   if(t.terrain==='pond'){
@@ -15159,6 +15446,10 @@ function soilStoryLine(t){
       return (typeof dustWashNeed==='function' && dustWashNeed())
         ? '🏜️ This tree filled the dry wash — drought nicks the flats. Clear it to open the bed.'
         : '🏜️ This tree sits in the dry wash. Clear it to open the bed. Not a second river.';
+    if(typeof creekSpineStory==='function'){
+      const ck = creekSpineStory(t);
+      if(ck) return ck;
+    }
     if(typeof woodlotStandStory==='function' && (
          (typeof isWoodlotT==='function' && isWoodlotT(t))
          || (typeof isWoodlotStandLiveT==='function' && isWoodlotStandLiveT(t))
@@ -15211,6 +15502,10 @@ function soilStoryLine(t){
       return (typeof dustWashNeed==='function' && dustWashNeed())
         ? '🏜️ This wetland filled the dry wash — drought nicks the flats. Clear it to open the bed.'
         : '🏜️ This wetland sits in the dry wash. Clear it to open the bed. Not a second river.';
+    if(typeof creekSpineStory==='function'){
+      const ck = creekSpineStory(t);
+      if(ck) return ck;
+    }
     return '🌾 A living filter — reeds clean runoff before it reaches the river.';
   }
   if(t.terrain!=='soil') return '';
@@ -15245,6 +15540,10 @@ function soilStoryLine(t){
       const mf = marshStandStory(t);
       if(mf) return mf+' '+tier;
     }
+    if(typeof creekSpineStory==='function'){
+      const ck = creekSpineStory(t);
+      if(ck) return ck+' '+tier;
+    }
     if(g.kind==='team' || g.synergy) return '🐄🐔 Follow the herd — hooves open the sod; chickens follow. That\'s how prairie stayed fertile. '+tier;
     if(g.kind==='cattle' || g.kind==='cow') return '🐄 Cattle remaking this pad — send 🐔 chickens next. '+tier;
     if(g.kind==='chicken') return '🐔 Chickens working the surface. '+tier;
@@ -15276,6 +15575,10 @@ function soilStoryLine(t){
       const mf = marshStandStory(t);
       if(mf) return (edgeNeed?edgeNeed+' ':'')+mf+' '+tier;
     }
+    if(typeof creekSpineStory==='function'){
+      const ck = creekSpineStory(t);
+      if(ck) return (edgeNeed?edgeNeed+' ':'')+ck+' '+tier;
+    }
     if(t.crop.type==='wheat' || (!c.diverse && !c.cover)){
       const days = t.crop.days||0;
       if(days >= 1)
@@ -15304,6 +15607,10 @@ function soilStoryLine(t){
   if(typeof marshStandStory==='function'){
     const mf = marshStandStory(t);
     if(mf) return mf+' '+tier;
+  }
+  if(typeof creekSpineStory==='function'){
+    const ck = creekSpineStory(t);
+    if(ck) return ck+' '+tier;
   }
   if(typeof highPondNeed==='function' && highPondNeed()
      && typeof isHighPondFillT==='function' && isHighPondFillT(t))
@@ -15488,6 +15795,19 @@ function applyTool(i){
       floater(i, '🚜 cleared', '#e8dcc0'); SND.place();
       afterBuild(); return true;
     }
+    if(tool==='bulldoze' && typeof creekFoldReady==='function' && creekFoldReady()
+       && typeof isCreekSpineMarkedT==='function' && isCreekSpineMarkedT(t)
+       && !(typeof isCreekSpineFillT==='function' && isCreekSpineFillT(t))){
+      if(!spend(td.cost)) return false;
+      if(typeof rememberCreekSpineMark==='function') rememberCreekSpineMark(t);
+      t.terrain = 'soil';
+      t.crop = null;
+      t.graze = null;
+      t.deco = null;
+      if(state){ state._creekSpine = null; state._creekSpineTag = ''; }
+      floater(i, '🚜 cleared', '#e8dcc0'); burst(i, '#c9b896', 8); SND.place();
+      afterBuild(); return true;
+    }
     toast('The river flows here! 🌊 Plant 🌳 trees BESIDE it to filter the runoff.');
     return false;
   }
@@ -15609,9 +15929,10 @@ function applyTool(i){
       if(typeof rememberHomeWaterMarks==='function') rememberHomeWaterMarks(t);
       if(typeof rememberHighPondMark==='function') rememberHighPondMark(t);
       if(typeof rememberMarshPondMark==='function') rememberMarshPondMark(t);
+      if(typeof rememberCreekSpineMark==='function') rememberCreekSpineMark(t);
       if(typeof rememberAtlasLaneMark==='function') rememberAtlasLaneMark(t);
       t.terrain = (typeof terrainAfterClearPlug==='function') ? terrainAfterClearPlug(t) : 'soil';
-      if(t.terrain==='pond' && typeof carveClear==='function') carveClear(t);
+      if((t.terrain==='pond' || t.terrain==='water') && typeof carveClear==='function') carveClear(t);
       else if(t.terrain==='soil' && typeof homeSwaleShouldReopen==='function' && homeSwaleShouldReopen(t)){
         t.feature = 'swale';
         t.crop = null; t.graze = null;
@@ -15619,14 +15940,16 @@ function applyTool(i){
                && typeof reopenAtlasLane==='function'){
         reopenAtlasLane(t);
       }
+      if(state && (t.terrain==='water' || t.terrain==='soil')){ state._creekSpine = null; state._creekSpineTag = ''; }
     };
     else if(BUILD_SET.has(t.terrain)) did = ()=>{
       if(typeof rememberHomeWaterMarks==='function') rememberHomeWaterMarks(t);
       if(typeof rememberHighPondMark==='function') rememberHighPondMark(t);
       if(typeof rememberMarshPondMark==='function') rememberMarshPondMark(t);
+      if(typeof rememberCreekSpineMark==='function') rememberCreekSpineMark(t);
       if(typeof rememberAtlasLaneMark==='function') rememberAtlasLaneMark(t);
       t.terrain = (typeof terrainAfterClearPlug==='function') ? terrainAfterClearPlug(t) : 'soil';
-      if(t.terrain==='pond' && typeof carveClear==='function') carveClear(t);
+      if((t.terrain==='pond' || t.terrain==='water') && typeof carveClear==='function') carveClear(t);
       else if(t.terrain==='soil' && typeof homeSwaleShouldReopen==='function' && homeSwaleShouldReopen(t)){
         t.feature = 'swale';
         t.crop = null; t.graze = null;
@@ -15634,6 +15957,7 @@ function applyTool(i){
                && typeof reopenAtlasLane==='function'){
         reopenAtlasLane(t);
       }
+      if(state && (t.terrain==='water' || t.terrain==='soil')){ state._creekSpine = null; state._creekSpineTag = ''; }
       agents = agents.filter(a=>a.tile!==i);
     };
     else if(isLandT(t) && typeof gardenPondShouldReopen==='function' && gardenPondShouldReopen(t)) did = ()=>{
@@ -15658,6 +15982,12 @@ function applyTool(i){
       t.farmEdge = (t.farmEdge==='reed') ? null : t.farmEdge;
       t.reedRegen = null;
       if(typeof carveClear==='function') carveClear(t);
+    };
+    else if(isLandT(t) && typeof creekSpineShouldReopen==='function' && creekSpineShouldReopen(t)) did = ()=>{
+      if(typeof rememberCreekSpineMark==='function') rememberCreekSpineMark(t);
+      t.terrain = 'water';
+      if(typeof carveClear==='function') carveClear(t);
+      if(state){ state._creekSpine = null; state._creekSpineTag = ''; }
     };
     else if(isLandT(t) && typeof laneShouldReopen==='function' && laneShouldReopen(t)) did = ()=>{
       if(typeof reopenAtlasLane==='function') reopenAtlasLane(t);
@@ -16132,6 +16462,7 @@ function applyTool(i){
     if(!spend(td.cost)) return false;
     if(typeof rememberHomeWaterMarks==='function') rememberHomeWaterMarks(t);
     if(typeof rememberMarshPondMark==='function') rememberMarshPondMark(t);
+    if(typeof rememberCreekSpineMark==='function') rememberCreekSpineMark(t);
     if(typeof rememberAtlasLaneMark==='function') rememberAtlasLaneMark(t);
     if(tool==='wetland' && typeof isReedT==='function' && isReedT(t)
        && typeof marshFoldReady==='function' && marshFoldReady()){
@@ -16642,7 +16973,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-26.marshfix';
+const SHIP_BUILD = '2026-08-26.creek';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -17271,6 +17602,11 @@ function tileRunoffScore(t){
     if(typeof highPondNeed==='function' && highPondNeed()
        && typeof highPondDownhillOfMarked==='function' && highPondDownhillOfMarked(t)) v -= 8;
     else if(typeof highPondDownhillAdj==='function' && highPondDownhillAdj(t)) v += 10;
+  }
+  if(typeof creekFoldReady==='function' && creekFoldReady()){
+    if(typeof creekSpineNeed==='function' && creekSpineNeed()
+       && typeof creekFeedBedAt==='function' && creekFeedBedAt(t)) v -= 8;
+    else if(typeof creekFeedBedAt==='function' && creekFeedBedAt(t)) v += 10;
   }
   return clamp(v);
 }
@@ -21268,6 +21604,7 @@ function openInfo(refreshOnly){
       ${feat?`<div class="chiprow">${feat}</div>`:''}
       ${highLine?`<div class="chiprow">${highLine}</div>`:''}
       ${homeNeedLine && homeNeedLine!==feat?`<div class="chiprow">${homeNeedLine}</div>`:''}
+      ${(typeof creekSpineStory==='function' && creekSpineStory(t))?`<div class="chiprow">${creekSpineStory(t)}</div>`:''}
       ${(typeof riparianBufferStory==='function' && riparianBufferStory(t))?`<div class="chiprow">${riparianBufferStory(t)}</div>`:''}
       ${(typeof windShelterStory==='function' && windShelterStory(t,{needOnly:true}))?`<div class="chiprow">${windShelterStory(t,{needOnly:true})}</div>`:''}
       ${(typeof hedgeCorridorStory==='function' && hedgeCorridorStory(t,{needOnly:true}))?`<div class="chiprow">${hedgeCorridorStory(t,{needOnly:true})}</div>`:''}
@@ -21279,7 +21616,10 @@ function openInfo(refreshOnly){
   }else if(t.terrain==='riverbed'){
     const pulsed = (t.washPulse||0) > 8;
     const washNeed = typeof dustWashNeed==='function' && dustWashNeed();
-    if(washNeed){
+    const creekLine = (typeof creekSpineStory==='function') ? creekSpineStory(t) : '';
+    if(creekLine){
+      body = `<div class="chiprow">${creekLine}</div>`;
+    }else if(washNeed){
       body = `<div class="chiprow">🏜️ Dry wash is filled or blocked — drought nicks the flats. Keep this bed open so rare water can move. Not a second river.</div>`;
     }else if(typeof isValleyLevel==='function' && isValleyLevel(state.lv)){
       body = `<div class="chiprow">🏜️ A cracked creekbed where water once ran. Complete the <b>Dry Wash</b> restore goal and the creek will flow again!</div>`;
@@ -21417,6 +21757,10 @@ function openInfo(refreshOnly){
       else if(typeof shedsTowardMarshPond==='function' && shedsTowardMarshPond(t)) chips.push('🌾 sheds toward a marsh pond — cleaner than a bare drain');
     }
     {
+      const ckLine = (typeof creekSpineStory==='function') ? creekSpineStory(t) : '';
+      if(ckLine) chips.push(ckLine);
+    }
+    {
       const ripLine = (typeof riparianBufferStory==='function') ? riparianBufferStory(t) : '';
       if(ripLine) chips.push(ripLine);
       else if(typeof riparianAdj==='function' && riparianAdj(t)) chips.push('🌳 bank buffer nearby — roots filter a little runoff');
@@ -21440,6 +21784,11 @@ function openInfo(refreshOnly){
     else if(typeof marshStandReady==='function' && marshStandReady()
          && typeof isMarshStandLiveT==='function' && isMarshStandLiveT(t))
       chips.push('🌾 standing marsh — runoff filters on this fold');
+    if(typeof creekSpineNeed==='function' && creekSpineNeed())
+      chips.push('🏞️ creek is plugged — feed beds nick until the tributary reopens');
+    else if(typeof creekSpineReady==='function' && creekSpineReady()
+         && typeof isCreekSpineLiveT==='function' && isCreekSpineLiveT(t))
+      chips.push('🏞️ working tributary — open spine feeds the beds that shed toward it');
     if(t.flowers>0.3) chips.push('🌼 wildflowers');
     if(t.soil.microbial>=70) chips.push('🪱 worms!');
     if(t.health>=70) chips.push('💚 restored!');
@@ -21492,7 +21841,9 @@ function openInfo(refreshOnly){
       <div class="hbarw"><div class="hbar" style="width:${wq}%; background:linear-gradient(90deg,#9a8340,#4a9fd0)"></div></div>
       <div style="font-weight:800; font-size:13px">Water Quality <b>${wq}</b>/100</div>
       <div class="chiprow">${mood}</div>
-      <div class="chiprow">💡 Plant 🌳 trees on the banks — riparian buffer roots filter the runoff. Keep the living buffer; strip it and wet-season runoff nicks the beds.</div>`;
+      <div class="chiprow">${(typeof creekSpineStory==='function' && creekSpineStory(t))
+        ? '💡 Keep this tributary open — fill or block the spine and the feed beds nick until the water runs again. Bank trees are a separate hold.'
+        : '💡 Plant 🌳 trees on the banks — riparian buffer roots filter the runoff. Keep the living buffer; strip it and wet-season runoff nicks the beds.'}</div>`;
   }else if(t.terrain==='trees'){
     const story = soilStoryLine(t);
     const edgeLine = t.farmEdge==='windbreak'
