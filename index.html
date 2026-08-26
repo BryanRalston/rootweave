@@ -1914,21 +1914,22 @@ function orchardStandStory(t, opts){
   const hold = ready && !need;
   const live = typeof isOrchardStandLiveT==='function' && isOrchardStandLiveT(t);
   const kitchen = typeof leftoverIsOrchardKitchenT==='function' && leftoverIsOrchardKitchenT(t);
-  const stub = typeof isOrchardT==='function' && isOrchardT(t);
+  // Returning stump only — living farmEdge orchard marks (campaign slope / strip-regen) are canopy, not stumps.
+  const stub = !!(t && t.orchardRegen!=null);
   if(!ready) return '';
   if(opts.needOnly && !need) return '';
   if(kitchen)
     return need
       ? '🍎 This kitchen row on orchard land — the standing grove is gone. Cover nicks until trees or clover return. Not hay, not meadow bloom.'
       : '🍎 A kitchen row on orchard land — not the standing grove. Leave living trees so the slope can hold.';
-  if(stub)
-    return need
-      ? '🍎 Stump after a strip — the orchard returns; the slope nicks until the canopy comes back. Not an open plant bed. Not woodlot timber.'
-      : '🍎 Stump after a strip — the orchard returns. A light fruit pick would have left the standing grove.';
   if(live)
     return need
       ? '🍎 Standing grove is thin — the hang was stripped or the fold was treated as a kitchen. Cover nicks until the canopy returns. Not hay, not woodlot timber, not meadow bloom.'
       : '🍎 Living orchard — standing grove holds the slope. A light fruit pick leaves the hang; strip the canopy or plant a kitchen and it nicks. Not hay, not woodlot timber, not meadow bloom, not a kitchen row.';
+  if(stub)
+    return need
+      ? '🍎 Stump after a strip — the orchard returns; the slope nicks until the canopy comes back. Not an open plant bed. Not woodlot timber.'
+      : '🍎 Stump after a strip — the orchard returns. A light fruit pick would have left the standing grove.';
   if(t && (t.terrain==='soil' || t.terrain==='dead')){
     if(need) return '🍎 Open orchard — the standing grove was stripped or treated as a kitchen. Rest or clover so the slope can hold.';
     if(hold && !opts.needOnly) return '🍎 Beside the standing grove — living orchard still holds this slope.';
@@ -17633,7 +17634,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-26.orchardstand';
+const SHIP_BUILD = '2026-08-26.orchardstandfix';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
