@@ -1094,6 +1094,8 @@ const COOP_CORRIDOR_RIPEN_MUL = 1.08; // understory scratch helps the hang a lit
 const COOP_CORRIDOR_SEATS = [[2,3],[3,3],[2,4],[3,4],[4,3],[1,3],[4,2],[4,4]]; // locked garden–orchard walk
 const WOODLOT_REGEN_DAYS = 8; // clear-cut stump returns as canopy; never an empty plant bed
 const WOODLOT_CLEAR_SOIL = {om:-3, erosion:-4, water:-2, microbial:-1}; // heavy cut nicks the fold
+const WOODLOT_HOLD_SOIL = {erosion:0.4, water:0.28, om:0.12}; // shade / browse / soil hold under standing canopy
+const WOODLOT_NICK_SOIL = {erosion:-0.65, water:-0.6, om:-0.18}; // too much clear: understory slips, pond edge dries
 const STAND_WILLOW_SEASON = [1.14, 0.88, 1.02, 1.12]; // spring withies; summer leafy; fall set; winter rods
 const WILLOW_LOT = 3;   // modest crate lot — like hay / firewood, well under a wheat cut
 const WILLOW_THIN_SET = 0.05; // careful rod / day on a living willow — tap when ready
@@ -2885,7 +2887,7 @@ function leftoverStampStory(feel, P){
   const desc = (P && P.desc) ? String(P.desc).trim()+' ' : '';
   const line = {
     hay: 'Open hay and cover — cut forage into the crate, rest the ground, keep the weather-side windbreak. Leave enough stand; strip it bare and graze waits until it returns. Not a kitchen row.',
-    woodlot: 'Shade and brush. Thin a little firewood; leave the canopy. Restore the understory.',
+    woodlot: 'Standing timber — shade, browse, and soil hold. Thin a little firewood; leave the canopy. A heavy cut nicks the understory and dries the high-pond edge. Replant restores.',
     wet: (P && P.id==='willow_bottom')
       ? 'Living willow on wet ground. Cut withies into the crate; leave the tree. Strip the stand and the bank loses shelter. Not meadow forage, not firewood.'
       : (P && (P.id==='marsh_finger' || P.levelId==='marsh'))
@@ -5876,6 +5878,173 @@ function tickWoodlotTimber(){
   if(n) camp.woodAcc -= n;
   return n;
 }
+/** Living woodlot canopy on this fold — not a regenerating stump, not a pond plug. */
+function isWoodlotStandLiveT(t){
+  if(!t || t.terrain!=='trees') return false;
+  if(t.woodRegen!=null) return false;
+  if(typeof isHighPondMarkedT==='function' && isHighPondMarkedT(t)) return false;
+  if(typeof isRiparianT==='function' && isRiparianT(t)) return false;
+  return !!(t.farmEdge==='woodlot' || t.atlasFeature==='woodlot' || (typeof isWoodlotT==='function' && isWoodlotT(t)));
+}
+function isWoodlotStandMarkT(t){
+  if(!t) return false;
+  if(typeof isHighPondMarkedT==='function' && isHighPondMarkedT(t)) return false;
+  return !!(t.farmEdge==='woodlot' || t.atlasFeature==='woodlot' || (typeof isWoodlotT==='function' && isWoodlotT(t)));
+}
+function woodlotStandCoverCount(s){
+  let live = 0, marked = 0;
+  s = s || (typeof woodlotTimberFarm==='function' ? woodlotTimberFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return {live, marked};
+  s.grid.forEach(t=>{
+    const living = isWoodlotStandLiveT(t);
+    if(living || isWoodlotStandMarkT(t)) marked++;
+    if(living) live++;
+  });
+  return {live, marked};
+}
+/** Leftover woodlot after Home. First session and Wind Ridge stay off. */
+function woodlotStandReady(s){
+  if(!camp) return false;
+  if(typeof woodlotFoldReady==='function' ? !woodlotFoldReady(s) : true) return false;
+  return woodlotStandCoverCount(s).marked > 0;
+}
+function woodlotStandUsable(s){
+  if(!woodlotStandReady(s)) return false;
+  const n = woodlotStandCoverCount(s);
+  return n.live >= Math.max(1, Math.ceil(n.marked * 0.5));
+}
+function woodlotStandNeed(s){
+  return !!(woodlotStandReady(s) && !woodlotStandUsable(s));
+}
+function woodlotPondEdgeAt(t, s){
+  if(!t) return false;
+  if(typeof isHighPondMarkedT==='function' && isHighPondMarkedT(t)) return false;
+  s = s || (typeof woodlotTimberFarm==='function' ? woodlotTimberFarm() : (typeof state!=='undefined' ? state : null));
+  if(typeof highPondDownhillOfMarked==='function' && highPondDownhillOfMarked(t, s)) return true;
+  if(!s || !s.grid) return false;
+  const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+  for(let i=0;i<dirs.length;i++){
+    const c = (t.c|0)+dirs[i][0], r = (t.r|0)+dirs[i][1];
+    if(typeof inGrid==='function' && !inGrid(c,r)) continue;
+    const n = s.grid[typeof idx==='function' ? idx(c,r) : (r*((s.gridSize|0)||0)+c)];
+    if(typeof isHighPondMarkedT==='function' && isHighPondMarkedT(n)) return true;
+  }
+  return false;
+}
+function woodlotUnderstoryAt(t, s){
+  if(!t) return false;
+  if(isWoodlotStandLiveT(t) || isWoodlotStandMarkT(t)) return false;
+  s = s || (typeof woodlotTimberFarm==='function' ? woodlotTimberFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return false;
+  const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+  for(let i=0;i<dirs.length;i++){
+    const c = (t.c|0)+dirs[i][0], r = (t.r|0)+dirs[i][1];
+    if(typeof inGrid==='function' && !inGrid(c,r)) continue;
+    const n = s.grid[typeof idx==='function' ? idx(c,r) : (r*((s.gridSize|0)||0)+c)];
+    if(isWoodlotStandMarkT(n) || isWoodlotStandLiveT(n)) return true;
+  }
+  return false;
+}
+/** Understory beside the stand, plus the high-pond edge — not the living trees, not the basin. */
+function woodlotStandSoilTiles(s){
+  const tiles = [];
+  s = s || (typeof woodlotTimberFarm==='function' ? woodlotTimberFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return tiles;
+  s.grid.forEach((t, i)=>{
+    if(!t || !t.soil) return;
+    if(t.terrain!=='soil' && t.terrain!=='dead') return;
+    if(t.feature==='path' || t.feature==='swale' || t.feature==='saltflat') return;
+    if(isWoodlotStandLiveT(t)) return;
+    if(!(woodlotUnderstoryAt(t, s) || woodlotPondEdgeAt(t, s))) return;
+    tiles.push({t, i});
+  });
+  return tiles;
+}
+function woodlotStandFloaterIdx(s){
+  s = s || (typeof woodlotTimberFarm==='function' ? woodlotTimberFarm() : (typeof state!=='undefined' ? state : null));
+  if(state && state.grid && s && s.grid && state.grid===s.grid){
+    for(let i=0;i<s.grid.length;i++){
+      if(isWoodlotStandMarkT(s.grid[i]) && !isWoodlotStandLiveT(s.grid[i])) return i;
+    }
+    const beds = woodlotStandSoilTiles(s);
+    if(beds.length && beds[0] && beds[0].i>=0) return beds[0].i;
+  }
+  if(typeof selected==='number' && selected>=0 && state && state.grid && state.grid[selected]) return selected;
+  return (typeof selected==='number' && selected>=0) ? selected : 0;
+}
+function woodlotStandStory(t, opts){
+  opts = opts || {};
+  const ready = typeof woodlotStandReady==='function' && woodlotStandReady();
+  const need = typeof woodlotStandNeed==='function' && woodlotStandNeed();
+  const hold = ready && !need;
+  const live = typeof isWoodlotStandLiveT==='function' && isWoodlotStandLiveT(t);
+  const mark = typeof isWoodlotStandMarkT==='function' && isWoodlotStandMarkT(t);
+  const under = typeof woodlotUnderstoryAt==='function' && woodlotUnderstoryAt(t);
+  const pondEdge = typeof woodlotPondEdgeAt==='function' && woodlotPondEdgeAt(t);
+  if(typeof highPondNeed==='function' && highPondNeed()
+     && ((typeof isHighPondFillT==='function' && isHighPondFillT(t))
+        || (typeof highPondDownhillOfMarked==='function' && highPondDownhillOfMarked(t)))) return '';
+  if(!ready && !mark && !live && !under && !pondEdge) return '';
+  if(!ready) return '';
+  if(opts.needOnly && !need) return '';
+  if(live)
+    return need
+      ? '🌲 Woodlot canopy is thin — understory slips and the high-pond edge dries. Replant the stand.'
+      : '🌲 Standing woodlot — shade and browse hold the understory. A heavy cut nicks soil and dries the pond edge.';
+  if(pondEdge){
+    if(need) return '💧 High-pond edge is bare — the cut woodlot lets it dry. Replant the stand.';
+    if(hold && !opts.needOnly) return '💧 High-pond edge stays moist under the woodlot shade.';
+  }
+  if(under || (t && (t.terrain==='soil' || t.terrain==='dead') && (under || pondEdge))){
+    if(need) return '🌿 Open understory — the cut stand lost shade. Soil slips and the high-pond edge dries. Replant the trees.';
+    if(hold && !opts.needOnly) return '🌿 Under the woodlot — shade holds this soil. Leave enough canopy.';
+  }
+  if(mark){
+    return need
+      ? '🌲 This stump was canopy — soil and the pond edge nick until the woodlot returns. Replant.'
+      : '🌲 Woodlot seat — plant here so shade holds the understory again.';
+  }
+  return '';
+}
+/** One sim dawn: standing leftover woodlot holds understory / pond edge; a thin stand nicks them. First session stays off. */
+function tickWoodlotStandWork(){
+  if(!camp || !woodlotStandReady()) return 0;
+  const s = typeof woodlotTimberFarm==='function' ? woodlotTimberFarm() : (typeof state!=='undefined' ? state : null);
+  if(!s || !s.grid) return 0;
+  const tiles = woodlotStandSoilTiles(s);
+  if(!tiles.length) return 0;
+  const open = woodlotStandUsable(s);
+  if(open){
+    const b = (typeof WOODLOT_HOLD_SOIL!=='undefined') ? WOODLOT_HOLD_SOIL : {erosion:0.4, water:0.28, om:0.12};
+    tiles.forEach(({t})=>{
+      if(!t || !t.soil) return;
+      if((t.soil.erosion||0) < 80) t.soil.erosion = clamp((t.soil.erosion||0) + (b.erosion||0));
+      if((t.soil.water||0) < 70) t.soil.water = clamp((t.soil.water||0) + (b.water||0));
+      if((t.soil.om||0) < 70) t.soil.om = clamp((t.soil.om||0) + (b.om||0));
+      if(typeof recalc==='function') recalc(t);
+    });
+    if(typeof toast==='function'){
+      toast('🌲 The woodlot holds shade and soil — leave the canopy. A heavy cut nicks the understory and dries the pond edge.', {once:'woodlot_stand_hold_first', throttleMs:4000});
+    }
+    return tiles.length;
+  }
+  const b = (typeof WOODLOT_NICK_SOIL!=='undefined') ? WOODLOT_NICK_SOIL : {erosion:-0.65, water:-0.6, om:-0.18};
+  tiles.forEach(({t})=>{
+    if(!t || !t.soil) return;
+    t.soil.erosion = clamp((t.soil.erosion||0) + (b.erosion||0));
+    t.soil.water = clamp((t.soil.water||0) + (b.water||0));
+    t.soil.om = clamp((t.soil.om||0) + (b.om||0));
+    if(typeof recalc==='function') recalc(t);
+  });
+  const fi = woodlotStandFloaterIdx(s);
+  if(typeof floater==='function' && state && state.grid && state.grid[fi]){
+    floater(fi, 'erosion', '#c9a070');
+  }
+  if(typeof toast==='function'){
+    toast('🌲 Too much timber is gone — soil slips and the high-pond edge dries. Replant the stand.', {once:'woodlot_stand_need_first', throttleMs:4000});
+  }
+  return tiles.length;
+}
 /** Buyable Willow Bottom only — not Wet Meadow forage, not marsh, not Home. */
 function leftoverIsWillowFold(P){
   if(!P) return false;
@@ -8617,6 +8786,8 @@ function leftoverWantsWindbreak(P){
 function leftoverWantsHedgeCorridor(P){
   if(!P || P.kind!=='plot') return false;
   if(P.id==='home_garden' || P.lvIndex===0) return false;
+  if(typeof leftoverIsWoodlotFold==='function' && leftoverIsWoodlotFold(P)) return false;
+  if(P.id==='woodlot' || P.stampFeel==='woodlot' || (typeof leftoverStampFeelFor==='function' && leftoverStampFeelFor(P)==='woodlot')) return false;
   if(P.leftover || P.buyable) return true;
   return typeof leftoverIsPaddockFold==='function' && leftoverIsPaddockFold(P);
 }
@@ -10862,6 +11033,7 @@ function simStep(dt){
     if(typeof tickCoopEggs==='function') tickCoopEggs();
     if(typeof tickOrchardFruit==='function') tickOrchardFruit();
     if(typeof tickWoodlotTimber==='function') tickWoodlotTimber();
+    if(typeof tickWoodlotStandWork==='function') tickWoodlotStandWork();
     if(typeof tickWillowCut==='function') tickWillowCut();
     if(typeof tickHedgeBerry==='function') tickHedgeBerry();
     if(typeof tickMarshReed==='function') tickMarshReed();
@@ -14412,6 +14584,10 @@ function soilStoryLine(t){
       const hc = hedgeCorridorStory(t, {needOnly:true});
       if(hc) return hc;
     }
+    if(typeof woodlotStandStory==='function'){
+      const wl = woodlotStandStory(t, {needOnly:true});
+      if(wl) return wl;
+    }
     if(typeof dustWashNeed==='function' && dustWashNeed())
       return '🏜️ Dry wash is blocked — drought nicks these flats. Keep the bed open so rare water can move.';
     return '💀 Sleeping soil — the living community is gone until you feed it.';
@@ -14458,6 +14634,13 @@ function soilStoryLine(t){
       return (typeof dustWashNeed==='function' && dustWashNeed())
         ? '🏜️ This tree filled the dry wash — drought nicks the flats. Clear it to open the bed.'
         : '🏜️ This tree sits in the dry wash. Clear it to open the bed. Not a second river.';
+    if(typeof woodlotStandStory==='function' && (
+         (typeof isWoodlotT==='function' && isWoodlotT(t))
+         || (typeof isWoodlotStandLiveT==='function' && isWoodlotStandLiveT(t))
+         || (typeof isWoodlotStandMarkT==='function' && isWoodlotStandMarkT(t)))){
+      const wl = woodlotStandStory(t);
+      if(wl) return wl;
+    }
     if(typeof windShelterStory==='function'){
       const ws = windShelterStory(t);
       if(ws) return ws;
@@ -14568,6 +14751,10 @@ function soilStoryLine(t){
   if(typeof highPondNeed==='function' && highPondNeed()
      && typeof highPondDownhillOfMarked==='function' && highPondDownhillOfMarked(t))
     return '💧 High pond is blocked — runoff nicks this downhill soil. Keep the basin open so it can filter. '+tier;
+  if(typeof woodlotStandStory==='function'){
+    const wl = woodlotStandStory(t);
+    if(wl) return wl+' '+tier;
+  }
   if(typeof homeWaterStory==='function'){
     const hw = homeWaterStory(t);
     if(hw) return hw+' '+tier;
@@ -15128,11 +15315,15 @@ function applyTool(i){
     if(!spend(td.cost)) return false;
     if(typeof rememberHomeWaterMarks==='function') rememberHomeWaterMarks(t);
     if(typeof rememberAtlasLaneMark==='function') rememberAtlasLaneMark(t);
+    const woodlotNeedBefore = typeof currentWoodlotFold==='function' && currentWoodlotFold()
+      && typeof woodlotStandNeed==='function' && woodlotStandNeed();
     t.terrain = 'trees'; t.flowers = Math.min(1, t.flowers+0.3); t.deco = null;
     if(typeof currentWoodlotFold==='function' && currentWoodlotFold()){
       t.farmEdge = t.farmEdge || 'woodlot';
+      t.atlasFeature = t.atlasFeature || 'woodlot';
       t.woodReady = false;
       t.woodSet = 0;
+      t.woodRegen = null;
     }
     if(typeof currentWillowFold==='function' && currentWillowFold()){
       t.farmEdge = t.farmEdge || 'willow';
@@ -15145,7 +15336,11 @@ function applyTool(i){
       t.fruitSet = 0;
     }
     state.stats.trees++;
-    floater(i, '🌳 hedgerow!', '#c8f0a0'); burst(i, '#6fae5f', 12); SND.place();
+    floater(i, (typeof currentWoodlotFold==='function' && currentWoodlotFold()) ? '🌲 woodlot!' : '🌳 hedgerow!', '#c8f0a0'); burst(i, '#6fae5f', 12); SND.place();
+    if(woodlotNeedBefore && typeof woodlotStandUsable==='function' && woodlotStandUsable()
+       && typeof toast==='function'){
+      toast('🌲 Canopy is back — shade holds the understory and the high-pond edge.', {once:'woodlot_replant_first', throttleMs:4000});
+    }
     if(waterAdj(t) && !(typeof isDustWashFillT==='function' && isDustWashFillT(t))){
       // riparian buffer! the key clean-water move — make cause→effect obvious
       // Painted wash fills are a plug, not a second river — no buffer / WQ credit.
@@ -15809,7 +16004,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-26.hedgerow';
+const SHIP_BUILD = '2026-08-26.woodlot';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -15959,7 +16154,7 @@ function openAboutCredits(){
   if(showNew) camp.tipsShown['whats_new_'+ver] = true;
   const whatsNew = showNew
     ? `<div class="lesson" style="text-align:left;margin-top:6px;border-color:rgba(234,181,67,.45)">
-        <b>What's new (${ver}):</b> After Home Patch a living hedge between leftover fields holds pests and pollinators on the edge beds; clear that corridor and a mild nick shows.
+        <b>What's new (${ver}):</b> After Home Patch the ridge woodlot is land you run — standing timber holds understory soil and the high-pond edge; a heavy cut nicks them until you replant.
       </div>`
     : '';
   // CD — first About open literacy (in-modal; no toast spam)
@@ -20661,13 +20856,14 @@ function openInfo(refreshOnly){
               ? 'Willow fold — a careful cutting is ready. Tap for withies; the tree stays. Not firewood, not meadow forage.'
               : 'Willow fold — tap when a rod is ready, or wait for a dawn trickle. Living rods, not firewood. The tree stays.'))
         : t.farmEdge==='woodlot' || (typeof isWoodlotT==='function' && isWoodlotT(t))
-          ? ((t.woodRegen!=null)
+          ? ((typeof woodlotStandStory==='function' && woodlotStandStory(t))
+            || ((t.woodRegen!=null)
             ? 'A stump after a heavy cut — soil and shelter thin until the canopy returns. Not an open plant bed.'
             : (typeof isWoodlotTimberT==='function' && isWoodlotTimberT(t)
               ? (typeof woodlotTileReady==='function' && woodlotTileReady(t)
                 ? 'Ridge woodlot — a careful thinning is ready. Tap for firewood; the tree stays. Neighbors hold soil. Not an open plant bed.'
                 : 'Ridge woodlot — tap when a limb is ready, or wait for a dawn trickle. Neighbors hold soil. The herd walks around the canopy. Not an open plant bed.')
-              : 'Ridge woodlot — neighbors hold soil and shrug dust. The herd walks around the canopy. Not an open plant bed.'))
+              : 'Ridge woodlot — neighbors hold soil and shrug dust. The herd walks around the canopy. Not an open plant bed.')))
         : t.farmEdge==='riparian' || (typeof isRiparianT==='function' && isRiparianT(t))
           ? ((typeof riparianBufferStory==='function' && riparianBufferStory(t))
             || 'A riparian buffer — roots filter runoff before it reaches the river. Keep the trees. Strip them and wet-season runoff nicks the beds. The herd walks around the bank.')
