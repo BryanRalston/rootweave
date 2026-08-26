@@ -1065,6 +1065,8 @@ const MEADOW_FORAGE_SET = 0.10; // cuttings / day on a bloom tile — meadow sta
 const MEADOW_AUTO_PICK = 1;    // light dawn trickle — tap can pick the rest
 const MEADOW_HOLD_SOIL = {om:0.18, microbial:0.26}; // standing wildflowers hold pollinators / soil
 const MEADOW_NICK_SOIL = {om:-0.16, microbial:-0.14}; // till / overgraze / mow the stand
+/** Chip + map return — one wildlife model. HUD chips and parcel marks share these. */
+const WILDLIFE_RETURN = {bee:30, butterfly:45, bird:60};
 const PADDOCK_MANURE_RATE = 0.20; // pile lots/day at 1 head; scales with sqrt(heads), stays a trickle
 const PADDOCK_MANURE_AUTO = 1;    // at most one dawn pile unit — bedding, not a crate crop
 const PADDOCK_THIRST_SOIL = {water:-2.5, om:-0.8, erosion:-0.8}; // dawn nick when the fold is dry
@@ -10600,13 +10602,13 @@ function countCanopyNeighborHealthy(threshold){
   });
   return n;
 }
-function farmStats(){
-  if(!state || !state.grid){
+function farmStatsFor(s){
+  if(!s || !s.grid){
     return {avgHealth:0, restored:0, thriving:0, totalSoil:0, dead:0, bio:0, maxMicrobial:0, ponds:0, trees:0, b:{}};
   }
   let h=0, restored=0, thriving=0, micro=0, flowers=0, diverse=0, maxMicrobial=0, n=0, ponds=0, trees=0, dead=0;
   const bcounts = {};
-  state.grid.forEach(t=>{
+  s.grid.forEach(t=>{
     if(t.terrain==='pond'){ ponds++; return; }
     if(t.terrain==='trees'){ trees++; return; }
     if(BUILD_SET.has(t.terrain)){ bcounts[t.terrain] = (bcounts[t.terrain]||0)+1; return; }
@@ -10629,9 +10631,14 @@ function farmStats(){
           + (bcounts.beehive||0)*3 + (bcounts.wetland||0)*2.5 + (bcounts.orchard||0)*2.2
           + (bcounts.berrybush||0)*1.2 + (bcounts.birdhouse||0)*1.5 + (bcounts.mushroom||0)*1
           + (bcounts.stable||0)*1;
-  if(state && state.waterQuality>=70) bio += 5;      // a clean river hums with life
+  if(s && s.waterQuality>=70) bio += 5;      // a clean river hums with life
   bio = Math.max(0, Math.min(100, bio));
   return {avgHealth:avgH, restored, thriving, totalSoil:n, dead, bio, maxMicrobial, ponds, trees, b:bcounts};
+}
+function farmStats(){
+  const f = farmStatsFor(state);
+  if(typeof rememberParcelWildlife==='function') rememberParcelWildlife(state, f);
+  return f;
 }
 function pondNear(t, range){
   range = range||2;
@@ -12494,6 +12501,7 @@ function checkLevelComplete(){
     camp.parcels[clearedParcel.id].cleared = true;
     camp.parcels[clearedParcel.id].restorePct = 100;
     camp.parcels[clearedParcel.id].bestStars = Math.max(camp.parcels[clearedParcel.id].bestStars|0, stars);
+    if(typeof rememberParcelWildlife==='function') rememberParcelWildlife(state);
   }
   // Permanent feature unlocks (tools free in shop + future plots)
   if(firstClear){
@@ -17215,7 +17223,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-26.drygraze';
+const SHIP_BUILD = '2026-08-26.wildmap';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -20032,8 +20040,8 @@ function updateWildlife(dt, bio){
   });
   const targets = flowerTargets();
   const wants = {
-    bee:       bio>=30 ? Math.min(6, 2+(((bio-30)/10)|0)) : 0,
-    butterfly: bio>=45 ? Math.min(5, 1+(((bio-45)/10)|0)) : 0,
+    bee:       bio>=WILDLIFE_RETURN.bee ? Math.min(6, 2+(((bio-WILDLIFE_RETURN.bee)/10)|0)) : 0,
+    butterfly: bio>=WILDLIFE_RETURN.butterfly ? Math.min(5, 1+(((bio-WILDLIFE_RETURN.butterfly)/10)|0)) : 0,
     duck:      (wq>=70 && wTiles.length) ? (wq>=88?3:2) : 0,
     heron:     (wq>=85 && wTiles.length) ? 1 : 0,
     dragonfly: (pondTiles.length && bio>=25) ? Math.min(3, 1+(bio/30|0)) : 0,
@@ -20187,7 +20195,7 @@ function updateWildlife(dt, bio){
   });
 
   // birds: screen-space fliers with wing flap + bank
-  const wantBirds = bio>=60 ? Math.min(4, 1+(((bio-60)/14)|0)) : 0;
+  const wantBirds = bio>=WILDLIFE_RETURN.bird ? Math.min(4, 1+(((bio-WILDLIFE_RETURN.bird)/14)|0)) : 0;
   const residentBirds = ()=> birds.filter(b=>!b.flock).length;
   while(residentBirds()<wantBirds){
     birds.push({
@@ -21600,7 +21608,7 @@ function updateHUD(){
   wqEl.style.color = wq>=80 ? '#2c7fb8' : wq>=50 ? '#4a8f4d' : '#8a6b3a';
   document.getElementById('wqFill').style.width = wq+'%';
   // D3 — wildlife chips light up with color fill + one-time return toasts
-  const beesOn = f.bio>=30, fliesOn = f.bio>=45, birdsOn = f.bio>=60;
+  const beesOn = f.bio>=WILDLIFE_RETURN.bee, fliesOn = f.bio>=WILDLIFE_RETURN.butterfly, birdsOn = f.bio>=WILDLIFE_RETURN.bird;
   const beesEl = document.getElementById('chipBees');
   const fliesEl = document.getElementById('chipFlies');
   const birdsEl = document.getElementById('chipBirds');
@@ -22168,8 +22176,10 @@ function openInfo(refreshOnly){
   const pileLine = (typeof leftoverPileInspectLine==='function' && typeof isLeftoverPileTile==='function' && isLeftoverPileTile(t))
     ? leftoverPileInspectLine() : '';
   const pileChip = pileLine ? `<div class="chiprow">🪣 ${pileLine}</div>` : '';
+  const wildLine = (typeof parcelWildlifeInspectLine==='function') ? parcelWildlifeInspectLine() : '';
+  const wildChip = wildLine ? `<div class="chiprow">${wildLine}</div>` : '';
   panel.innerHTML = `<h3>${healthFace(isLandT(t)?t.health:80)} ${names[t.terrain]||t.terrain} <span style="font-size:11px;color:var(--soft)">${regName}</span>
-    <button class="closex" id="infoClose">✕</button></h3>${body}${pileChip}${crateChip}`;
+    <button class="closex" id="infoClose">✕</button></h3>${body}${pileChip}${wildChip}${crateChip}`;
   panel.classList.add('show');
   document.getElementById('infoClose').onclick = ()=>{ selected = -1; closeInfo(); };
   const sci = document.getElementById('sciToggle');
@@ -22429,6 +22439,7 @@ function save(){
     if(state && !state.homesteadView) state.sound = soundOn;
     // Never persist homestead view as the active plot
     const plotToSave = homesteadMode ? plotStateBackup : (state && state.homesteadView ? null : state);
+    if(typeof rememberParcelWildlife==='function' && plotToSave) rememberParcelWildlife(plotToSave);
     const payload = {v:8, camp:camp};
     if(plotToSave) payload.state = plotToSave;
     localStorage.setItem(SAVE_KEY, JSON.stringify(payload));
@@ -22589,6 +22600,7 @@ function loadCamp(d){
       camp.parcels[id].restorePct = Math.max(0, Math.min(100, (+src.restorePct||0)|0));
       camp.parcels[id].bestStars = Math.max(0, Math.min(3, (+src.bestStars||0)|0));
       camp.parcels[id].bought = !!src.bought || !!camp.parcels[id].bought;
+      if(src.bio!=null && !isNaN(+src.bio)) camp.parcels[id].bio = Math.max(0, Math.min(100, +src.bio));
     });
   }
   syncParcelClearFromCamp();
@@ -22821,6 +22833,11 @@ function runJourneySoftTips(){
   if(typeof homePatchCleared==='function' && homePatchCleared() &&
      VALLEY_PARCELS.some(P=>parcelCanDeed(P) && !parcelIsBought(P) && parcelDeedOffered(P))){
     if(offerJourneySoftTip('land_deed_first', 'A fogged neighbor with a coin price is a land deal — surplus from play or the coin shop. Home Patch stays free.', 600)) return;
+  }
+  // 3c) Returned visitors on the painted fold — once, names the land, no new panel
+  if(typeof homePatchCleared==='function' && homePatchCleared() && !camp.tipsShown.wildmap_first){
+    const wildLine = typeof wildlifeMapToastLine==='function' ? wildlifeMapToastLine() : '';
+    if(wildLine && offerJourneySoftTip('wildmap_first', wildLine, 600)) return;
   }
   // 4) Map pins before design goals (cold-start map literacy)
   if(!camp.tipsShown.map_pin_hover && !camp.tipsShown.map_pin_story_toast){
@@ -23597,6 +23614,22 @@ function parcelShowsThirst(P, c){
   if(typeof leftoverIsPaddockFold==='function' && !leftoverIsPaddockFold(P)) return false;
   return typeof parcelShowsHerd==='function' ? parcelShowsHerd(P, c) : false;
 }
+/** River stem / South Reach is water — never a beehive seat. */
+function parcelWildlifeRiverSkip(P){
+  if(!P) return true;
+  if(P.id==='south_reach' || P.id==='river_reach') return true;
+  const feel = typeof leftoverStampFeelFor==='function' ? leftoverStampFeelFor(P) : (P.stampFeel||'');
+  return feel==='river';
+}
+/** After Home, owned land may host returned visitors. Mist / unbought deeds stay bare. */
+function parcelShowsWildlife(P, c){
+  if(!P || P.kind==='hub') return false;
+  c = c || camp;
+  if(!(c && c.done && c.done[0])) return false;
+  if(typeof parcelWildlifeRiverSkip==='function' && parcelWildlifeRiverSkip(P)) return false;
+  if(P.buyable && typeof parcelIsBought==='function' && !parcelIsBought(P, c)) return false;
+  return typeof parcelMapState==='function' ? parcelMapState(P, c) !== 'locked' : false;
+}
 /** Stamp-driven homes: cattle on paddocks, goats/sheep on paddock/dry-graze/hay,
  *  pigs at the yard or paddock (same family as homestead walkers), hens at the
  *  coop, ducks on marsh. Home Patch kitchen beds stay off. */
@@ -24024,6 +24057,172 @@ function drawMapThirstMark(hctx){
     hctx.restore();
   });
 }
+/** Persist the chip-scale wildness for this fold — current or parked, never a second model. */
+function rememberParcelWildlife(s, f){
+  s = s || (typeof state!=='undefined' ? state : null);
+  if(!s || s.homesteadView || !s.grid) return;
+  const P = typeof valleyParcelByLvIndex==='function' ? valleyParcelByLvIndex(s.lv) : null;
+  if(!P || !P.id) return;
+  if(typeof camp==='undefined' || !camp) return;
+  if(typeof ensureParcelState==='function') ensureParcelState(camp);
+  if(!camp.parcels[P.id]) camp.parcels[P.id] = {cleared:false, restorePct:0, bestStars:0, bought:false};
+  const stats = f || (typeof farmStatsFor==='function' ? farmStatsFor(s) : null);
+  if(!stats || typeof stats.bio!=='number') return;
+  camp.parcels[P.id].bio = stats.bio;
+}
+function parcelWildlifeFarm(P){
+  if(!P) return null;
+  if(typeof state!=='undefined' && state && !state.homesteadView && state.grid
+     && typeof valleyParcelByLvIndex==='function' && valleyParcelByLvIndex(state.lv)===P){
+    return state;
+  }
+  if(typeof homesteadMode!=='undefined' && homesteadMode && typeof plotStateBackup!=='undefined'
+     && plotStateBackup && plotStateBackup.grid && !plotStateBackup.homesteadView
+     && typeof valleyParcelByLvIndex==='function' && valleyParcelByLvIndex(plotStateBackup.lv)===P){
+    return plotStateBackup;
+  }
+  return null;
+}
+function parcelWildlifeBio(P){
+  if(!P) return 0;
+  const live = typeof parcelWildlifeFarm==='function' ? parcelWildlifeFarm(P) : null;
+  if(live){
+    if(live===state && typeof farmCache!=='undefined' && farmCache && typeof farmCache.bio==='number') return farmCache.bio;
+    return typeof farmStatsFor==='function' ? farmStatsFor(live).bio : 0;
+  }
+  const st = camp && camp.parcels && camp.parcels[P.id];
+  return (st && typeof st.bio==='number') ? st.bio : 0;
+}
+function wildlifeVisitorsAt(bio){
+  const out = [];
+  const T = typeof WILDLIFE_RETURN==='object' && WILDLIFE_RETURN ? WILDLIFE_RETURN : {bee:30, butterfly:45, bird:60};
+  if(bio>=T.bee) out.push({id:'bee', em:'🐝', word:'Bees'});
+  if(bio>=T.butterfly) out.push({id:'butterfly', em:'🦋', word:'Butterflies'});
+  if(bio>=T.bird) out.push({id:'bird', em:'🐦', word:'Birds'});
+  return out;
+}
+function parcelWildlifeVisitors(P){
+  if(typeof parcelShowsWildlife==='function' && !parcelShowsWildlife(P)) return [];
+  return wildlifeVisitorsAt(parcelWildlifeBio(P));
+}
+function wildlifeLandName(P){
+  if(!P) return 'this fold';
+  const feel = typeof leftoverStampFeelFor==='function' ? leftoverStampFeelFor(P) : (P.stampFeel||'');
+  if(feel==='meadow' || P.id==='wet_meadow') return 'the meadow';
+  if(feel==='woodlot' || P.id==='woodlot') return 'the woodlot';
+  if(feel==='hay' || P.id==='hay_field') return 'the hay fold';
+  if(P.id==='home_garden' || P.lvIndex===0) return 'Home Patch';
+  const n = String(P.name||'').trim();
+  if(!n) return 'this fold';
+  if(/^(the|home)\b/i.test(n)) return n;
+  return 'the '+n.charAt(0).toLowerCase()+n.slice(1);
+}
+function parcelWildlifeInspectLine(){
+  if(typeof homePatchCleared==='function' && !homePatchCleared()) return '';
+  if(!state || state.homesteadView) return '';
+  const P = typeof valleyParcelByLvIndex==='function' ? valleyParcelByLvIndex(state.lv) : null;
+  if(!P) return '';
+  const vis = typeof parcelWildlifeVisitors==='function' ? parcelWildlifeVisitors(P) : [];
+  if(!vis.length) return '';
+  const top = vis[vis.length-1];
+  return top.em+' '+top.word+' came back to '+wildlifeLandName(P)+'.';
+}
+function wildlifeMapToastLine(){
+  if(typeof homePatchCleared==='function' && !homePatchCleared()) return '';
+  if(typeof VALLEY_PARCELS==='undefined' || !VALLEY_PARCELS) return '';
+  let best = null;
+  VALLEY_PARCELS.forEach(P=>{
+    const vis = typeof parcelWildlifeVisitors==='function' ? parcelWildlifeVisitors(P) : [];
+    if(!vis.length) return;
+    const top = vis[vis.length-1];
+    const rank = top.id==='bird' ? 3 : top.id==='butterfly' ? 2 : 1;
+    if(!best || rank>best.rank) best = {P, top, rank};
+  });
+  if(!best) return '';
+  return best.top.em+' '+best.top.word+' came back to '+wildlifeLandName(best.P)+'.';
+}
+function mapWildlifeCellKitchen(c, r, P){
+  if(P && P.id==='home_garden') return false;
+  const G = (typeof valleyParcel==='function') ? valleyParcel('home_garden') : null;
+  return !!(G && typeof atlasInParcel==='function' && atlasInParcel(c, r, G));
+}
+/** Land seat on the painted fold — never the river stem, house, or a livestock pin. */
+function mapWildlifeAtlasCell(P){
+  if(!P) return null;
+  const b = typeof parcelAtlasBox==='function' ? parcelAtlasBox(P) : null;
+  if(!b) return null;
+  let bloom = null, wood = null, land = null;
+  for(let r=b.r;r<b.r+b.h;r++) for(let c=b.c;c<b.c+b.w;c++){
+    if(typeof mapWildlifeCellKitchen==='function' && mapWildlifeCellKitchen(c, r, P)) continue;
+    const A = typeof atlasGet==='function' ? atlasGet(c, r) : null;
+    if(!A) continue;
+    if(A.water==='main' || A.water==='creek') continue;
+    if(A.landmark==='house' || A.landmark==='barn' || A.landmark==='coop' || A.landmark==='trough') continue;
+    if(A.feature==='path') continue;
+    if(A.water==='pond_site' && !bloom) continue;
+    const meadow = A.biome==='garden' || A.biome==='riparian' || A.biome==='marsh' || A.biome==='orchard';
+    const canopy = A.feature==='woodlot' || A.feature==='hedgerow' || A.biome==='wild';
+    const open = A.biome==='pasture' || A.biome==='heartland' || A.biome==='hay' || A.biome==='dust';
+    if(meadow && !bloom) bloom = {c, r};
+    else if(canopy && !wood) wood = {c, r};
+    else if(open && !land) land = {c, r};
+  }
+  return bloom || wood || land;
+}
+function mapWildlifePoint(P, kind, i, n){
+  if(!P) return null;
+  const cell = typeof mapWildlifeAtlasCell==='function' ? mapWildlifeAtlasCell(P) : null;
+  const b = typeof parcelAtlasBox==='function' ? parcelAtlasBox(P) : null;
+  const slot = n>1 ? (i-(n-1)/2) : 0;
+  if(cell && b){
+    const u = clampUV((cell.c + 0.50 + slot*0.55 - b.c) / b.w, 0.18, 0.82);
+    const v = clampUV((cell.r + 0.42 - Math.abs(slot)*0.08 - b.r) / b.h, 0.22, 0.82);
+    return parcelSeat(P, u, v);
+  }
+  return parcelSeat(P, 0.46 + slot*0.10, 0.40);
+}
+function mapWildlifeMarks(){
+  const out = [];
+  if(typeof homePatchCleared==='function' && !homePatchCleared()) return out;
+  if(typeof VALLEY_PARCELS==='undefined' || !VALLEY_PARCELS) return out;
+  VALLEY_PARCELS.forEach(P=>{
+    const vis = typeof parcelWildlifeVisitors==='function' ? parcelWildlifeVisitors(P) : [];
+    if(!vis.length) return;
+    vis.forEach((v, i)=>{
+      const p = mapWildlifePoint(P, v.id, i, vis.length);
+      if(!p) return;
+      out.push({parcelId:P.id, kind:v.id, em:v.em, x:p.x, y:p.y});
+    });
+  });
+  return out;
+}
+function mapWildlifeOverlayOn(){
+  const marks = typeof mapWildlifeMarks==='function' ? mapWildlifeMarks() : [];
+  return !!(marks && marks.length);
+}
+function drawMapWildlifeMark(hctx){
+  if(!hctx) return;
+  const marks = typeof mapWildlifeMarks==='function' ? mapWildlifeMarks() : [];
+  marks.forEach(m=>{
+    const p = m;
+    if(!p || !p.em) return;
+    const s = 4.4;
+    hctx.save();
+    hctx.fillStyle = 'rgba(22,14,8,.26)';
+    hctx.beginPath();
+    hctx.ellipse(p.x, p.y+0.7, s*1.20, Math.max(1.6, s*0.36), 0, 0, 6.29);
+    hctx.fill();
+    hctx.fillStyle = 'rgba(255,246,210,.30)';
+    hctx.beginPath();
+    hctx.ellipse(p.x, p.y - s*0.48, s*1.15, Math.max(3.2, s*0.72), 0, 0, 6.29);
+    hctx.fill();
+    hctx.font = '13px "Segoe UI Emoji","Apple Color Emoji",sans-serif';
+    hctx.textAlign = 'center';
+    hctx.textBaseline = 'middle';
+    hctx.fillText(p.em, p.x+0.4, p.y-s*0.95);
+    hctx.restore();
+  });
+}
 function paintMapHerd(cv, agents){
   if(!cv) return;
   const hctx = cv.getContext('2d');
@@ -24038,6 +24237,7 @@ function paintMapHerd(cv, agents){
   if(typeof drawMapPileMark==='function') drawMapPileMark(hctx);
   if(typeof drawMapStandMark==='function') drawMapStandMark(hctx);
   if(typeof drawMapThirstMark==='function') drawMapThirstMark(hctx);
+  if(typeof drawMapWildlifeMark==='function') drawMapWildlifeMark(hctx);
 }
 function mapHerdAtlasCell(ag, u, v){
   const P = typeof valleyParcel==='function' ? valleyParcel(ag && ag.parcelId) : null;
@@ -24127,7 +24327,8 @@ function startMapHerd(cv, agents){
   const pileOn = typeof mapPileOverlayOn==='function' ? mapPileOverlayOn() : false;
   const standOn = typeof mapStandOverlayOn==='function' ? mapStandOverlayOn() : false;
   const thirstOn = typeof mapThirstOverlayOn==='function' ? mapThirstOverlayOn() : false;
-  if(!cv || ((!agents || !agents.length) && !pileOn && !standOn && !thirstOn)) return;
+  const wildOn = typeof mapWildlifeOverlayOn==='function' ? mapWildlifeOverlayOn() : false;
+  if(!cv || ((!agents || !agents.length) && !pileOn && !standOn && !thirstOn && !wildOn)) return;
   _mapHerd.cv = cv;
   _mapHerd.agents = agents || [];
   _mapHerd.last = 0;
@@ -24147,7 +24348,8 @@ function mountMapHerdOverlay(wrap){
   const pileOn = typeof mapPileOverlayOn==='function' ? mapPileOverlayOn() : false;
   const standOn = typeof mapStandOverlayOn==='function' ? mapStandOverlayOn() : false;
   const thirstOn = typeof mapThirstOverlayOn==='function' ? mapThirstOverlayOn() : false;
-  if(!agents.length && !pileOn && !standOn && !thirstOn) return null;
+  const wildOn = typeof mapWildlifeOverlayOn==='function' ? mapWildlifeOverlayOn() : false;
+  if(!agents.length && !pileOn && !standOn && !thirstOn && !wildOn) return null;
   const hv = document.createElement('canvas');
   hv.className = 'vscene-herd';
   hv.width = VALLEY_VIEW.w;
@@ -24179,6 +24381,10 @@ function noteStandMapChanged(){
 }
 /** Trough fill or a thirst tick change dry stock water — same remount as the stand. */
 function noteThirstMapChanged(){
+  if(typeof noteHerdMapChanged==='function') noteHerdMapChanged();
+}
+/** Saved / current wildness crossed a chip threshold — same remount as thirst. */
+function noteWildlifeMapChanged(){
   if(typeof noteHerdMapChanged==='function') noteHerdMapChanged();
 }
 function wireValleyRegion(el, P, ms){
