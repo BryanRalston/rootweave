@@ -6779,19 +6779,44 @@ function marshStandCoverCount(s){
   });
   return {live, lost};
 }
+/** Reed belt and pond basins counted apart — campaign seats 2 reeds beside two 2×2 ponds. */
+function marshStandPartCount(s){
+  let reedLive = 0, reedLost = 0, pondLive = 0, pondLost = 0;
+  s = s || (typeof marshReedFarm==='function' ? marshReedFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return {reedLive, reedLost, pondLive, pondLost};
+  s.grid.forEach(t=>{
+    if(!t) return;
+    if(typeof isMarshPondT==='function' && isMarshPondT(t)){ pondLive++; return; }
+    if(typeof isMarshPondFillT==='function' && isMarshPondFillT(t)){ pondLost++; return; }
+    if(typeof isMarshReedT==='function' && isMarshReedT(t, s)){ reedLive++; return; }
+    if((typeof isReedT==='function' && isReedT(t))
+       || t.farmEdge==='reed'
+       || (typeof leftoverIsMarshKitchenT==='function' && leftoverIsMarshKitchenT(t))){
+      reedLost++;
+    }
+  });
+  return {reedLive, reedLost, pondLive, pondLost};
+}
+function marshStandPartHolds(live, lost){
+  const total = (live|0) + (lost|0);
+  if(total<=0) return true;
+  if((live|0)<=0) return false;
+  return live >= Math.max(1, Math.ceil(total * 0.5));
+}
 /** Leftover / campaign marsh after Home. First session and non-marsh folds stay off. */
 function marshStandReady(s){
   if(typeof marshFoldReady==='function' ? !marshFoldReady(s) : true) return false;
   const n = marshStandCoverCount(s);
   return (n.live + n.lost) > 0;
 }
-/** Stand holds when live reeds + open ponds stay ≥ ~50% of (live + stripped / filled). A light crate tap does not drop this. */
+/** Reed belt and open ponds each hold at ≥ ~50% of their own seats. Combined tiles
+ *  would let 8 pond cells keep a false hold after both campaign reeds are stripped.
+ *  A light crate tap does not drop this. */
 function marshStandUsable(s){
   if(!marshStandReady(s)) return false;
-  const n = marshStandCoverCount(s);
-  if(n.live<=0) return false;
-  const total = n.live + n.lost;
-  return n.live >= Math.max(1, Math.ceil(total * 0.5));
+  const p = marshStandPartCount(s);
+  if((p.reedLive|0) + (p.pondLive|0) <= 0) return false;
+  return marshStandPartHolds(p.reedLive, p.reedLost) && marshStandPartHolds(p.pondLive, p.pondLost);
 }
 function marshStandNeed(s){
   return !!(marshStandReady(s) && !marshStandUsable(s));
@@ -16617,7 +16642,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-26.marsh';
+const SHIP_BUILD = '2026-08-26.marshfix';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -16767,7 +16792,7 @@ function openAboutCredits(){
   if(showNew) camp.tipsShown['whats_new_'+ver] = true;
   const whatsNew = showNew
     ? `<div class="lesson" style="text-align:left;margin-top:6px;border-color:rgba(234,181,67,.45)">
-        <b>What's new (${ver}):</b> After Home Patch, campaign Marsh Finger plays as a standing filter — living reeds and open marsh ponds hold runoff on the pond-feed banks. A light crate cut still leaves the dress; strip the stand or fill the ponds and filtration nicks until wetland returns.
+        <b>What's new (${ver}):</b> After Home Patch, campaign Marsh Finger plays as a standing filter — the reed belt and the open marsh ponds each have to hold. A light crate cut still leaves the dress; strip the reeds or fill the ponds and filtration nicks until wetland returns.
       </div>`
     : '';
   // CD — first About open literacy (in-modal; no toast spam)
