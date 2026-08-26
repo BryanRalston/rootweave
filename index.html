@@ -8876,7 +8876,7 @@ function dressLeftoverStamp(s, P){
       });
     }
     const campaignMarsh = P && (P.id==='marsh_finger' || P.levelId==='marsh') && !P.leftover && !P.buyable;
-    const wantReed = campaignMarsh ? 0 : ((atlasPonds || liveWater) ? Math.max(4, Math.round(GRID*0.4)) : 0);
+    const wantReed = (atlasPonds || liveWater) ? Math.max(4, Math.round((((s && s.gridSize)|0) || GRID)*0.4)) : 0;
     let reeds = tiles.filter(t=>t.terrain==='wetland').length;
     const scoreReed = (t)=>{
       let n = 0;
