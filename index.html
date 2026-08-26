@@ -15102,11 +15102,12 @@ function applyTool(i){
        && typeof stripHayStand==='function'){
       did = ()=>{ stripHayStand(t, i); };
     }
-    else if(isLandT(t) && t.crop) did = ()=>{
+    else if(isLandT(t) && (t.crop || (typeof meadowFoldReady==='function' && meadowFoldReady()
+         && typeof leftoverIsMeadowBloomT==='function' && leftoverIsMeadowBloomT(t)))) did = ()=>{
       const mowMeadow = typeof meadowFoldReady==='function' && meadowFoldReady()
         && typeof leftoverIsMeadowBloomT==='function' && leftoverIsMeadowBloomT(t);
       if(mowMeadow) t.flowers = Math.min(t.flowers||0, 0.04);
-      t.crop = null;
+      if(t.crop) t.crop = null;
       if(mowMeadow && typeof toast==='function'){
         toast('🌼 That cut took the dress — a light harvest still leaves the meadow standing.', {once:'meadow_mow_first', throttleMs:4000});
       }
@@ -16169,7 +16170,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-26.meadow';
+const SHIP_BUILD = '2026-08-26.meadowfix';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -16319,7 +16320,7 @@ function openAboutCredits(){
   if(showNew) camp.tipsShown['whats_new_'+ver] = true;
   const whatsNew = showNew
     ? `<div class="lesson" style="text-align:left;margin-top:6px;border-color:rgba(234,181,67,.45)">
-        <b>What's new (${ver}):</b> After Home Patch the leftover wet meadow plays as wild forage — standing flowers hold pollinators and soil; tilling or close graze nicks that hold until the stand returns. A light cutting still feeds the crate.
+        <b>What's new (${ver}):</b> After Home Patch the leftover wet meadow plays as wild forage — standing flowers hold pollinators and soil; tilling, close graze, or mowing the dress nicks that hold until the stand returns. A light crate cut still leaves the flowers.
       </div>`
     : '';
   // CD — first About open literacy (in-modal; no toast spam)
