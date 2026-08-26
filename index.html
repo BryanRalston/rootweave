@@ -18247,10 +18247,12 @@ const BUILD_EMS = {market:'🏪',silo:'🏗️',greenhouse:'🪴',beehive:'🐝'
   stable:'🐴',wormfarm:'🪱',birdhouse:'🐦',well:'⛲',windmill:'🌬️',solar:'☀️',mushroom:'🍄',berrybush:'🫐'};
 function drawBuildObj(t, time){
   const o = tileOrigin(t);
-  const ba = BUILD_ART[t.terrain] || {w:56, yo:3};
+  const nativeScrub = typeof isNativeScrubT==='function' && isNativeScrubT(t);
+  const artId = nativeScrub ? 'hedgerow' : t.terrain;
+  const ba = nativeScrub ? {w:58, yo:2} : (BUILD_ART[t.terrain] || {w:56, yo:3});
   drawFootShadow(o.x, o.y + TILE_H - 2, ba.w * 0.28, ba.w * 0.1);
-  drawSprite(t.terrain, o.x, o.y + TILE_H + (ba.yo||3), ba.w, spriteH(t.terrain, ba.w, 42), ()=>{
-    drawEmoji(BUILD_EMS[t.terrain]||'🏗️', o.x, o.y+TH2-6, 22);
+  drawSprite(artId, o.x, o.y + TILE_H + (ba.yo||3), ba.w, spriteH(artId, ba.w, 42), ()=>{
+    drawEmoji(nativeScrub ? '🌵' : (BUILD_EMS[t.terrain]||'🏗️'), o.x, o.y+TH2-6, 22);
   });
   if(t.terrain==='beehive' && state.season!==3){   // a working hive hums — orbit with wing flap
     for(let b=0;b<3;b++){
