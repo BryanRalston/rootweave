@@ -14585,7 +14585,7 @@ function soilStoryLine(t){
       if(hc) return hc;
     }
     if(typeof woodlotStandStory==='function'){
-      const wl = woodlotStandStory(t, {needOnly:true});
+      const wl = woodlotStandStory(t);
       if(wl) return wl;
     }
     if(typeof dustWashNeed==='function' && dustWashNeed())
@@ -20565,8 +20565,12 @@ function openInfo(refreshOnly){
     if(!refreshOnly) SND.pop();
     return;
   }
+  const treeName = ((typeof isWoodlotT==='function' && isWoodlotT(t))
+    || (typeof isWoodlotStandLiveT==='function' && isWoodlotStandLiveT(t))
+    || (typeof isWoodlotStandMarkT==='function' && isWoodlotStandMarkT(t)))
+    ? 'Woodlot 🌲' : 'Hedgerow 🌳';
   const names = {soil:'Field', dead:'Dead Ground 💀', riverbed:'Dry Creekbed 🏜️', pond:'Pond 💧', water:'The River 🌊',
-    trees:'Hedgerow 🌳', barn:'The Barn 🏠', coop:'Chicken Coop 🐔',
+    trees:treeName, barn:'The Barn 🏠', coop:'Chicken Coop 🐔',
     market:'Farm Market 🏪', silo:'Grain Silo 🌾', greenhouse:'Greenhouse 🪴', beehive:'Beehive 🐝', orchard:'Orchard 🍎',
     raintank:'Rain Tank 🛢️', wetland:'Wetland 🌾', stable:'Stable 🐴', wormfarm:'Worm Farm 🪱', birdhouse:'Birdhouse 🐦',
     well:'Well ⛲', windmill:'Windmill 🌬️', solar:'Solar Panels ☀️', mushroom:'Mushroom Logs 🍄', berrybush:'Berry Bushes 🫐'};
