@@ -1123,6 +1123,8 @@ const MARSH_HOLD_SOIL = {water:0.28, erosion:0.4, om:0.12}; // mild dawn hold on
 const MARSH_NICK_SOIL = {water:-0.6, erosion:-0.65, om:-0.18}; // stand gone / ponds filled — filtration thins
 const CREEK_HOLD_SOIL = {water:0.28, om:0.12}; // mild dawn hold on creek-feed beds; cap so it cannot farm health
 const CREEK_NICK_SOIL = {water:-0.6, om:-0.18}; // plugged spine — feed beds nick until the tributary reopens
+const DRY_GRAZE_HOLD_SOIL = {erosion:0.4, water:0.28}; // mild dawn hold on dry-edge pasture; cap so it cannot farm health
+const DRY_GRAZE_NICK_SOIL = {erosion:-0.65, water:-0.6}; // kitchen / stripped crust — the edge nicks until rest/cover
 const OVERGRAZE_RATES = {om:-0.45, structure:-0.35, nutrients:-0.15, water:0, microbial:-0.1, erosion:-0.5};
 function emptyHerd(){ return {cattle:0, chicken:0, sheep:0, goat:0, pig:0, duckT:0}; }
 function ensureHerd(c){
@@ -3039,7 +3041,7 @@ function leftoverStampProfile(feel, grid, spec){
     const revive = Math.max(7, Math.round(g*0.6));
     const grazeN = Math.max(2, Math.round(g*0.2));
     return {
-      tools: ['select','compost','covercrop','clover','cattle','chicken','goat','pond','trees','bulldoze'],
+      tools: ['select','compost','covercrop','clover','sisters','wheat','cattle','chicken','goat','pond','trees','bulldoze'],
       river: false, regen: 1.1, ovs: ['health','om'],
       goalText: 'Sparse graze on dry edge pasture — keep a drink.',
       doneText: name+' takes a light stocking again.',
@@ -8216,6 +8218,220 @@ function tickPaddockWindShelter(){
   }
   return tiles.length;
 }
+/** Leftover / bought East Pasture only. Home, leftover paddocks, dust, creek, marsh, meadow, hay, woodlot stay off. */
+function leftoverIsDryGrazeFold(P){
+  if(!P) return false;
+  if(P.id==='home_garden' || P.lvIndex===0) return false;
+  if(P.id==='north_folds' || P.id==='west_folds' || P.id==='back_paddock') return false;
+  if(P.id==='dust_flats' || P.levelId==='flats' || P.id==='dust_scrub') return false;
+  if(P.id==='creek_bend' || P.levelId==='creek') return false;
+  if(P.id==='marsh_finger' || P.levelId==='marsh' || P.id==='wet_meadow') return false;
+  if(P.id==='hay_field' || P.id==='south_lane' || P.id==='woodlot') return false;
+  if(P.id==='east_pasture') return true;
+  const feel = typeof leftoverStampFeelFor==='function' ? leftoverStampFeelFor(P) : (P.stampFeel||'');
+  return feel==='dry_graze';
+}
+/** Field under the player, or the parked dry-edge fold while they are in the yard. */
+function dryGrazeFarm(){
+  if(typeof homesteadMode!=='undefined' && homesteadMode && typeof plotStateBackup!=='undefined'
+     && plotStateBackup && plotStateBackup.grid && !plotStateBackup.homesteadView){
+    return plotStateBackup;
+  }
+  if(state && !state.homesteadView) return state;
+  return null;
+}
+function currentDryGrazeFold(s){
+  s = s || (typeof dryGrazeFarm==='function' ? dryGrazeFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s) return false;
+  if(s.homesteadView) return false;
+  const L = (typeof LEVELS!=='undefined' && LEVELS[s.lv]) ? LEVELS[s.lv] : null;
+  if(L && L.id==='home') return false;
+  if(L && (L.id==='east_pasture' || L.stampFeel==='dry_graze')) return true;
+  const P = typeof valleyParcelByLvIndex==='function' ? valleyParcelByLvIndex(s.lv) : null;
+  return leftoverIsDryGrazeFold(P);
+}
+/** Leftover East Pasture after Home. First session and other folds stay off. */
+function dryGrazeFoldReady(s){
+  if(!camp) return false;
+  if(typeof homePatchCleared==='function' && !homePatchCleared()) return false;
+  return currentDryGrazeFold(s);
+}
+/** Kitchen row on the dry edge — wheat / sisters, not clover or pioneers. */
+function leftoverIsDryEdgeKitchenT(t){
+  return !!(t && t.crop && (t.crop.type==='wheat' || t.crop.type==='sisters'));
+}
+function leftoverIsDryEdgeStrippedT(t){
+  if(!t || leftoverIsDryEdgeKitchenT(t)) return false;
+  if(t.feature==='saltflat') return false;
+  if(typeof leftoverIsPastureCoverT==='function' && leftoverIsPastureCoverT(t)) return false;
+  return !!t.dryEdgeStripped;
+}
+function noteDryEdgeSaltStripped(t){
+  if(!t) return;
+  if(typeof currentDryGrazeFold==='function' && currentDryGrazeFold()) t.dryEdgeStripped = true;
+}
+function noteDryEdgeRestored(t){
+  if(t) t.dryEdgeStripped = false;
+}
+/** Standing salt-crust, sparse cover, rest, or a light graze walk. Kitchen / stripped crust do not count. */
+function isDryEdgeLiveT(t){
+  if(!t) return false;
+  if(typeof leftoverIsDryEdgeKitchenT==='function' && leftoverIsDryEdgeKitchenT(t)) return false;
+  if(typeof leftoverIsDryEdgeStrippedT==='function' && leftoverIsDryEdgeStrippedT(t)) return false;
+  if(t.feature==='saltflat') return true;
+  if(typeof leftoverIsPastureCoverT==='function' && leftoverIsPastureCoverT(t)) return true;
+  if(t.graze) return true;
+  if(t.terrain==='soil' || t.terrain==='dead'){
+    return typeof leftoverStampLand==='function' ? leftoverStampLand(t) : true;
+  }
+  return false;
+}
+function dryGrazeStandCoverCount(s){
+  let live = 0, kitchen = 0, land = 0;
+  s = s || (typeof dryGrazeFarm==='function' ? dryGrazeFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return {live, kitchen, land};
+  s.grid.forEach(t=>{
+    if(!t) return;
+    const landT = (t.terrain==='soil' || t.terrain==='dead')
+      && (typeof leftoverStampLand==='function' ? leftoverStampLand(t) : true);
+    if(!landT && t.feature!=='saltflat' && !(typeof leftoverIsDryEdgeKitchenT==='function' && leftoverIsDryEdgeKitchenT(t)))
+      return;
+    if(!(t.terrain==='soil' || t.terrain==='dead')) return;
+    if(t.feature==='path' || t.feature==='swale') return;
+    land++;
+    if(typeof leftoverIsDryEdgeKitchenT==='function' && leftoverIsDryEdgeKitchenT(t)) kitchen++;
+    else if(typeof leftoverIsDryEdgeStrippedT==='function' && leftoverIsDryEdgeStrippedT(t)) kitchen++;
+    else if(isDryEdgeLiveT(t)) live++;
+  });
+  return {live, kitchen, land};
+}
+/** Leftover East Pasture after Home. First session stays off. */
+function dryGrazeStandReady(s){
+  if(typeof dryGrazeFoldReady==='function' ? !dryGrazeFoldReady(s) : true) return false;
+  const n = dryGrazeStandCoverCount(s);
+  return (n.land|0) > 0;
+}
+/** Kitchen / stripped seats stay below ~50% of the fold's land. A light graze walk does not drop this. */
+function dryGrazeStandUsable(s){
+  if(!dryGrazeStandReady(s)) return false;
+  const n = dryGrazeStandCoverCount(s);
+  if((n.land|0) <= 0) return false;
+  if((n.live|0) <= 0 && (n.kitchen|0) > 0) return false;
+  return (n.kitchen|0) < Math.max(1, Math.ceil(n.land * 0.5));
+}
+function dryGrazeStandNeed(s){
+  return !!(dryGrazeStandReady(s) && !dryGrazeStandUsable(s));
+}
+/** Open dry-edge land the stand still feeds — salt, sparse cover, rest, kitchen, and graze pads. */
+function dryGrazeStandSoilTiles(s){
+  const tiles = [];
+  s = s || (typeof dryGrazeFarm==='function' ? dryGrazeFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return tiles;
+  s.grid.forEach((t, i)=>{
+    if(!t || !t.soil) return;
+    if(t.terrain!=='soil' && t.terrain!=='dead') return;
+    if(t.feature==='path' || t.feature==='swale') return;
+    const land = typeof leftoverStampLand==='function' ? leftoverStampLand(t) : true;
+    const live = typeof isDryEdgeLiveT==='function' && isDryEdgeLiveT(t);
+    const kitchen = typeof leftoverIsDryEdgeKitchenT==='function' && leftoverIsDryEdgeKitchenT(t);
+    const stripped = typeof leftoverIsDryEdgeStrippedT==='function' && leftoverIsDryEdgeStrippedT(t);
+    if(!(land || live || kitchen || stripped || t.feature==='saltflat')) return;
+    tiles.push({t, i});
+  });
+  return tiles;
+}
+function dryGrazeStandFloaterIdx(s){
+  s = s || (typeof dryGrazeFarm==='function' ? dryGrazeFarm() : (typeof state!=='undefined' ? state : null));
+  if(state && state.grid && s && s.grid && state.grid===s.grid){
+    const beds = dryGrazeStandSoilTiles(s);
+    for(let i=0;i<beds.length;i++){
+      if(leftoverIsDryEdgeKitchenT(beds[i].t) || leftoverIsDryEdgeStrippedT(beds[i].t) || !isDryEdgeLiveT(beds[i].t))
+        return beds[i].i;
+    }
+    if(beds.length && beds[0] && beds[0].i>=0) return beds[0].i;
+  }
+  if(typeof selected==='number' && selected>=0 && state && state.grid && state.grid[selected]) return selected;
+  return (typeof selected==='number' && selected>=0) ? selected : 0;
+}
+function dryGrazeStandStory(t, opts){
+  opts = opts || {};
+  const ready = typeof dryGrazeStandReady==='function' && dryGrazeStandReady();
+  const need = typeof dryGrazeStandNeed==='function' && dryGrazeStandNeed();
+  const hold = ready && !need;
+  const live = typeof isDryEdgeLiveT==='function' && isDryEdgeLiveT(t);
+  const kitchen = typeof leftoverIsDryEdgeKitchenT==='function' && leftoverIsDryEdgeKitchenT(t);
+  const stripped = typeof leftoverIsDryEdgeStrippedT==='function' && leftoverIsDryEdgeStrippedT(t);
+  const salt = !!(t && t.feature==='saltflat');
+  const cover = typeof leftoverIsPastureCoverT==='function' && leftoverIsPastureCoverT(t);
+  if(!ready) return '';
+  if(opts.needOnly && !need) return '';
+  if(kitchen)
+    return need
+      ? '🐎 This kitchen row on dry-edge pasture — salt-crust and sparse cover are gone. The edge nicks until rest or cover returns.'
+      : '🐎 A kitchen row on dry-edge pasture — not salt-crust, not sparse graze. Leave the standing edge.';
+  if(stripped)
+    return need
+      ? '🐎 Stripped salt-crust on dry-edge pasture — the edge nicks until rest or cover returns. Not Dust Scrub, not a wash.'
+      : '🐎 Salt-crust was stripped on this dry-edge pasture. Rest or cover keeps the edge from nicking.';
+  if(t && t.graze)
+    return need
+      ? '🐎 Light graze on a nicked dry edge — manure still walks to the pile. Rest or cover so the edge can hold again.'
+      : '🐎 Light graze on dry-edge pasture — a little manure for the pile. Salt-crust and sparse cover still hold. Not a lush paddock.';
+  if(salt)
+    return need
+      ? '🐎 Salt-crust on a nicked dry edge — kitchen rows took the stand. Rest or cover so this pasture can hold again.'
+      : '🐎 Salt-crust on dry-edge pasture — standing crust and sparse cover hold the quarter-section edge. Till or plant a kitchen and it nicks. Not Dust Scrub thorn.';
+  if(cover)
+    return need
+      ? '🐎 Sparse cover on a nicked dry edge — kitchen rows took the stand. Keep clover and pioneers so the edge can hold.'
+      : '🐎 Sparse cover on dry-edge pasture — clover and pioneers hold the salt-crust edge. Not a kitchen row.';
+  if(live)
+    return need
+      ? '🐎 Resting dry-edge soil — the stand is gone. Erosion and water nick until salt-crust or cover returns.'
+      : '🐎 Resting dry-edge pasture — salt-crust and sparse cover still hold this edge. Not a garden, not Dust Flats wash.';
+  if(t && (t.terrain==='soil' || t.terrain==='dead')){
+    if(need) return '🐎 Open dry-edge — kitchen or stripped crust nicked this pasture. Rest or cover so the edge can hold.';
+    if(hold && !opts.needOnly) return '🐎 Beside the dry-edge stand — salt-crust and sparse cover still hold this pasture.';
+  }
+  return '';
+}
+/** One sim dawn: standing leftover East Pasture holds erosion / water; a kitchen or stripped edge nicks them. First session stays off. */
+function tickDryGrazeStandWork(){
+  if(!camp || !dryGrazeStandReady()) return 0;
+  const s = typeof dryGrazeFarm==='function' ? dryGrazeFarm() : (typeof state!=='undefined' ? state : null);
+  if(!s || !s.grid) return 0;
+  const tiles = dryGrazeStandSoilTiles(s);
+  if(!tiles.length) return 0;
+  const open = dryGrazeStandUsable(s);
+  if(open){
+    const b = (typeof DRY_GRAZE_HOLD_SOIL!=='undefined') ? DRY_GRAZE_HOLD_SOIL : {erosion:0.4, water:0.28};
+    tiles.forEach(({t})=>{
+      if(!t || !t.soil) return;
+      if((t.soil.erosion||0) < 80) t.soil.erosion = clamp((t.soil.erosion||0) + (b.erosion||0));
+      if((t.soil.water||0) < 70) t.soil.water = clamp((t.soil.water||0) + (b.water||0));
+      if(typeof recalc==='function') recalc(t);
+    });
+    if(typeof toast==='function'){
+      toast('🐎 Dry-edge pasture holds — salt-crust and sparse cover keep the quarter-section edge. A kitchen row nicks it.', {once:'drygraze_stand_hold_first', throttleMs:4000});
+    }
+    return tiles.length;
+  }
+  const b = (typeof DRY_GRAZE_NICK_SOIL!=='undefined') ? DRY_GRAZE_NICK_SOIL : {erosion:-0.65, water:-0.6};
+  tiles.forEach(({t})=>{
+    if(!t || !t.soil) return;
+    t.soil.erosion = clamp((t.soil.erosion||0) + (b.erosion||0));
+    t.soil.water = clamp((t.soil.water||0) + (b.water||0));
+    if(typeof recalc==='function') recalc(t);
+  });
+  const fi = dryGrazeStandFloaterIdx(s);
+  if(typeof floater==='function' && state && state.grid && state.grid[fi]){
+    floater(fi, 'edge nicks', '#c9a070');
+  }
+  if(typeof toast==='function'){
+    toast('🐎 The dry edge was treated as a garden — salt-crust and sparse cover are gone. Rest or cover so the edge can hold again.', {once:'drygraze_stand_need_first', throttleMs:4000});
+  }
+  return tiles.length;
+}
 /** Interior leftover land that can take clover / flowers. Leave creek, reeds, and riparian trees. */
 function leftoverMeadowSeatOk(t, g){
   if(!t || !leftoverStampLand(t)) return false;
@@ -11482,7 +11698,10 @@ function wakeDeadTile(t, i){
     t.revivedOnce = true;
     state.stats.revived = (state.stats.revived|0) + 1;
   }
-  if(wasSalt) state.stats.saltRevived = (state.stats.saltRevived||0)+1;
+  if(wasSalt){
+    state.stats.saltRevived = (state.stats.saltRevived||0)+1;
+    if(typeof noteDryEdgeSaltStripped==='function') noteDryEdgeSaltStripped(t);
+  }
   floater(i, '🌅 REVIVED!', '#ffe89a', 17);
   burst(i, '#c8f0a0', 14); ringAt(i, '#c8f0a0');
   if(typeof startRevivePop==='function') startRevivePop(i);
@@ -11824,6 +12043,7 @@ function simStep(dt){
     if(typeof tickPaddockManure==='function') tickPaddockManure();
     if(typeof tickPaddockStockThirst==='function') tickPaddockStockThirst();
     if(typeof tickPaddockWindShelter==='function') tickPaddockWindShelter();
+    if(typeof tickDryGrazeStandWork==='function') tickDryGrazeStandWork();
     if(typeof tickWindShelterWork==='function') tickWindShelterWork();
     if(typeof tickHedgeCorridorWork==='function') tickHedgeCorridorWork();
     if(typeof tickDustWashWork==='function') tickDustWashWork();
@@ -15354,6 +15574,10 @@ function soilStoryLine(t){
   if(!t) return '';
   if(t.terrain==='dead'){
     if(t.compost>0 || t.crop) return '🌅 Waking — food and living roots are calling the community back.';
+    if(typeof dryGrazeStandStory==='function'){
+      const dg = dryGrazeStandStory(t);
+      if(dg) return dg;
+    }
     if(t.feature==='saltflat') return '🧂 Salt memory — leftover irrigation and drought. Extra life and time are the only rinse.';
     if(typeof highPondNeed==='function' && highPondNeed()
        && typeof isHighPondFillT==='function' && isHighPondFillT(t))
@@ -15392,6 +15616,10 @@ function soilStoryLine(t){
     if(typeof creekSpineStory==='function'){
       const ck = creekSpineStory(t, {needOnly:true});
       if(ck) return ck;
+    }
+    if(typeof dryGrazeStandStory==='function'){
+      const dg = dryGrazeStandStory(t, {needOnly:true});
+      if(dg) return dg;
     }
     if(typeof dustWashNeed==='function' && dustWashNeed())
       return '🏜️ Dry wash is blocked — drought nicks these flats. Keep the bed open so rare water can move.';
@@ -15519,6 +15747,10 @@ function soilStoryLine(t){
     const g = t.graze;
     if((g.stay||0) >= grazeRestDays(g))
       return '⚠️ This pad is tired — move the herd. '+tier;
+    if(typeof dryGrazeStandStory==='function'){
+      const dg = dryGrazeStandStory(t);
+      if(dg) return dg+' '+tier;
+    }
     if(typeof paddockStockThirstNeed==='function' && paddockStockThirstNeed())
       return '💧 Dry fold — the herd needs stock water they can stand beside. '+tier;
     if(typeof paddockWindShelterNeed==='function' && paddockWindShelterNeed())
@@ -15558,6 +15790,10 @@ function soilStoryLine(t){
     const windNeed = (typeof windShelterStory==='function') ? windShelterStory(t, {needOnly:true}) : '';
     const hedgeNeed = (!windNeed && typeof hedgeCorridorStory==='function') ? hedgeCorridorStory(t, {needOnly:true}) : '';
     const edgeNeed = windNeed || hedgeNeed;
+    if(typeof dryGrazeStandStory==='function'){
+      const dg = dryGrazeStandStory(t);
+      if(dg) return (edgeNeed?edgeNeed+' ':'')+dg+' '+tier;
+    }
     if(t.crop.type==='sisters')
       return (edgeNeed?edgeNeed+' ':'')+'🌽 The guild — corn is the pole, beans feed nitrogen, squash shades weeds. A team feeds the soil. '+tier;
     if(typeof leftoverIsHayCutT==='function' && leftoverIsHayCutT(t))
@@ -15636,6 +15872,10 @@ function soilStoryLine(t){
   if(typeof hedgeCorridorStory==='function'){
     const hc = hedgeCorridorStory(t);
     if(hc) return hc+' '+tier;
+  }
+  if(typeof dryGrazeStandStory==='function'){
+    const dg = dryGrazeStandStory(t);
+    if(dg) return dg+' '+tier;
   }
   if(typeof dustWashNeed==='function' && dustWashNeed())
     return '🏜️ Dry wash is blocked — drought nicks these flats. Keep the bed open so rare water can move. '+tier;
@@ -16084,7 +16324,10 @@ function applyTool(i){
     }
     if(tool==='clover'){ t.soil.om+=2.5; t.soil.microbial+=3; t.soil.erosion+=3; }
     if(tool==='covercrop'){ t.soil.om+=2; t.soil.microbial+=2; t.soil.erosion+=3.5; t.soil.structure+=1.5; }
-    if(tool==='clover' || tool==='covercrop') state.stats.coverPlanted = (state.stats.coverPlanted|0) + 1;
+    if(tool==='clover' || tool==='covercrop'){
+      state.stats.coverPlanted = (state.stats.coverPlanted|0) + 1;
+      if(typeof noteDryEdgeRestored==='function') noteDryEdgeRestored(t);
+    }
     if(tool==='wheat') state.stats.wheatPlanted = (state.stats.wheatPlanted|0) + 1;
     SOIL_ATTRS.forEach(k=>t.soil[k]=clamp(t.soil[k]));
     recalc(t);
@@ -16972,7 +17215,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-26.creekfix';
+const SHIP_BUILD = '2026-08-26.drygraze';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -21568,7 +21811,8 @@ function openInfo(refreshOnly){
       openInfo(true);
       return;
     }
-    const feat = t.feature==='saltflat' ? '🧂 A crust of salt poisons this ground — it needs extra feeding.'
+    const feat = t.feature==='saltflat'
+               ? ((typeof dryGrazeStandStory==='function' && dryGrazeStandStory(t)) || '🧂 A crust of salt poisons this ground — it needs extra feeding.')
                : t.feature==='gully' ? '⛏️ An erosion gully — the storms carved this scar.'
                : t.feature==='swale' ? ((typeof homeWaterStory==='function' && homeWaterStory(t)) || '〰️ A contour swale — water sits uphill so the beds below wilt a little less.')
                : t.feature==='path' ? ((typeof laneStory==='function' && laneStory(t)) || '🛤️ The farm lane — keep it clear for the herd.')
@@ -21583,7 +21827,10 @@ function openInfo(refreshOnly){
           ? '💧 High pond is blocked — runoff nicks this downhill soil. Keep the basin open so it can filter.'
           : ''))
       : '';
-    const washLine = washNeed
+    const dryEdgeReady = typeof dryGrazeStandReady==='function' && dryGrazeStandReady();
+    const washLine = dryEdgeReady
+      ? ''
+      : (washNeed
       ? '🏜️ Dry wash is blocked — drought nicks these flats. Keep the bed open.'
       : ((typeof washAdj==='function' && washAdj(t))
       ? ((t.washBankPulse||0)>6
@@ -21591,7 +21838,7 @@ function openInfo(refreshOnly){
         : '🏜️ Wash bank — dry between storms, a little kinder than the open flats.')
       : ((typeof dustAwayFromWash==='function' && dustAwayFromWash(t))
         ? '🌵 Bare dust — this ground will not hold.'
-        : ''));
+        : '')));
     const wk = deadWakeShown(t);
     const need = wk.need;
     const story = soilStoryLine(t);
@@ -21766,13 +22013,20 @@ function openInfo(refreshOnly){
       else if(state && typeof atlasWaterAdjLocal==='function' && atlasWaterAdjLocal(state, t.c, t.r))
         chips.push('🟤 bare bank — mud slides into the water');
     }
-    if(typeof dustWashNeed==='function' && dustWashNeed())
-      chips.push('🏜️ dry wash blocked — drought nicks the flats');
-    else if(typeof washAdj==='function' && washAdj(t))
-      chips.push((t.washBankPulse||0)>6 ? '🌧️ wash bank holding last rain' : '🏜️ wash bank — dry between storms');
-    else if(typeof dustAwayFromWash==='function' && dustAwayFromWash(t))
-      chips.push('🌵 bare dust — soil will not hold');
+    if(!(typeof dryGrazeStandReady==='function' && dryGrazeStandReady())){
+      if(typeof dustWashNeed==='function' && dustWashNeed())
+        chips.push('🏜️ dry wash blocked — drought nicks the flats');
+      else if(typeof washAdj==='function' && washAdj(t))
+        chips.push((t.washBankPulse||0)>6 ? '🌧️ wash bank holding last rain' : '🏜️ wash bank — dry between storms');
+      else if(typeof dustAwayFromWash==='function' && dustAwayFromWash(t))
+        chips.push('🌵 bare dust — soil will not hold');
+    }
     if(t.compost>0) chips.push(`🪣 compost — ${t.compost.toFixed(0)}d`);
+    if(typeof dryGrazeStandNeed==='function' && dryGrazeStandNeed())
+      chips.push('🐎 dry-edge is a garden — salt-crust and sparse cover nick until rest returns');
+    else if(typeof dryGrazeStandReady==='function' && dryGrazeStandReady()
+         && typeof isDryEdgeLiveT==='function' && isDryEdgeLiveT(t))
+      chips.push('🐎 dry-edge pasture — salt-crust and sparse cover hold the edge');
     if(typeof meadowStandNeed==='function' && meadowStandNeed())
       chips.push('🌼 meadow stand is thin — pollinators miss this fold');
     else if(typeof meadowStandReady==='function' && meadowStandReady()
