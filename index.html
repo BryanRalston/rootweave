@@ -1063,6 +1063,8 @@ const STAND_FORAGE_SEASON = [1.14, 1.10, 0.96, 0.86]; // spring bloom; summer cu
 const MEADOW_FORAGE_LOT = 3;   // modest crate lot — like hay / eggs, well under a wheat cut
 const MEADOW_FORAGE_SET = 0.10; // cuttings / day on a bloom tile — meadow stays dressed
 const MEADOW_AUTO_PICK = 1;    // light dawn trickle — tap can pick the rest
+const MEADOW_HOLD_SOIL = {om:0.18, microbial:0.26}; // standing wildflowers hold pollinators / soil
+const MEADOW_NICK_SOIL = {om:-0.16, microbial:-0.14}; // till / overgraze / mow the stand
 const PADDOCK_MANURE_RATE = 0.20; // pile lots/day at 1 head; scales with sqrt(heads), stays a trickle
 const PADDOCK_MANURE_AUTO = 1;    // at most one dawn pile unit — bedding, not a crate crop
 const PADDOCK_THIRST_SOIL = {water:-2.5, om:-0.8, erosion:-0.8}; // dawn nick when the fold is dry
@@ -2893,7 +2895,7 @@ function leftoverStampStory(feel, P){
       : (P && (P.id==='marsh_finger' || P.levelId==='marsh'))
         ? 'Wet ground and reeds. Cut reeds into the crate; leave the marsh wet and filtering. Strip the stand and filtration thins. Not meadow forage, not willow.'
         : 'Wet ground and reeds. Do not farm this like a dry garden.',
-    meadow: 'Wet flowery meadow — reeds, clover, and flowers along the creek. Gather wild cuttings into the crate. Not hay, not a kitchen row.',
+    meadow: 'Wet flowery meadow — reeds, clover, and flowers along the creek. Standing bloom holds pollinators and soil; till or graze the whole stand and that hold nicks until it returns. A light cutting still feeds the crate. Not hay, not a kitchen row.',
     paddock: 'A grazing fold. Pasture, manure, rest, and stock water — bedding and droppings feed the compost pile. Gather berries from the living hedge; leave the shelter. Not a kitchen garden.',
     orchard: 'Trees and understory. Pick fruit into the crate; leave the trees. Strip the stand and the hang is gone until the canopy returns. Perennials, not corn rows.',
     dust: 'Salt, dust, and a dry wash that only runs after rain. Soften it; do not pretend it is lush.',
@@ -7772,7 +7774,11 @@ function meadowForageFloaterIdx(s, i){
   return (typeof selected==='number' && selected>=0) ? selected : 0;
 }
 function meadowForageStory(tier){
-  return '🌼 Wild meadow cuttings — edible flowers and herbs for the crate, not hay and not a kitchen row. Neighbors pay more in spring and summer bloom. '+(tier||'');
+  const need = typeof meadowStandNeed==='function' && meadowStandNeed();
+  const stand = need
+    ? 'The wild stand is thin — tilling and close graze nicked pollinators and soil until bloom returns. '
+    : 'Standing wildflowers hold pollinators and soil. A light cutting still feeds the crate; mow or till the whole meadow and that hold nicks. ';
+  return '🌼 '+stand+'Edible flowers and herbs — not hay and not a kitchen row. Neighbors pay more in spring and summer bloom. '+(tier||'');
 }
 /** Tap leftover meadow bloom into the crate. Crop and flowers stay — the dress does not become hay. */
 function harvestMeadowTile(t, i, opts){
@@ -7792,7 +7798,7 @@ function harvestMeadowTile(t, i, opts){
   if(typeof burst==='function' && state && state.grid && state.grid[fi]) burst(fi, '#e8d4a0', 6);
   if(typeof SND!=='undefined' && SND && typeof SND.place==='function') SND.place();
   if(typeof toast==='function'){
-    toast('🌼 Meadow forage in the crate by the house. Neighbors pay more in spring and summer bloom — or let it sit for the pile.', {once:'meadow_forage_first', throttleMs:4000});
+    toast('🌼 Meadow forage in the crate by the house. The wildflowers stay — a light cut still leaves the meadow standing.', {once:'meadow_forage_first', throttleMs:4000});
   }
   if(typeof refreshNeighborStandIfOpen==='function') refreshNeighborStandIfOpen();
   if(typeof updateHUD==='function') updateHUD();
@@ -7826,6 +7832,140 @@ function tickMeadowForage(){
     if(harvestMeadowTile(s.grid[ready[k]], ready[k], {farm:s, auto:true})) n++;
   }
   return n;
+}
+/** Living wild cover on leftover meadow — clover / pioneers / flowers. Not wheat, not sisters, not graze. */
+function isMeadowStandLiveT(t, s){
+  if(!t) return false;
+  if(t.graze) return false;
+  if(t.crop && (t.crop.type==='sisters' || t.crop.type==='wheat')) return false;
+  return typeof leftoverIsMeadowBloomT==='function' ? leftoverIsMeadowBloomT(t) : false;
+}
+/** Kitchen row or close graze that replaces wild cover. Not a light forage cut. */
+function leftoverIsMeadowPlowT(t){
+  if(!t) return false;
+  if(t.crop && (t.crop.type==='wheat' || t.crop.type==='sisters')) return true;
+  if(t.graze) return true;
+  return false;
+}
+function meadowStandCoverCount(s){
+  let live = 0, plowed = 0;
+  s = s || (typeof meadowForageFarm==='function' ? meadowForageFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return {live, plowed};
+  s.grid.forEach(t=>{
+    if(isMeadowStandLiveT(t, s)) live++;
+    else if(leftoverIsMeadowPlowT(t)) plowed++;
+  });
+  return {live, plowed};
+}
+/** Leftover Wet Meadow after Home. First session stays off. */
+function meadowStandReady(s){
+  return !!(typeof meadowFoldReady==='function' && meadowFoldReady(s));
+}
+/** Enough uncut bloom remains. A light crate cut does not drop this. */
+function meadowStandUsable(s){
+  if(!meadowStandReady(s)) return false;
+  const n = meadowStandCoverCount(s);
+  if(n.live<=0) return false;
+  const total = n.live + n.plowed;
+  return n.live >= Math.max(1, Math.ceil(total * 0.5));
+}
+function meadowStandNeed(s){
+  return !!(meadowStandReady(s) && !meadowStandUsable(s));
+}
+/** Open meadow soil the stand still feeds — bloom, plow pads, and leftover seats. */
+function meadowStandSoilTiles(s){
+  const tiles = [];
+  s = s || (typeof meadowForageFarm==='function' ? meadowForageFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return tiles;
+  const g = (s.gridSize|0) || (typeof GRID==='number' ? GRID : 0);
+  s.grid.forEach((t, i)=>{
+    if(!t || !t.soil) return;
+    if(t.terrain!=='soil' && t.terrain!=='dead') return;
+    if(t.feature==='path' || t.feature==='swale' || t.feature==='saltflat') return;
+    const seat = typeof leftoverMeadowSeatOk==='function' && leftoverMeadowSeatOk(t, g);
+    const live = isMeadowStandLiveT(t, s);
+    const plow = leftoverIsMeadowPlowT(t);
+    if(!(seat || live || plow)) return;
+    tiles.push({t, i});
+  });
+  return tiles;
+}
+function meadowStandFloaterIdx(s){
+  s = s || (typeof meadowForageFarm==='function' ? meadowForageFarm() : (typeof state!=='undefined' ? state : null));
+  if(state && state.grid && s && s.grid && state.grid===s.grid){
+    const beds = meadowStandSoilTiles(s);
+    for(let i=0;i<beds.length;i++){
+      if(leftoverIsMeadowPlowT(beds[i].t) || !isMeadowStandLiveT(beds[i].t, s)) return beds[i].i;
+    }
+    if(beds.length && beds[0] && beds[0].i>=0) return beds[0].i;
+  }
+  if(typeof selected==='number' && selected>=0 && state && state.grid && state.grid[selected]) return selected;
+  return (typeof selected==='number' && selected>=0) ? selected : 0;
+}
+function meadowStandStory(t, opts){
+  opts = opts || {};
+  const ready = typeof meadowStandReady==='function' && meadowStandReady();
+  const need = typeof meadowStandNeed==='function' && meadowStandNeed();
+  const hold = ready && !need;
+  const live = typeof isMeadowStandLiveT==='function' && isMeadowStandLiveT(t);
+  const plow = typeof leftoverIsMeadowPlowT==='function' && leftoverIsMeadowPlowT(t);
+  if(!ready) return '';
+  if(opts.needOnly && !need) return '';
+  if(live)
+    return need
+      ? '🌼 Wild cover is thin — pollinators and soil miss this fold until the meadow stands again.'
+      : '🌼 Standing meadow — wildflowers and uncut forage hold pollinators and soil. A light cutting still feeds the crate; mow or till the whole stand and that hold nicks.';
+  if(plow){
+    if(t && t.graze)
+      return need
+        ? '🌼 Close graze on the meadow — the wildflowers cannot hold bees until the stand returns.'
+        : '🌼 Graze on leftover meadow — leave enough wild cover so pollinators still work.';
+    return need
+      ? '🌼 This kitchen row replaced wild cover — pollinators and soil nick until the meadow stands again.'
+      : '🌼 A kitchen row on leftover meadow — not wild forage. Leave a stand of flowers.';
+  }
+  if(t && (t.terrain==='soil' || t.terrain==='dead')){
+    if(need) return '🌼 Open meadow — the wild stand is gone. Soil and pollinators nick until flowers or clover return.';
+    if(hold && !opts.needOnly) return '🌼 Beside the standing meadow — pollinators still work this soil.';
+  }
+  return '';
+}
+/** One sim dawn: standing leftover meadow holds pollinators / soil; a tilled or mowed stand nicks them. First session stays off. */
+function tickMeadowStandWork(){
+  if(!camp || !meadowStandReady()) return 0;
+  const s = typeof meadowForageFarm==='function' ? meadowForageFarm() : (typeof state!=='undefined' ? state : null);
+  if(!s || !s.grid) return 0;
+  const tiles = meadowStandSoilTiles(s);
+  if(!tiles.length) return 0;
+  const open = meadowStandUsable(s);
+  if(open){
+    const b = (typeof MEADOW_HOLD_SOIL!=='undefined') ? MEADOW_HOLD_SOIL : {om:0.18, microbial:0.26};
+    tiles.forEach(({t})=>{
+      if(!t || !t.soil) return;
+      if((t.soil.om||0) < 74) t.soil.om = clamp((t.soil.om||0) + (b.om||0));
+      if((t.soil.microbial||0) < 76) t.soil.microbial = clamp((t.soil.microbial||0) + (b.microbial||0));
+      if(typeof recalc==='function') recalc(t);
+    });
+    if(typeof toast==='function'){
+      toast('🌼 Standing meadow holds pollinators and soil — leave the wildflowers. A light cutting still feeds the crate.', {once:'meadow_stand_hold_first', throttleMs:4000});
+    }
+    return tiles.length;
+  }
+  const b = (typeof MEADOW_NICK_SOIL!=='undefined') ? MEADOW_NICK_SOIL : {om:-0.16, microbial:-0.14};
+  tiles.forEach(({t})=>{
+    if(!t || !t.soil) return;
+    t.soil.om = clamp((t.soil.om||0) + (b.om||0));
+    t.soil.microbial = clamp((t.soil.microbial||0) + (b.microbial||0));
+    if(typeof recalc==='function') recalc(t);
+  });
+  const fi = meadowStandFloaterIdx(s);
+  if(typeof floater==='function' && state && state.grid && state.grid[fi]){
+    floater(fi, 'bare', '#c9a070');
+  }
+  if(typeof toast==='function'){
+    toast('🌼 The meadow is bare — tilling, close graze, or a full mow nicked the wildflowers. Leave a stand so pollinators and soil hold.', {once:'meadow_stand_need_first', throttleMs:4000});
+  }
+  return tiles.length;
 }
 /** Bare leftover soil away from creek / reeds / pond — dries harder on a meadow fold. */
 function leftoverMeadowDryAway(t, s){
@@ -11039,6 +11179,7 @@ function simStep(dt){
     if(typeof tickMarshReed==='function') tickMarshReed();
     if(typeof tickMarshDuckEggs==='function') tickMarshDuckEggs();
     if(typeof tickMeadowForage==='function') tickMeadowForage();
+    if(typeof tickMeadowStandWork==='function') tickMeadowStandWork();
     if(typeof tickHayCut==='function') tickHayCut();
     if(typeof tickPaddockManure==='function') tickPaddockManure();
     if(typeof tickPaddockStockThirst==='function') tickPaddockStockThirst();
@@ -14588,6 +14729,10 @@ function soilStoryLine(t){
       const wl = woodlotStandStory(t);
       if(wl) return wl;
     }
+    if(typeof meadowStandStory==='function'){
+      const ms = meadowStandStory(t, {needOnly:true});
+      if(ms) return ms;
+    }
     if(typeof dustWashNeed==='function' && dustWashNeed())
       return '🏜️ Dry wash is blocked — drought nicks these flats. Keep the bed open so rare water can move.';
     return '💀 Sleeping soil — the living community is gone until you feed it.';
@@ -14701,6 +14846,10 @@ function soilStoryLine(t){
       const hc = hedgeCorridorStory(t);
       if(hc) return hc+' '+tier;
     }
+    if(typeof meadowStandStory==='function'){
+      const ms = meadowStandStory(t);
+      if(ms) return ms+' '+tier;
+    }
     if(g.kind==='team' || g.synergy) return '🐄🐔 Follow the herd — hooves open the sod; chickens follow. That\'s how prairie stayed fertile. '+tier;
     if(g.kind==='cattle' || g.kind==='cow') return '🐄 Cattle remaking this pad — send 🐔 chickens next. '+tier;
     if(g.kind==='chicken') return '🐔 Chickens working the surface. '+tier;
@@ -14724,6 +14873,10 @@ function soilStoryLine(t){
       return (edgeNeed?edgeNeed+' ':'')+(typeof hayCutStory==='function' ? hayCutStory(tier) : '🌾 Standing hay — a forage cut for the crate, not a kitchen till. Neighbors pay more in winter feed season. '+tier);
     if(typeof leftoverIsMeadowForageT==='function' && leftoverIsMeadowForageT(t))
       return (edgeNeed?edgeNeed+' ':'')+(typeof meadowForageStory==='function' ? meadowForageStory(tier) : '🌼 Wild meadow cuttings for the crate. '+tier);
+    if(typeof meadowStandStory==='function'){
+      const ms = meadowStandStory(t);
+      if(ms) return (edgeNeed?edgeNeed+' ':'')+ms+' '+tier;
+    }
     if(t.crop.type==='wheat' || (!c.diverse && !c.cover)){
       const days = t.crop.days||0;
       if(days >= 1)
@@ -14745,6 +14898,10 @@ function soilStoryLine(t){
   }
   if(typeof leftoverIsMeadowForageT==='function' && leftoverIsMeadowForageT(t))
     return (typeof meadowForageStory==='function' ? meadowForageStory(tier) : '🌼 Wild meadow cuttings for the crate. '+tier);
+  if(typeof meadowStandStory==='function'){
+    const ms = meadowStandStory(t);
+    if(ms) return ms+' '+tier;
+  }
   if(typeof highPondNeed==='function' && highPondNeed()
      && typeof isHighPondFillT==='function' && isHighPondFillT(t))
     return '💧 This filled the high pond — runoff nicks downhill soil. Clear it to open the basin. '+tier;
@@ -14945,7 +15102,15 @@ function applyTool(i){
        && typeof stripHayStand==='function'){
       did = ()=>{ stripHayStand(t, i); };
     }
-    else if(isLandT(t) && t.crop) did = ()=>{ t.crop = null; };
+    else if(isLandT(t) && t.crop) did = ()=>{
+      const mowMeadow = typeof meadowFoldReady==='function' && meadowFoldReady()
+        && typeof leftoverIsMeadowBloomT==='function' && leftoverIsMeadowBloomT(t);
+      if(mowMeadow) t.flowers = Math.min(t.flowers||0, 0.04);
+      t.crop = null;
+      if(mowMeadow && typeof toast==='function'){
+        toast('🌼 That cut took the dress — a light harvest still leaves the meadow standing.', {once:'meadow_mow_first', throttleMs:4000});
+      }
+    };
     else if(isLandT(t) && t.graze){
       toast('Move the herd — they live here.');
       SND.uhoh(); return false;
@@ -16004,7 +16169,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-26.woodlot';
+const SHIP_BUILD = '2026-08-26.meadow';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -16154,7 +16319,7 @@ function openAboutCredits(){
   if(showNew) camp.tipsShown['whats_new_'+ver] = true;
   const whatsNew = showNew
     ? `<div class="lesson" style="text-align:left;margin-top:6px;border-color:rgba(234,181,67,.45)">
-        <b>What's new (${ver}):</b> After Home Patch the ridge woodlot is land you run — standing timber holds understory soil and the high-pond edge; a heavy cut nicks them until you replant.
+        <b>What's new (${ver}):</b> After Home Patch the leftover wet meadow plays as wild forage — standing flowers hold pollinators and soil; tilling or close graze nicks that hold until the stand returns. A light cutting still feeds the crate.
       </div>`
     : '';
   // CD — first About open literacy (in-modal; no toast spam)
@@ -20774,6 +20939,11 @@ function openInfo(refreshOnly){
     else if(typeof dustAwayFromWash==='function' && dustAwayFromWash(t))
       chips.push('🌵 bare dust — soil will not hold');
     if(t.compost>0) chips.push(`🪣 compost — ${t.compost.toFixed(0)}d`);
+    if(typeof meadowStandNeed==='function' && meadowStandNeed())
+      chips.push('🌼 meadow stand is thin — pollinators miss this fold');
+    else if(typeof meadowStandReady==='function' && meadowStandReady()
+         && typeof isMeadowStandLiveT==='function' && isMeadowStandLiveT(t))
+      chips.push('🌼 standing meadow — pollinators hold this soil');
     if(t.flowers>0.3) chips.push('🌼 wildflowers');
     if(t.soil.microbial>=70) chips.push('🪱 worms!');
     if(t.health>=70) chips.push('💚 restored!');
