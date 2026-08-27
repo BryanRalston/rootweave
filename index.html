@@ -6092,12 +6092,15 @@ function highPondFarm(){
   if(state && !state.homesteadView) return state;
   return null;
 }
-/** Campaign Wind Ridge + leftover woodlot ridge. Home Patch stays off. */
+/** Campaign Wind Ridge only. Leftover woodlot is timber / pond-edge, not the ridge high-pond hold. Home Patch stays off. */
 function leftoverIsHighPondFold(P){
   if(!P) return false;
   if(P.id==='home_garden' || P.lvIndex===0) return false;
+  if(P.id==='woodlot' || P.levelId==='woodlot') return false;
+  const feel = typeof leftoverStampFeelFor==='function' ? leftoverStampFeelFor(P) : (P.stampFeel||'');
+  if(feel==='woodlot') return false;
   if(P.id==='wind_ridge' || P.levelId==='wind') return true;
-  return typeof leftoverIsWoodlotRidge==='function' && leftoverIsWoodlotRidge(P);
+  return false;
 }
 function currentHighPondFold(s){
   s = s || (typeof highPondFarm==='function' ? highPondFarm() : (typeof state!=='undefined' ? state : null));
@@ -6105,6 +6108,7 @@ function currentHighPondFold(s){
   if(s.homesteadView) return false;
   const L = (typeof LEVELS!=='undefined' && LEVELS[s.lv]) ? LEVELS[s.lv] : null;
   if(L && L.id==='home') return false;
+  if(L && (L.id==='woodlot' || L.stampFeel==='woodlot')) return false;
   if(L && L.id==='wind') return true;
   const P = typeof valleyParcelByLvIndex==='function' ? valleyParcelByLvIndex(s.lv) : null;
   return leftoverIsHighPondFold(P);
@@ -6788,17 +6792,23 @@ function woodlotStandStory(t, opts){
   const mark = typeof isWoodlotStandMarkT==='function' && isWoodlotStandMarkT(t);
   const under = typeof woodlotUnderstoryAt==='function' && woodlotUnderstoryAt(t);
   const pondEdge = typeof woodlotPondEdgeAt==='function' && woodlotPondEdgeAt(t);
+  const pondBasin = !!(ready && t && (
+    (typeof isHighPondMarkedT==='function' && isHighPondMarkedT(t))
+    || (typeof isHighPondT==='function' && isHighPondT(t))
+    || (t.terrain==='pond' && t.atlasWater==='pond_site' && t.atlasBiome==='ridge')
+  ));
   if(typeof highPondNeed==='function' && highPondNeed()
+     && typeof currentWoodlotFold==='function' && !currentWoodlotFold()
      && ((typeof isHighPondFillT==='function' && isHighPondFillT(t))
         || (typeof highPondDownhillOfMarked==='function' && highPondDownhillOfMarked(t)))) return '';
-  if(!ready && !mark && !live && !under && !pondEdge) return '';
+  if(!ready && !mark && !live && !under && !pondEdge && !pondBasin) return '';
   if(!ready) return '';
   if(opts.needOnly && !need) return '';
   if(live)
     return need
       ? '🌲 Woodlot canopy is thin — understory slips and the high-pond edge dries. Replant the stand.'
       : '🌲 Standing woodlot — shade and browse hold the understory. A heavy cut nicks soil and dries the pond edge.';
-  if(pondEdge){
+  if(pondBasin || pondEdge){
     if(need) return '💧 High-pond edge is bare — the cut woodlot lets it dry. Replant the stand.';
     if(hold && !opts.needOnly) return '💧 High-pond edge stays moist under the woodlot shade.';
   }
@@ -18091,6 +18101,10 @@ function soilStoryLine(t){
     return '💧 The filter — trees on the bank hold soil and drink the runoff. Clean water is a crop you grow.';
   }
   if(t.terrain==='pond'){
+    if(typeof woodlotStandStory==='function' && typeof woodlotStandReady==='function' && woodlotStandReady()){
+      const wl = woodlotStandStory(t);
+      if(wl) return wl;
+    }
     if(typeof isHighPondT==='function' && isHighPondT(t)
        && typeof highPondReady==='function' && highPondReady())
       return (typeof highPondNeed==='function' && highPondNeed())
@@ -24851,7 +24865,11 @@ function openInfo(refreshOnly){
     const gardenNeed = typeof homeWaterNeed==='function' && homeWaterNeed();
     const gardenFilled = typeof isGardenPondFillT==='function' && isGardenPondFillT(t);
     const gardenLine = (typeof homeWaterStory==='function') ? homeWaterStory(t) : '';
-    body = high && highReady
+    const woodlotPondLine = (typeof woodlotStandReady==='function' && woodlotStandReady()
+      && typeof woodlotStandStory==='function') ? woodlotStandStory(t) : '';
+    body = woodlotPondLine
+      ? `<div class="chiprow">${woodlotPondLine}</div>`
+    : high && highReady
       ? `<div class="chiprow">${highNeed?'The high pond is blocked — runoff nicks the downhill fields. Keep the basin open so it can filter.':'A high pond on the ridge — it holds and filters water before it runs downhill. Downhill fields hold a little more water and wilt a little less. Not a plant bed.'}</div>`
       : highFilled && highReady
         ? `<div class="chiprow">${highNeed?'This filled the high pond — runoff nicks the downhill fields. Clear it to open the basin again. Not a plant bed.':'This sits in the high pond basin. Clear it so the pond can filter downhill water again.'}</div>`
