@@ -8956,8 +8956,9 @@ function marketYardUsable(s){
   if((n.seats|0) <= 0) return false;
   if((n.live|0) <= 0) return false;
   const halfSeats = Math.max(1, Math.ceil(n.seats * 0.5));
+  const halfTrade = Math.max(1, Math.ceil((n.trade|0) * 0.5));
   const halfLane = Math.max(1, Math.ceil((n.lane|0) * 0.5));
-  if((n.kitchen|0) >= halfSeats) return false;
+  if((n.trade|0) > 0 && (n.kitchen|0) >= halfTrade) return false;
   if((n.lane|0) > 0 && (n.plugged|0) >= halfLane) return false;
   return (n.live|0) >= halfSeats;
 }
@@ -8966,9 +8967,9 @@ function marketYardNeed(s){
   if(!marketYardReady(s)) return false;
   if(marketYardUsable(s)) return false;
   const n = marketYardCoverCount(s);
-  const halfSeats = Math.max(1, Math.ceil((n.seats|0) * 0.5));
+  const halfTrade = Math.max(1, Math.ceil((n.trade|0) * 0.5));
   const halfLane = Math.max(1, Math.ceil((n.lane|0) * 0.5));
-  return ((n.kitchen|0) >= halfSeats) || ((n.lane|0) > 0 && (n.plugged|0) >= halfLane);
+  return ((n.trade|0) > 0 && (n.kitchen|0) >= halfTrade) || ((n.lane|0) > 0 && (n.plugged|0) >= halfLane);
 }
 function isMarketYardLiveT(t){
   if(!t) return false;
@@ -9021,7 +9022,7 @@ function marketYardStory(t, opts){
   if(kitchen)
     return need
       ? '🏪 This wheat or sisters kitchen on the lane-end yard — the trade seats are gone. Cover nicks until clover or open soil return. Not the house neighbor stand, not leftover hay, not School Garden mix.'
-      : '🏪 A kitchen row on the lane-end trade yard — not a second neighbor stand. Leave soil or living cover so this yard can hold.';
+      : '🏪 A kitchen row on the lane-end trade yard — not a second neighbor stand, not leftover hay, not School Garden mix. Leave soil or living cover so this yard can hold.';
   if(plugged)
     return need
       ? '🏪 This plugged the lane-end — the trade yard nicks until tractor or clear opens the path again. Not leftover hay, not School Garden mix, not the house neighbor stand.'
