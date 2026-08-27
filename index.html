@@ -6841,14 +6841,15 @@ function leftoverIsWillowKitchenT(t, s){
   if(typeof isWillowT==='function' && isWillowT(t)) return true;
   return t.farmEdge==='willow';
 }
-/** Clover / pioneer cover on willow-fold land — restores the bank. Not a kitchen row. */
+/** Clover / pioneer cover on marked willow seats — restores the bank after a strip.
+ *  Leftover wet-dress clover on unmarked stamp soil must not hold the stand (meadowfix / schoolmixfix). */
 function leftoverIsWillowCloverT(t, s){
   if(!t || !t.crop) return false;
   if(t.crop.type!=='clover' && t.crop.type!=='covercrop') return false;
   if(typeof leftoverIsWillowKitchenT==='function' && leftoverIsWillowKitchenT(t, s)) return false;
   if(typeof currentWillowFold==='function' && !currentWillowFold(s)) return false;
-  if(typeof leftoverStampLand==='function' && leftoverStampLand(t)) return true;
   if(typeof isWillowStandMarkT==='function' && isWillowStandMarkT(t)) return true;
+  if(typeof isWillowT==='function' && isWillowT(t)) return true;
   return t.farmEdge==='willow';
 }
 function willowStandCoverCount(s){
@@ -6864,6 +6865,7 @@ function willowStandCoverCount(s){
     const markT = isWillowStandMarkT(t);
     const cloverT = leftoverIsWillowCloverT(t, s);
     // Seats are marked willow only — bare leftover stamp soil must not pad the live count.
+    // Leftover wet-dress clover on unmarked soil is not a restore seat.
     if(liveT || stumpT || markT) seats++;
     if(kitchenT) kitchen++;
     else if(liveT) live++;
@@ -19036,7 +19038,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-26.willowstand';
+const SHIP_BUILD = '2026-08-26.willowstandfix';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
