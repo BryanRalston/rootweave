@@ -1118,6 +1118,8 @@ const WILLOW_AUTO = 1;        // at most one dawn lot when the trickle fills
 const WILLOW_DAWN_RATE = 0.055; // lots/day at 1 tree; scales with sqrt(stand), stays rare
 const WILLOW_REGEN_DAYS = 8; // strip-cut stump returns as a living willow; never an empty plant bed
 const WILLOW_STRIP_SOIL = {om:-2, erosion:-4, water:-3, microbial:-1}; // strip nicks bank hold and shelter
+const WILLOW_STAND_HOLD_SOIL = {erosion:0.4, water:0.28, om:0.12}; // mild dawn hold on living bank / stem beds; cap so it cannot farm health
+const WILLOW_STAND_NICK_SOIL = {erosion:-0.65, water:-0.6, om:-0.18}; // strip / kitchen — bank nicks until willow or clover returns
 const STAND_HEDGE_SEASON = [1.10, 0.88, 1.14, 1.08]; // spring first fruit; summer glut; fall hips/nuts; winter jam
 const HEDGE_BERRY_LOT = 3;   // modest crate lot — like hay / firewood, well under a wheat cut
 const HEDGE_THIN_SET = 0.05; // careful pick / day on a living hedge — tap when ready
@@ -6636,11 +6638,15 @@ function currentWillowFold(s){
   const P = typeof valleyParcelByLvIndex==='function' ? valleyParcelByLvIndex(s.lv) : null;
   return leftoverIsWillowFold(P);
 }
-/** Willow Bottom after Home. First session and non-willow folds stay off. */
+/** Willow Bottom after Home, or bought willow once the deed is signed. Unbought Willow Bottom stays off. */
 function willowFoldReady(s){
   if(!camp) return false;
   if(typeof homePatchCleared==='function' && !homePatchCleared()) return false;
-  return currentWillowFold(s);
+  if(!currentWillowFold(s)) return false;
+  const farm = s || (typeof willowCutFarm==='function' ? willowCutFarm() : (typeof state!=='undefined' ? state : null));
+  const P = (farm && typeof valleyParcelByLvIndex==='function') ? valleyParcelByLvIndex(farm.lv) : null;
+  if(P && P.buyable && typeof parcelIsBought==='function' && !parcelIsBought(P)) return false;
+  return true;
 }
 function isWillowT(t){
   return !!(t && t.farmEdge==='willow');
@@ -6648,9 +6654,11 @@ function isWillowT(t){
 /** Living willow on this fold — rods / withies. Tree stays. Not firewood, not meadow forage. */
 function isWillowCutT(t, s){
   if(!t || t.terrain!=='trees') return false;
+  if(t.willowRegen!=null) return false;
   if(!willowFoldReady(s)) return false;
   if(typeof isWoodlotT==='function' && isWoodlotT(t)) return false;
-  return true;
+  if(typeof isWillowT==='function' && isWillowT(t)) return true;
+  return t.farmEdge==='willow';
 }
 function leftoverSeedWillowCut(t){
   if(!t || t.terrain!=='trees') return;
@@ -6806,6 +6814,206 @@ function tickWillowCut(){
   }
   if(n) camp.willowAcc -= n;
   return n;
+}
+/** Living willow canopy on this fold — farmEdge willow trees. Regen stumps and bare leftover soil are not live. */
+function isWillowStandLiveT(t, s){
+  if(!t || t.terrain!=='trees') return false;
+  if(t.willowRegen!=null) return false;
+  if(typeof isWoodlotT==='function' && isWoodlotT(t)) return false;
+  if(typeof isWillowT==='function' && isWillowT(t)) return true;
+  if(typeof isWillowCutT==='function' && isWillowCutT(t, s)) return true;
+  return t.farmEdge==='willow';
+}
+/** Marked willow seat — living canopy or a strip stump. Do not invent willow on unmarked leftover soil. */
+function isWillowStandMarkT(t){
+  if(!t) return false;
+  if(typeof isWoodlotT==='function' && isWoodlotT(t)) return false;
+  if(t.willowRegen!=null) return true;
+  return !!(t.farmEdge==='willow' || (typeof isWillowT==='function' && isWillowT(t)));
+}
+/** Sisters / wheat on willow-fold land — the fold treated as a kitchen. Clover is not kitchen. */
+function leftoverIsWillowKitchenT(t, s){
+  if(!t || !t.crop) return false;
+  if(t.crop.type!=='sisters' && t.crop.type!=='wheat') return false;
+  if(typeof currentWillowFold==='function' && !currentWillowFold(s)) return false;
+  if(typeof leftoverStampLand==='function' && leftoverStampLand(t)) return true;
+  if(typeof isWillowStandMarkT==='function' && isWillowStandMarkT(t)) return true;
+  if(typeof isWillowT==='function' && isWillowT(t)) return true;
+  return t.farmEdge==='willow';
+}
+/** Clover / pioneer cover on willow-fold land — restores the bank. Not a kitchen row. */
+function leftoverIsWillowCloverT(t, s){
+  if(!t || !t.crop) return false;
+  if(t.crop.type!=='clover' && t.crop.type!=='covercrop') return false;
+  if(typeof leftoverIsWillowKitchenT==='function' && leftoverIsWillowKitchenT(t, s)) return false;
+  if(typeof currentWillowFold==='function' && !currentWillowFold(s)) return false;
+  if(typeof leftoverStampLand==='function' && leftoverStampLand(t)) return true;
+  if(typeof isWillowStandMarkT==='function' && isWillowStandMarkT(t)) return true;
+  return t.farmEdge==='willow';
+}
+function willowStandCoverCount(s){
+  let live = 0, kitchen = 0, seats = 0, stump = 0, clover = 0;
+  s = s || (typeof willowCutFarm==='function' ? willowCutFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return {live, kitchen, seats, land:0, stump, clover};
+  s.grid.forEach(t=>{
+    if(!t) return;
+    if(typeof isWoodlotT==='function' && isWoodlotT(t)) return;
+    const liveT = isWillowStandLiveT(t, s);
+    const kitchenT = leftoverIsWillowKitchenT(t, s);
+    const stumpT = !!(t.willowRegen!=null);
+    const markT = isWillowStandMarkT(t);
+    const cloverT = leftoverIsWillowCloverT(t, s);
+    // Seats are marked willow only — bare leftover stamp soil must not pad the live count.
+    if(liveT || stumpT || markT) seats++;
+    if(kitchenT) kitchen++;
+    else if(liveT) live++;
+    else if(stumpT) stump++;
+    if(cloverT) clover++;
+  });
+  return {live, kitchen, seats, land:seats, stump, clover};
+}
+/** Bought Willow Bottom after Home. First session and unbought deeds stay off. */
+function willowStandReady(s){
+  if(typeof willowFoldReady==='function' ? !willowFoldReady(s) : true) return false;
+  const n = willowStandCoverCount(s);
+  return (n.seats|0) > 0;
+}
+/** Living canopy still stands, kitchen and strip-stumps stay below ~50% of willow seats. A light crate pick does not drop this. Clover restores. */
+function willowStandUsable(s){
+  if(!willowStandReady(s)) return false;
+  const n = willowStandCoverCount(s);
+  if((n.seats|0) <= 0) return false;
+  const half = Math.max(1, Math.ceil(n.seats * 0.5));
+  if((n.kitchen|0) >= half) return false;
+  if((n.stump|0) >= half && (n.clover|0) < half) return false;
+  if((n.live|0) >= half) return true;
+  if((n.clover|0) >= half) return true;
+  return false;
+}
+function willowStandNeed(s){
+  return !!(willowStandReady(s) && !willowStandUsable(s));
+}
+function willowStandBankAt(t, s){
+  if(!t) return false;
+  if(t.terrain!=='soil' && t.terrain!=='dead') return false;
+  if(t.feature==='path' || t.feature==='swale' || t.feature==='saltflat') return false;
+  if(isWillowStandLiveT(t, s)) return false;
+  s = s || (typeof willowCutFarm==='function' ? willowCutFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return false;
+  const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+  for(let i=0;i<dirs.length;i++){
+    const c = (t.c|0)+dirs[i][0], r = (t.r|0)+dirs[i][1];
+    if(typeof inGrid==='function' && !inGrid(c,r)) continue;
+    const n = s.grid[typeof idx==='function' ? idx(c,r) : (r*((s.gridSize|0)||0)+c)];
+    if(isWillowStandMarkT(n) || isWillowStandLiveT(n, s)) return true;
+  }
+  return false;
+}
+/** Bank / stem beds the stand still feeds — beside living willow, kitchen, returning stumps. Not unmarked leftover soil. */
+function willowStandSoilTiles(s){
+  const tiles = [];
+  s = s || (typeof willowCutFarm==='function' ? willowCutFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return tiles;
+  s.grid.forEach((t, i)=>{
+    if(!t || !t.soil) return;
+    if(t.terrain!=='soil' && t.terrain!=='dead') return;
+    if(t.feature==='path' || t.feature==='swale' || t.feature==='saltflat') return;
+    if(isWillowStandLiveT(t, s)) return;
+    const kitchen = leftoverIsWillowKitchenT(t, s);
+    const stub = !!(t.willowRegen!=null);
+    const mark = isWillowStandMarkT(t);
+    const clover = leftoverIsWillowCloverT(t, s);
+    const bank = willowStandBankAt(t, s);
+    if(!(kitchen || stub || mark || clover || bank)) return;
+    tiles.push({t, i});
+  });
+  return tiles;
+}
+function willowStandFloaterIdx(s){
+  s = s || (typeof willowCutFarm==='function' ? willowCutFarm() : (typeof state!=='undefined' ? state : null));
+  if(state && state.grid && s && s.grid && state.grid===s.grid){
+    const beds = willowStandSoilTiles(s);
+    for(let i=0;i<beds.length;i++){
+      if(leftoverIsWillowKitchenT(beds[i].t, s) || beds[i].t.willowRegen!=null || !isWillowStandLiveT(beds[i].t, s))
+        return beds[i].i;
+    }
+    if(beds.length && beds[0] && beds[0].i>=0) return beds[0].i;
+  }
+  if(typeof selected==='number' && selected>=0 && state && state.grid && state.grid[selected]) return selected;
+  return (typeof selected==='number' && selected>=0) ? selected : 0;
+}
+function willowStandStory(t, opts){
+  opts = opts || {};
+  const ready = typeof willowStandReady==='function' && willowStandReady();
+  const need = typeof willowStandNeed==='function' && willowStandNeed();
+  const hold = ready && !need;
+  const live = typeof isWillowStandLiveT==='function' && isWillowStandLiveT(t);
+  const kitchen = typeof leftoverIsWillowKitchenT==='function' && leftoverIsWillowKitchenT(t);
+  const clover = typeof leftoverIsWillowCloverT==='function' && leftoverIsWillowCloverT(t);
+  // Returning stump only — living farmEdge willow marks are canopy, not stumps.
+  const stub = !!(t && t.willowRegen!=null);
+  if(!ready) return '';
+  if(opts.needOnly && !need) return '';
+  if(kitchen)
+    return need
+      ? '🌿 This kitchen row on willow land — the living bank is gone. Cover nicks until willow or clover returns. Not firewood, not meadow forage, not marsh reeds.'
+      : '🌿 A kitchen row on willow land — not the living bank. Leave standing willow so the bank can hold.';
+  if(live)
+    return need
+      ? '🌿 Living willow is thin — the stand was stripped or the fold was treated as a kitchen. The bank nicks until the canopy returns. Not firewood, not meadow forage, not marsh reeds.'
+      : '🌿 Living willow — standing withies hold this bank. A light crate pick leaves the tree; strip the stand or plant a kitchen and it nicks. Not firewood, not meadow forage, not marsh reeds, not a kitchen row.';
+  if(stub)
+    return need
+      ? '🌿 Stump after a strip — the willow returns; the bank nicks until the canopy comes back. Not an open plant bed. Not firewood, not marsh reeds.'
+      : '🌿 Stump after a strip — the willow returns. A light crate pick would have left the living bank.';
+  if(clover)
+    return need
+      ? '🌿 Clover on willow land — the living bank is thin. Cover nicks until willow or this clover can hold again.'
+      : '🌿 Clover on willow land — rest cover holds this bank until the withies stand again. Not a kitchen row.';
+  if(t && (t.terrain==='soil' || t.terrain==='dead')){
+    if(need) return '🌿 Open willow bank — the stand was stripped or treated as a kitchen. Rest or clover so the bank can hold.';
+    if(hold && !opts.needOnly) return '🌿 Beside living willow — standing withies still hold this bank.';
+  }
+  return '';
+}
+/** One sim dawn: standing leftover willow holds bank / stem beds; a stripped or kitchen fold nicks them. First session stays off. */
+function tickWillowStandWork(){
+  if(!camp || !willowStandReady()) return 0;
+  const s = typeof willowCutFarm==='function' ? willowCutFarm() : (typeof state!=='undefined' ? state : null);
+  if(!s || !s.grid) return 0;
+  const tiles = willowStandSoilTiles(s);
+  if(!tiles.length) return 0;
+  const open = willowStandUsable(s);
+  if(open){
+    const b = (typeof WILLOW_STAND_HOLD_SOIL!=='undefined') ? WILLOW_STAND_HOLD_SOIL : {erosion:0.4, water:0.28, om:0.12};
+    tiles.forEach(({t})=>{
+      if(!t || !t.soil) return;
+      if((t.soil.erosion||0) < 80) t.soil.erosion = clamp((t.soil.erosion||0) + (b.erosion||0));
+      if((t.soil.water||0) < 70) t.soil.water = clamp((t.soil.water||0) + (b.water||0));
+      if((t.soil.om||0) < 70) t.soil.om = clamp((t.soil.om||0) + (b.om||0));
+      if(typeof recalc==='function') recalc(t);
+    });
+    if(typeof toast==='function'){
+      toast('🌿 Living willow holds the bank — leave the standing withies. A light crate pick leaves the tree; a kitchen row or strip nicks the bank.', {once:'willow_stand_hold_first', throttleMs:4000});
+    }
+    return tiles.length;
+  }
+  const b = (typeof WILLOW_STAND_NICK_SOIL!=='undefined') ? WILLOW_STAND_NICK_SOIL : {erosion:-0.65, water:-0.6, om:-0.18};
+  tiles.forEach(({t})=>{
+    if(!t || !t.soil) return;
+    t.soil.erosion = clamp((t.soil.erosion||0) + (b.erosion||0));
+    t.soil.water = clamp((t.soil.water||0) + (b.water||0));
+    t.soil.om = clamp((t.soil.om||0) + (b.om||0));
+    if(typeof recalc==='function') recalc(t);
+  });
+  const fi = willowStandFloaterIdx(s);
+  if(typeof floater==='function' && state && state.grid && state.grid[fi]){
+    floater(fi, 'bank nicks', '#c9a070');
+  }
+  if(typeof toast==='function'){
+    toast('🌿 The willow stand was stripped or treated as a kitchen — the bank nicks until willow or clover returns.', {once:'willow_stand_need_first', throttleMs:4000});
+  }
+  return tiles.length;
 }
 function isHedgerowT(t){
   return !!(t && (t.farmEdge==='hedgerow' || t.atlasFeature==='hedgerow'));
@@ -13418,6 +13626,7 @@ function simStep(dt){
     if(typeof tickWoodlotTimber==='function') tickWoodlotTimber();
     if(typeof tickWoodlotStandWork==='function') tickWoodlotStandWork();
     if(typeof tickWillowCut==='function') tickWillowCut();
+    if(typeof tickWillowStandWork==='function') tickWillowStandWork();
     if(typeof tickHedgeBerry==='function') tickHedgeBerry();
     if(typeof tickMarshReed==='function') tickMarshReed();
     if(typeof tickMarshStandWork==='function') tickMarshStandWork();
@@ -16999,6 +17208,10 @@ function soilStoryLine(t){
       const os = orchardStandStory(t);
       if(os) return os;
     }
+    if(typeof willowStandStory==='function'){
+      const ww = willowStandStory(t);
+      if(ww) return ww;
+    }
     if(t.feature==='saltflat') return '🧂 Salt memory — leftover irrigation and drought. Extra life and time are the only rinse.';
     if(typeof highPondNeed==='function' && highPondNeed()
        && typeof isHighPondFillT==='function' && isHighPondFillT(t))
@@ -17045,6 +17258,10 @@ function soilStoryLine(t){
     if(typeof hayStandStory==='function'){
       const hy = hayStandStory(t, {needOnly:true});
       if(hy) return hy;
+    }
+    if(typeof willowStandStory==='function'){
+      const ww = willowStandStory(t, {needOnly:true});
+      if(ww) return ww;
     }
     if(typeof meadowStandStory==='function'){
       const ms = meadowStandStory(t, {needOnly:true});
@@ -17110,6 +17327,10 @@ function soilStoryLine(t){
     }
     if(typeof isOrchardFruitT==='function' && isOrchardFruitT(t))
       return (typeof orchardFruitStory==='function' ? orchardFruitStory('') : '🍎 Living orchard fruit for the crate. The tree stays.');
+    if(typeof willowStandStory==='function'){
+      const ww = willowStandStory(t);
+      if(ww) return ww;
+    }
     if(typeof isWillowCutT==='function' && isWillowCutT(t))
       return (typeof willowCutStory==='function' ? willowCutStory('') : '🌿 Living willow rods for the crate. The tree stays.');
     if(typeof isHighPondFillT==='function' && isHighPondFillT(t)
@@ -17256,6 +17477,10 @@ function soilStoryLine(t){
       const os = orchardStandStory(t);
       if(os) return os+' '+tier;
     }
+    if(typeof willowStandStory==='function'){
+      const ww = willowStandStory(t);
+      if(ww) return ww+' '+tier;
+    }
     if(typeof paddockStockThirstNeed==='function' && paddockStockThirstNeed())
       return '💧 Dry fold — the herd needs stock water they can stand beside. '+tier;
     if(typeof paddockWindShelterNeed==='function' && paddockWindShelterNeed())
@@ -17322,6 +17547,10 @@ function soilStoryLine(t){
     if(typeof orchardStandStory==='function'){
       const os = orchardStandStory(t);
       if(os) return (edgeNeed?edgeNeed+' ':'')+os+' '+tier;
+    }
+    if(typeof willowStandStory==='function'){
+      const ww = willowStandStory(t);
+      if(ww) return (edgeNeed?edgeNeed+' ':'')+ww+' '+tier;
     }
     if(t.crop.type==='sisters')
       return (edgeNeed?edgeNeed+' ':'')+'🌽 The guild — corn is the pole, beans feed nitrogen, squash shades weeds. A team feeds the soil. '+tier;
@@ -17392,6 +17621,10 @@ function soilStoryLine(t){
   if(typeof orchardStandStory==='function'){
     const os = orchardStandStory(t);
     if(os) return os+' '+tier;
+  }
+  if(typeof willowStandStory==='function'){
+    const ww = willowStandStory(t);
+    if(ww) return ww+' '+tier;
   }
   if(typeof meadowStandStory==='function'){
     const ms = meadowStandStory(t);
@@ -18803,7 +19036,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-26.whatsnew5';
+const SHIP_BUILD = '2026-08-26.willowstand';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -23673,6 +23906,11 @@ function openInfo(refreshOnly){
     else if(typeof orchardStandReady==='function' && orchardStandReady()
          && typeof isOrchardStandLiveT==='function' && isOrchardStandLiveT(t))
       chips.push('🍎 living orchard — standing grove holds this slope');
+    if(typeof willowStandNeed==='function' && willowStandNeed())
+      chips.push('🌿 living willow is thin — the bank nicks until willow or clover returns');
+    else if(typeof willowStandReady==='function' && willowStandReady()
+         && typeof isWillowStandLiveT==='function' && isWillowStandLiveT(t))
+      chips.push('🌿 living willow — standing withies hold this bank');
     if(typeof meadowStandNeed==='function' && meadowStandNeed())
       chips.push('🌼 meadow stand is thin — pollinators miss this fold');
     else if(typeof meadowStandReady==='function' && meadowStandReady()
@@ -23783,11 +24021,14 @@ function openInfo(refreshOnly){
               || (typeof windShelterStory==='function' && windShelterStory(t))
               || 'A hedgerow seam from the painting — shelter for the next fold, and the herd walks around it.')))
         : (typeof isWillowCutT==='function' && isWillowCutT(t)) || t.farmEdge==='willow'
-          ? ((t.willowRegen!=null)
+          ? ((typeof willowStandStory==='function' && willowStandStory(t))
+            || ((t.willowRegen!=null)
             ? 'A stump after a strip — bank soil and shelter thin until the willow returns. Not an open plant bed.'
-            : (typeof willowTileReady==='function' && willowTileReady(t)
+            : (typeof willowFoldReady==='function' && willowFoldReady() && typeof willowTileReady==='function' && willowTileReady(t)
               ? 'Willow fold — a careful cutting is ready. Tap for withies; the tree stays. Not firewood, not meadow forage.'
-              : 'Willow fold — tap when a rod is ready, or wait for a dawn trickle. Living rods, not firewood. The tree stays.'))
+              : (typeof willowFoldReady==='function' && willowFoldReady()
+                ? 'Willow fold — tap when a rod is ready, or wait for a dawn trickle. Living rods, not firewood. The tree stays.'
+                : 'A willow from the painting. Not firewood, not meadow forage.'))))
         : t.farmEdge==='woodlot' || (typeof isWoodlotT==='function' && isWoodlotT(t))
           ? ((typeof woodlotStandStory==='function' && woodlotStandStory(t))
             || ((t.woodRegen!=null)
