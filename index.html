@@ -8672,11 +8672,9 @@ function schoolMixCoverCount(s){
     else if(leftoverIsSchoolMixStrippedT(t)) stripped++;
   });
   const typeN = Object.keys(types).length;
-  // Two-or-more crop types on the school beds count as living mix, including wheat in that mix.
-  if(typeN >= 2){
-    mix += wheat + other;
-    wheat = 0;
-  }
+  // Two-or-more crop types still count as living mix, but wheat stays wheat.
+  // One leftover clover among a wheat / stripped majority must not hold the school.
+  if(typeN >= 2) mix += other;
   return {seats, mix, wheat, stripped, types:typeN};
 }
 /** School Garden after Home. First session stays off. */
@@ -8690,7 +8688,13 @@ function schoolMixUsable(s){
   if(!schoolMixReady(s)) return false;
   const n = schoolMixCoverCount(s);
   if((n.seats|0) <= 0) return false;
-  return (n.mix|0) >= Math.max(1, Math.ceil(n.seats * 0.5));
+  if((n.mix|0) <= 0) return false;
+  const half = Math.max(1, Math.ceil(n.seats * 0.5));
+  // Same ≥ ~50% gate as leftover paddock rest / wash mouth: a wheat or strip
+  // majority nicks. Bare leftover stamp soil is not mix and does not hold.
+  if((n.wheat|0) >= half) return false;
+  if((n.stripped|0) >= half) return false;
+  return (n.mix|0) >= half;
 }
 /** Wheat-only or stripped bare majority — the mix is gone. */
 function schoolMixNeed(s){
@@ -8702,14 +8706,12 @@ function schoolMixNeed(s){
 }
 function isSchoolMixLiveT(t){
   if(!t) return false;
-  if(typeof leftoverIsSchoolWheatKitchenT==='function' && leftoverIsSchoolWheatKitchenT(t)
-     && typeof schoolMixCoverCount==='function'){
-    const n = schoolMixCoverCount();
-    if((n.types|0) < 2) return false;
+  if(typeof leftoverIsSchoolWheatKitchenT==='function' && leftoverIsSchoolWheatKitchenT(t)){
+    if(typeof schoolMixUsable==='function' ? !schoolMixUsable() : true) return false;
   }
   if(typeof leftoverIsSchoolMixCropT==='function' && leftoverIsSchoolMixCropT(t)) return true;
-  if(t.crop && typeof schoolMixCoverCount==='function'){
-    const n = schoolMixCoverCount();
+  if(t.crop && typeof schoolMixUsable==='function' && schoolMixUsable()){
+    const n = typeof schoolMixCoverCount==='function' ? schoolMixCoverCount() : {types:0};
     return (n.types|0) >= 2;
   }
   return false;
@@ -18526,7 +18528,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-26.schoolmix';
+const SHIP_BUILD = '2026-08-26.schoolmixfix';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
