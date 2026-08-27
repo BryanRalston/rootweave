@@ -1083,6 +1083,8 @@ const PADDOCK_REST_NICK_SOIL = {om:-0.2, microbial:-0.16}; // kitchen / overstoc
 const SCHOOL_MIX_LOT = 3;   // modest crate lot — a light sisters pick, well under a wheat cut
 const SCHOOL_MIX_HOLD_SOIL = {om:0.16, microbial:0.22}; // mild dawn hold on School Garden mix; cap so it cannot farm health
 const SCHOOL_MIX_NICK_SOIL = {om:-0.2, microbial:-0.16}; // wheat-only / strip — cover nicks until sisters or clover return
+const MARKET_YARD_HOLD_SOIL = {om:0.16, microbial:0.22}; // mild dawn hold on Market Cross lane-end yard; cap so it cannot farm health
+const MARKET_YARD_NICK_SOIL = {om:-0.2, microbial:-0.16}; // wheat / sisters kitchen or a plugged lane-end — cover nicks until the yard is open again
 const WIND_SHELTER_NICK_SOIL = {water:-0.8, erosion:-0.6, om:-0.2}; // dawn nick: weather-edge bare after Home
 const WIND_SHELTER_HOLD_SOIL = {water:0.35, erosion:0.3, om:0.1}; // modest hold when the weather-side break stays
 const DUST_WASH_DRY_SOIL = {water:-2.0, om:-0.5, erosion:-0.8}; // dawn nick: dry season, wash filled / blocked / missing
@@ -8552,6 +8554,14 @@ function getTileName(t){
     if(typeof isSchoolMixLiveT==='function' && isSchoolMixLiveT(t))
       return 'Teach-back mix';
   }
+  if(typeof marketYardReady==='function' && marketYardReady()){
+    if(typeof leftoverIsMarketKitchenT==='function' && leftoverIsMarketKitchenT(t))
+      return 'Kitchen on the trade yard';
+    if(typeof isMarketLaneFillT==='function' && isMarketLaneFillT(t))
+      return 'Plugged lane-end';
+    if(typeof isMarketYardLiveT==='function' && isMarketYardLiveT(t))
+      return 'Lane-end trade yard';
+  }
   if(t.crop && typeof CROPS!=='undefined' && CROPS[t.crop.type]) return CROPS[t.crop.type].name;
   return '';
 }
@@ -8834,6 +8844,237 @@ function tickSchoolMixWork(){
   }
   if(typeof toast==='function'){
     toast('📚 School beds went wheat-only or stripped — the teach-back mix is gone. Sisters or clover so the humble garden can hold again.', {once:'school_mix_need_first', throttleMs:4000});
+  }
+  return tiles.length;
+}
+/** Campaign Market Cross only. Home, leftover hay, leftover North/West, School Garden, East Pasture, wash mouth, and unbought South Lane stay off. */
+function leftoverIsMarketCrossFold(P){
+  if(!P) return false;
+  if(P.buyable) return false;
+  if(P.leftover) return false;
+  if(P.id==='home_garden' || P.lvIndex===0) return false;
+  if(P.id==='south_lane' || P.id==='north_folds' || P.id==='west_folds' || P.id==='east_pasture') return false;
+  if(P.id==='hay_field' || P.id==='school_garden' || P.id==='south_reach') return false;
+  return P.id==='market_cross' || P.levelId==='market' || P.lvIndex===7;
+}
+/** Field under the player, or the parked market plot while they are in the yard. */
+function marketYardFarm(){
+  if(typeof homesteadMode!=='undefined' && homesteadMode && typeof plotStateBackup!=='undefined'
+     && plotStateBackup && plotStateBackup.grid && !plotStateBackup.homesteadView){
+    return plotStateBackup;
+  }
+  if(state && !state.homesteadView) return state;
+  return null;
+}
+function currentMarketYardFold(s){
+  s = s || (typeof marketYardFarm==='function' ? marketYardFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s) return false;
+  if(s.homesteadView) return false;
+  const L = (typeof LEVELS!=='undefined' && LEVELS[s.lv]) ? LEVELS[s.lv] : null;
+  if(L && L.id==='home') return false;
+  if(L && L.id==='market') return true;
+  if((s.lv|0)===7 && L && L.id==='market') return true;
+  const P = typeof valleyParcelByLvIndex==='function' ? valleyParcelByLvIndex(s.lv) : null;
+  return leftoverIsMarketCrossFold(P);
+}
+/** Market Cross after Home. First session, leftover hay, leftover paddock rest, School Garden, and South Lane stay off. */
+function marketYardFoldReady(s){
+  if(!camp) return false;
+  if(typeof homePatchCleared==='function' && !homePatchCleared()) return false;
+  return currentMarketYardFold(s);
+}
+/** Open trade seat — soil / dead beds, not the painted lane, swale, water, or buildings. */
+function marketYardTradeSeatOk(t){
+  if(!t) return false;
+  if(typeof isAtlasLaneMarkedT==='function' && isAtlasLaneMarkedT(t)) return false;
+  if(t.terrain!=='soil' && t.terrain!=='dead') return false;
+  if(t.feature==='path' || t.feature==='swale' || t.feature==='saltflat') return false;
+  if(t.terrain==='water' || t.terrain==='pond' || t.terrain==='riverbed') return false;
+  if(t.terrain==='barn' || t.terrain==='coop' || t.terrain==='house' || t.terrain==='nstand') return false;
+  if(t.terrain==='trees' || t.terrain==='orchard') return false;
+  if(typeof BUILD_SET!=='undefined' && BUILD_SET.has(t.terrain)) return false;
+  if(typeof isFarmEdgeT==='function' && isFarmEdgeT(t)) return false;
+  return true;
+}
+/** Wheat or sisters kitchen on the trade yard — not clover / pioneer cover, not the house stand. */
+function leftoverIsMarketKitchenT(t){
+  return !!(t && t.crop && (t.crop.type==='wheat' || t.crop.type==='sisters'));
+}
+/**
+ * Painted cart at the lane-end is the trade mark, not a plug.
+ * Reuses atlas-lane marks; does not change homestead laneUsable / tickLaneWork.
+ */
+function isMarketLaneOpenT(t){
+  if(!t || typeof isAtlasLaneMarkedT!=='function' || !isAtlasLaneMarkedT(t)) return false;
+  if(typeof isLaneOpenT==='function' && isLaneOpenT(t)) return true;
+  if(t.atlasLandmark==='cart' && t.deco==='deco_cart'
+     && !t.crop && !t.graze
+     && !(typeof hasFence==='function' && hasFence(t))
+     && !(typeof BUILD_SET!=='undefined' && BUILD_SET.has(t.terrain))
+     && (t.terrain==='soil' || t.terrain==='dead'))
+    return true;
+  return false;
+}
+function isMarketLaneFillT(t){
+  return !!(t && typeof isAtlasLaneMarkedT==='function' && isAtlasLaneMarkedT(t) && !isMarketLaneOpenT(t));
+}
+function marketYardCoverCount(s){
+  let seats = 0, live = 0, kitchen = 0, lane = 0, laneOpen = 0, plugged = 0, trade = 0;
+  s = s || (typeof marketYardFarm==='function' ? marketYardFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return {seats, live, kitchen, lane, laneOpen, plugged, trade};
+  s.grid.forEach(t=>{
+    if(!t) return;
+    const laneT = typeof isAtlasLaneMarkedT==='function' && isAtlasLaneMarkedT(t);
+    const tradeT = marketYardTradeSeatOk(t);
+    if(!laneT && !tradeT) return;
+    seats++;
+    if(laneT){
+      lane++;
+      if(isMarketLaneOpenT(t)){ laneOpen++; live++; }
+      else{
+        plugged++;
+        if(leftoverIsMarketKitchenT(t)) kitchen++;
+      }
+    }else{
+      trade++;
+      if(leftoverIsMarketKitchenT(t)) kitchen++;
+      else if(isMarketYardLiveT(t)) live++;
+    }
+  });
+  return {seats, live, kitchen, lane, laneOpen, plugged, trade};
+}
+/** Market Cross after Home. First session stays off. */
+function marketYardReady(s){
+  if(typeof marketYardFoldReady==='function' ? !marketYardFoldReady(s) : true) return false;
+  const n = marketYardCoverCount(s);
+  return (n.seats|0) > 0;
+}
+/** Living yard still holds ≥ ~50% of yard/lane seats: clear lane + open trade (soil / living cover). */
+function marketYardUsable(s){
+  if(!marketYardReady(s)) return false;
+  const n = marketYardCoverCount(s);
+  if((n.seats|0) <= 0) return false;
+  if((n.live|0) <= 0) return false;
+  const halfSeats = Math.max(1, Math.ceil(n.seats * 0.5));
+  const halfLane = Math.max(1, Math.ceil((n.lane|0) * 0.5));
+  if((n.kitchen|0) >= halfSeats) return false;
+  if((n.lane|0) > 0 && (n.plugged|0) >= halfLane) return false;
+  return (n.live|0) >= halfSeats;
+}
+/** Wheat / sisters kitchen or a plugged lane-end majority — the yard is gone. */
+function marketYardNeed(s){
+  if(!marketYardReady(s)) return false;
+  if(marketYardUsable(s)) return false;
+  const n = marketYardCoverCount(s);
+  const halfSeats = Math.max(1, Math.ceil((n.seats|0) * 0.5));
+  const halfLane = Math.max(1, Math.ceil((n.lane|0) * 0.5));
+  return ((n.kitchen|0) >= halfSeats) || ((n.lane|0) > 0 && (n.plugged|0) >= halfLane);
+}
+function isMarketYardLiveT(t){
+  if(!t) return false;
+  if(typeof leftoverIsMarketKitchenT==='function' && leftoverIsMarketKitchenT(t)) return false;
+  if(typeof isAtlasLaneMarkedT==='function' && isAtlasLaneMarkedT(t))
+    return isMarketLaneOpenT(t);
+  if(!marketYardTradeSeatOk(t)) return false;
+  if(t.crop && t.crop.type!=='clover' && t.crop.type!=='covercrop') return false;
+  return t.terrain==='soil' || t.terrain==='dead';
+}
+function marketYardSoilTiles(s){
+  const tiles = [];
+  s = s || (typeof marketYardFarm==='function' ? marketYardFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return tiles;
+  s.grid.forEach((t, i)=>{
+    if(!t || !t.soil) return;
+    if(t.terrain!=='soil' && t.terrain!=='dead') return;
+    const laneT = typeof isAtlasLaneMarkedT==='function' && isAtlasLaneMarkedT(t);
+    if(!laneT && !marketYardTradeSeatOk(t)) return;
+    tiles.push({t, i});
+  });
+  return tiles;
+}
+function marketYardFloaterIdx(s){
+  s = s || (typeof marketYardFarm==='function' ? marketYardFarm() : (typeof state!=='undefined' ? state : null));
+  if(state && state.grid && s && s.grid && state.grid===s.grid){
+    for(let i=0;i<s.grid.length;i++){
+      if(isMarketLaneFillT(s.grid[i]) || leftoverIsMarketKitchenT(s.grid[i])) return i;
+    }
+    const beds = marketYardSoilTiles(s);
+    for(let i=0;i<beds.length;i++){
+      if(!isMarketYardLiveT(beds[i].t)) return beds[i].i;
+    }
+    if(beds.length && beds[0] && beds[0].i>=0) return beds[0].i;
+  }
+  if(typeof selected==='number' && selected>=0 && state && state.grid && state.grid[selected]) return selected;
+  return (typeof selected==='number' && selected>=0) ? selected : 0;
+}
+function marketYardStory(t, opts){
+  opts = opts || {};
+  const ready = typeof marketYardReady==='function' && marketYardReady();
+  const need = typeof marketYardNeed==='function' && marketYardNeed();
+  const hold = ready && !need && (typeof marketYardUsable==='function' && marketYardUsable());
+  const live = typeof isMarketYardLiveT==='function' && isMarketYardLiveT(t);
+  const kitchen = typeof leftoverIsMarketKitchenT==='function' && leftoverIsMarketKitchenT(t);
+  const plugged = typeof isMarketLaneFillT==='function' && isMarketLaneFillT(t);
+  const lane = typeof isAtlasLaneMarkedT==='function' && isAtlasLaneMarkedT(t);
+  if(!ready) return '';
+  if(opts.needOnly && !need) return '';
+  if(kitchen)
+    return need
+      ? '🏪 This wheat or sisters kitchen on the lane-end yard — the trade seats are gone. Cover nicks until clover or open soil return. Not the house neighbor stand, not leftover hay, not School Garden mix.'
+      : '🏪 A kitchen row on the lane-end trade yard — not a second neighbor stand. Leave soil or living cover so this yard can hold.';
+  if(plugged)
+    return need
+      ? '🏪 This plugged the lane-end — the trade yard nicks until tractor or clear opens the path again. Not leftover hay, not School Garden mix, not the house neighbor stand.'
+      : '🏪 This sits on the painted lane into the trade yard. Keep the path clear so the yard can hold.';
+  if(lane && live)
+    return need
+      ? '🏪 The lane-end is still open here, but the yard was kitchened or plugged — cover nicks until the path and open seats return. Not leftover hay, not School Garden mix.'
+      : '🏪 Painted lane into the trade yard — keep it clear. Kitchen the seats or plug the lane-end and the hold nicks. Not the house neighbor stand, not leftover hay, not School Garden mix.';
+  if(live)
+    return need
+      ? '🏪 Trade yard is thin — a wheat or sisters kitchen or a plugged lane-end nicked this hold. Clover or an open path so the yard can hold again. Not leftover hay, not School Garden mix.'
+      : '🏪 Lane-end trade yard — open soil and living cover hold these seats. A wheat or sisters kitchen or a plugged lane-end nicks it. Not the house neighbor stand, not leftover hay, not School Garden mix.';
+  if(t && (t.terrain==='soil' || t.terrain==='dead')){
+    if(need) return '🏪 Open trade seats — the yard was kitchened or the lane-end was plugged. Clover or clear the path so this yard can hold. Not leftover hay, not School Garden mix.';
+    if(hold && !opts.needOnly) return '🏪 Beside the lane-end trade yard — the painted path and open seats still hold.';
+  }
+  return '';
+}
+/** One sim dawn: Market Cross lane-end yard holds om / cover; kitchen or a plugged lane-end nicks them. First session stays off. */
+function tickMarketYardWork(){
+  if(!camp || !marketYardReady()) return 0;
+  const s = typeof marketYardFarm==='function' ? marketYardFarm() : (typeof state!=='undefined' ? state : null);
+  if(!s || !s.grid) return 0;
+  const tiles = marketYardSoilTiles(s);
+  if(!tiles.length) return 0;
+  const open = marketYardUsable(s);
+  if(open){
+    const b = (typeof MARKET_YARD_HOLD_SOIL!=='undefined') ? MARKET_YARD_HOLD_SOIL : {om:0.16, microbial:0.22};
+    tiles.forEach(({t})=>{
+      if(!t || !t.soil) return;
+      if((t.soil.om||0) < 72) t.soil.om = clamp((t.soil.om||0) + (b.om||0));
+      if((t.soil.microbial||0) < 74) t.soil.microbial = clamp((t.soil.microbial||0) + (b.microbial||0));
+      if(typeof recalc==='function') recalc(t);
+    });
+    if(typeof toast==='function'){
+      toast('🏪 Lane-end trade yard holds — the painted lane stays open and the trade seats stay soil or living cover. A wheat or sisters kitchen or a plugged lane-end nicks it.', {once:'market_yard_hold_first', throttleMs:4000});
+    }
+    return tiles.length;
+  }
+  if(!marketYardNeed(s)) return 0;
+  const b = (typeof MARKET_YARD_NICK_SOIL!=='undefined') ? MARKET_YARD_NICK_SOIL : {om:-0.2, microbial:-0.16};
+  tiles.forEach(({t})=>{
+    if(!t || !t.soil) return;
+    t.soil.om = clamp((t.soil.om||0) + (b.om||0));
+    t.soil.microbial = clamp((t.soil.microbial||0) + (b.microbial||0));
+    if(typeof recalc==='function') recalc(t);
+  });
+  const fi = marketYardFloaterIdx(s);
+  if(typeof floater==='function' && state && state.grid && state.grid[fi]){
+    floater(fi, 'yard nicks', '#c9a070');
+  }
+  if(typeof toast==='function'){
+    toast('🏪 The trade yard was kitchened or the lane-end was plugged — cover nicks until the path and open seats return.', {once:'market_yard_need_first', throttleMs:4000});
   }
   return tiles.length;
 }
@@ -13189,6 +13430,7 @@ function simStep(dt){
     if(typeof tickPaddockWindShelter==='function') tickPaddockWindShelter();
     if(typeof tickPaddockRestWork==='function') tickPaddockRestWork();
     if(typeof tickSchoolMixWork==='function') tickSchoolMixWork();
+    if(typeof tickMarketYardWork==='function') tickMarketYardWork();
     if(typeof tickDryGrazeStandWork==='function') tickDryGrazeStandWork();
     if(typeof tickWindShelterWork==='function') tickWindShelterWork();
     if(typeof tickHedgeCorridorWork==='function') tickHedgeCorridorWork();
@@ -16740,6 +16982,10 @@ function soilStoryLine(t){
       const pr = paddockRestStory(t);
       if(pr) return pr;
     }
+    if(typeof marketYardStory==='function'){
+      const my = marketYardStory(t);
+      if(my) return my;
+    }
     if(typeof schoolMixStory==='function'){
       const sm = schoolMixStory(t);
       if(sm) return sm;
@@ -16786,6 +17032,10 @@ function soilStoryLine(t){
     if(typeof paddockRestStory==='function'){
       const pr = paddockRestStory(t, {needOnly:true});
       if(pr) return pr;
+    }
+    if(typeof marketYardStory==='function'){
+      const my = marketYardStory(t, {needOnly:true});
+      if(my) return my;
     }
     if(typeof schoolMixStory==='function'){
       const sm = schoolMixStory(t, {needOnly:true});
@@ -16846,6 +17096,10 @@ function soilStoryLine(t){
       const wm = (typeof washMouthStory==='function') ? washMouthStory(t) : '';
       if(wm) return wm;
     }
+    if(typeof marketYardStory==='function'){
+      const my = marketYardStory(t);
+      if(my) return my;
+    }
     return '💧 Water held on the land — a pond keeps neighbors moist.';
   }
   if(t.terrain==='trees'){
@@ -16876,6 +17130,10 @@ function soilStoryLine(t){
        && typeof washMouthReady==='function' && washMouthReady()){
       const wm = (typeof washMouthStory==='function') ? washMouthStory(t) : '';
       if(wm) return wm;
+    }
+    if(typeof marketYardStory==='function'){
+      const my = marketYardStory(t);
+      if(my) return my;
     }
     if(typeof isDustWashFillT==='function' && isDustWashFillT(t))
       return (typeof dustWashNeed==='function' && dustWashNeed())
@@ -16938,6 +17196,10 @@ function soilStoryLine(t){
       const wm = (typeof washMouthStory==='function') ? washMouthStory(t) : '';
       if(wm) return wm;
     }
+    if(typeof marketYardStory==='function'){
+      const my = marketYardStory(t);
+      if(my) return my;
+    }
     if(typeof isDustWashFillT==='function' && isDustWashFillT(t))
       return (typeof dustWashNeed==='function' && dustWashNeed())
         ? '🏜️ This wetland filled the dry wash — drought nicks the flats. Clear it to open the bed.'
@@ -16976,6 +17238,10 @@ function soilStoryLine(t){
     if(typeof paddockRestStory==='function'){
       const pr = paddockRestStory(t);
       if(pr) return pr+' '+tier;
+    }
+    if(typeof marketYardStory==='function'){
+      const my = marketYardStory(t);
+      if(my) return my+' '+tier;
     }
     if(typeof schoolMixStory==='function'){
       const sm = schoolMixStory(t);
@@ -17039,6 +17305,10 @@ function soilStoryLine(t){
     if(typeof paddockRestStory==='function'){
       const pr = paddockRestStory(t);
       if(pr) return (edgeNeed?edgeNeed+' ':'')+pr+' '+tier;
+    }
+    if(typeof marketYardStory==='function'){
+      const my = marketYardStory(t);
+      if(my) return (edgeNeed?edgeNeed+' ':'')+my+' '+tier;
     }
     if(typeof schoolMixStory==='function'){
       const sm = schoolMixStory(t);
@@ -17105,6 +17375,10 @@ function soilStoryLine(t){
   if(typeof paddockRestStory==='function'){
     const pr = paddockRestStory(t);
     if(pr) return pr+' '+tier;
+  }
+  if(typeof marketYardStory==='function'){
+    const my = marketYardStory(t);
+    if(my) return my+' '+tier;
   }
   if(typeof schoolMixStory==='function'){
     const sm = schoolMixStory(t);
@@ -18528,7 +18802,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-26.whatsnew4';
+const SHIP_BUILD = '2026-08-26.marketyard';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -18678,7 +18952,7 @@ function openAboutCredits(){
   if(showNew) camp.tipsShown['whats_new_'+ver] = true;
   const whatsNew = showNew
     ? `<div class="lesson" style="text-align:left;margin-top:6px;border-color:rgba(234,181,67,.45)">
-        <b>What's new (${ver}):</b><br>📚 School Garden: after Home, holds as a humble teach-back mix (sisters, clover / cover, or two non-wheat crops). Wheat-only or a strip nicks until the mix returns. A light crate pick leaves the plants. Not Home Patch, not leftover hay.<br>🌿 North Folds / West Folds: standing rest (clover and living graze cover) holds these leftover extra-paddock seats after Home; a kitchen row or overstock nicks until rest returns. Light manure still feeds the pile. Not East Pasture dry-edge, not Back Paddock.<br>💧 South Reach: leftover wash arriving at the stem holds if the mouth stays open; plug or kitchen it and the leftover river nicks. Not Dust Flats drought, not a creek spine.<br>🐎 East Pasture: salt-crust and sparse cover hold the dry edge; wheat or sisters nicks until rest or cover returns; a light graze still feeds the pile.<br>🐝 Valley map: bees, butterflies, and birds sit on the fold they came back to (same 30 / 45 / 60 as the chips); strip that fold and they leave.<br>🌾 Hay Field: standing forage holds cover after Home; strip or plant sisters and it nicks; a light crate cut leaves the stand. Unbought South Lane stays a deed.<br>🍎 Orchard Block / Orchard Slope: the living grove holds the slope; strip or plant a kitchen and it nicks; a light fruit pick leaves the tree.<br><br>After Home Patch the journey map shows the farm you run — living herd marks (cattle, hens, ducks, goats, sheep, pigs) on owned paddocks, yard, and marsh; leftover compost on the homestead pile; the neighbor stand when crate lots or surplus meat are ready. Surplus meat is a herd tradeoff. Adjacent leftover folds can be bought with coins. Wildlife chips still return at 30 / 45 / 60. The high-dry lane, barn compost yard, garden–orchard coop, weather-side windbreak, living hedges, ridge woodlot, wet meadow forage, and Dust Scrub browse play as land you run. Campaign Marsh Finger plays as a standing filter — the reed belt and the open marsh ponds each have to hold. A light crate cut still leaves the dress; strip the reeds or fill the ponds and filtration nicks until wetland returns. Creek Bend is a working tributary. Fogged land and the first-session garden stay empty. Play stays free; no pay-to-revive.
+        <b>What's new (${ver}):</b><br>🏪 Market Cross: after Home, the painted lane-end and open trade seats hold as a trade yard. Wheat or sisters kitchen, or a plugged lane-end, nicks until the path and open seats return. Not the house neighbor stand, not leftover hay, not School Garden mix.<br>📚 School Garden: after Home, holds as a humble teach-back mix (sisters, clover / cover, or two non-wheat crops). Wheat-only or a strip nicks until the mix returns. A light crate pick leaves the plants. Not Home Patch, not leftover hay.<br>🌿 North Folds / West Folds: standing rest (clover and living graze cover) holds these leftover extra-paddock seats after Home; a kitchen row or overstock nicks until rest returns. Light manure still feeds the pile. Not East Pasture dry-edge, not Back Paddock.<br>💧 South Reach: leftover wash arriving at the stem holds if the mouth stays open; plug or kitchen it and the leftover river nicks. Not Dust Flats drought, not a creek spine.<br>🐎 East Pasture: salt-crust and sparse cover hold the dry edge; wheat or sisters nicks until rest or cover returns; a light graze still feeds the pile.<br>🐝 Valley map: bees, butterflies, and birds sit on the fold they came back to (same 30 / 45 / 60 as the chips); strip that fold and they leave.<br>🌾 Hay Field: standing forage holds cover after Home; strip or plant sisters and it nicks; a light crate cut leaves the stand. Unbought South Lane stays a deed.<br>🍎 Orchard Block / Orchard Slope: the living grove holds the slope; strip or plant a kitchen and it nicks; a light fruit pick leaves the tree.<br><br>After Home Patch the journey map shows the farm you run — living herd marks (cattle, hens, ducks, goats, sheep, pigs) on owned paddocks, yard, and marsh; leftover compost on the homestead pile; the neighbor stand when crate lots or surplus meat are ready. Surplus meat is a herd tradeoff. Adjacent leftover folds can be bought with coins. Wildlife chips still return at 30 / 45 / 60. The high-dry lane, barn compost yard, garden–orchard coop, weather-side windbreak, living hedges, ridge woodlot, wet meadow forage, and Dust Scrub browse play as land you run. Campaign Marsh Finger plays as a standing filter — the reed belt and the open marsh ponds each have to hold. A light crate cut still leaves the dress; strip the reeds or fill the ponds and filtration nicks until wetland returns. Creek Bend is a working tributary. Fogged land and the first-session garden stay empty. Play stays free; no pay-to-revive.
       </div>`
     : '';
   // CD — first About open literacy (in-modal; no toast spam)
@@ -23133,8 +23407,8 @@ function openInfo(refreshOnly){
                ? ((typeof dryGrazeStandStory==='function' && dryGrazeStandStory(t)) || '🧂 A crust of salt poisons this ground — it needs extra feeding.')
                : t.feature==='gully' ? '⛏️ An erosion gully — the storms carved this scar.'
                : t.feature==='swale' ? ((typeof homeWaterStory==='function' && homeWaterStory(t)) || '〰️ A contour swale — water sits uphill so the beds below wilt a little less.')
-               : t.feature==='path' ? ((typeof laneStory==='function' && laneStory(t)) || '🛤️ The farm lane — keep it clear for the herd.')
-               : ((typeof laneStory==='function' && laneStory(t, {needOnly:true})) || '');
+               : t.feature==='path' ? ((typeof marketYardStory==='function' && marketYardStory(t)) || (typeof laneStory==='function' && laneStory(t)) || '🛤️ The farm lane — keep it clear for the herd.')
+               : ((typeof marketYardStory==='function' && marketYardStory(t, {needOnly:true})) || (typeof laneStory==='function' && laneStory(t, {needOnly:true})) || '');
     const washNeed = typeof dustWashNeed==='function' && dustWashNeed();
     const mouthReady = typeof washMouthReady==='function' && washMouthReady();
     const mouthLine = mouthReady && typeof washMouthStory==='function' ? washMouthStory(t) : '';
@@ -23252,6 +23526,12 @@ function openInfo(refreshOnly){
       const coopLine = coopCorridorStory(t);
       if(coopLine) body += `<div class="chiprow">${coopLine}</div>`;
     }
+    if(typeof marketYardReady==='function' && marketYardReady()
+       && typeof isMarketLaneFillT==='function' && isMarketLaneFillT(t)
+       && typeof marketYardStory==='function'){
+      const my = marketYardStory(t);
+      if(my) body += `<div class="chiprow">${my}</div>`;
+    }
   }else if(t.terrain==='soil'){
     const chips = [];
     if(t.crop){
@@ -23310,7 +23590,9 @@ function openInfo(refreshOnly){
       const coopLine = (typeof coopCorridorStory==='function') ? coopCorridorStory(t) : '';
       if(coopLine) chips.push(coopLine);
     }
-    if(typeof isAtlasLaneMarkedT==='function' && isAtlasLaneMarkedT(t)){
+    if(typeof marketYardReady==='function' && marketYardReady() && typeof marketYardStory==='function' && marketYardStory(t)){
+      chips.push(marketYardStory(t));
+    }else if(typeof isAtlasLaneMarkedT==='function' && isAtlasLaneMarkedT(t)){
       const laneChip = (typeof laneStory==='function' && laneStory(t)) || '🛤️ farm lane — keep it clear for the herd';
       chips.push(laneChip);
     }else if(typeof laneNeed==='function' && laneNeed() && typeof laneNearMarked==='function' && laneNearMarked(t))
@@ -23375,6 +23657,11 @@ function openInfo(refreshOnly){
     else if(typeof schoolMixReady==='function' && schoolMixReady()
          && typeof isSchoolMixLiveT==='function' && isSchoolMixLiveT(t))
       chips.push('📚 humble teach-back mix — sisters, clover, and cover hold this school garden');
+    if(typeof marketYardNeed==='function' && marketYardNeed())
+      chips.push('🏪 trade yard nicks — kitchen or a plugged lane-end until the path and open seats return');
+    else if(typeof marketYardReady==='function' && marketYardReady()
+         && typeof isMarketYardLiveT==='function' && isMarketYardLiveT(t))
+      chips.push('🏪 lane-end trade yard — open path and soil or living cover hold this yard');
     if(typeof hayStandNeed==='function' && hayStandNeed())
       chips.push('🌾 standing hay is thin — cover nicks until clover or the stand returns');
     else if(typeof hayStandReady==='function' && hayStandReady()
@@ -23447,6 +23734,8 @@ function openInfo(refreshOnly){
         ? `<div class="chiprow">${(typeof washMouthStory==='function' && washMouthStory(t)) || 'This pond plugged the leftover wash mouth — the stem nicks until the bed reopens. Not Dust Flats drought, not a creek spine.'}</div>`
       : washFilled
         ? `<div class="chiprow">${washNeed?'This pond filled the dry wash — drought nicks the flats. Clear it to open the bed again. Not a second river.':'This pond sits in the dry wash. Clear it to open the bed again. Not a second river.'}</div>`
+      : (typeof isLaneFloodedT==='function' && isLaneFloodedT(t) && typeof marketYardReady==='function' && marketYardReady())
+        ? `<div class="chiprow">${(typeof marketYardStory==='function' && marketYardStory(t)) || 'This pond plugged the lane-end — the trade yard nicks until the path is clear. Not leftover hay, not School Garden mix.'}</div>`
       : (typeof isLaneFloodedT==='function' && isLaneFloodedT(t) && typeof laneWorkReady==='function' && laneWorkReady())
         ? `<div class="chiprow">${(typeof laneStory==='function' && laneStory(t)) || 'This pond flooded the farm lane. Clear it to open the dry path.'}</div>`
       : paddockDrink
@@ -23545,6 +23834,7 @@ function openInfo(refreshOnly){
   const wildChip = wildLine ? `<div class="chiprow">${wildLine}</div>` : '';
   const mouthTitle = (typeof getTileName==='function') ? getTileName(t) : '';
   const mixTitle = (typeof getTileName==='function') ? getTileName(t) : '';
+  const yardTitle = (typeof getTileName==='function') ? getTileName(t) : '';
   const headName = (mouthTitle && typeof washMouthReady==='function' && washMouthReady()
     && typeof isWashMouthMarkedT==='function' && isWashMouthMarkedT(t))
     ? mouthTitle
@@ -23553,6 +23843,11 @@ function openInfo(refreshOnly){
           || (typeof leftoverIsSchoolWheatKitchenT==='function' && leftoverIsSchoolWheatKitchenT(t))
           || (typeof leftoverIsSchoolMixStrippedT==='function' && leftoverIsSchoolMixStrippedT(t))))
       ? mixTitle
+    : (yardTitle && typeof marketYardReady==='function' && marketYardReady()
+       && ((typeof isMarketYardLiveT==='function' && isMarketYardLiveT(t))
+          || (typeof leftoverIsMarketKitchenT==='function' && leftoverIsMarketKitchenT(t))
+          || (typeof isMarketLaneFillT==='function' && isMarketLaneFillT(t))))
+      ? yardTitle
     : (names[t.terrain]||t.terrain);
   panel.innerHTML = `<h3>${healthFace(isLandT(t)?t.health:80)} ${headName} <span style="font-size:11px;color:var(--soft)">${regName}</span>
     <button class="closex" id="infoClose">✕</button></h3>${body}${pileChip}${wildChip}${crateChip}`;
