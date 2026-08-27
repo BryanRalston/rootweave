@@ -1091,6 +1091,8 @@ const DUST_WASH_DRY_SOIL = {water:-2.0, om:-0.5, erosion:-0.8}; // dawn nick: dr
 const DUST_WASH_WET_SOIL = {water:0.8, om:0.2}; // tiny recover after a rare wet pulse when the wash is open
 const HIGH_POND_NICK_SOIL = {erosion:-0.8, water:-0.4, om:-0.3}; // dawn nick: wet pulse / runoff, pond filled / blocked / missing
 const HIGH_POND_FILTER_SOIL = {erosion:0.5, water:0.4, om:0.15}; // modest filter when the high pond is open during a wet pulse
+const WIND_CATCH_HOLD_SOIL = {water:0.32, erosion:0.28, om:0.1}; // mild dawn hold on Wind Ridge beds while a tank or well stands; cap so it cannot farm health — milder than high-pond wet-pulse
+const WIND_CATCH_NICK_SOIL = {water:-0.55, erosion:-0.5, om:-0.16}; // strip tanks / kitchen — ridge beds nick until a tank, well, or clover returns
 const HOME_WATER_NICK_SOIL = {water:-1.2, om:-0.25}; // dawn nick: wet pulse, garden pond / swale filled — milder than ridge / dust
 const HOME_WATER_HOLD_SOIL = {water:0.4, om:0.1}; // modest hold when kitchen pond + swale stay open in a wet pulse
 const HOME_WATER_SETTLE_DAYS = 4; // inspect teaches day 1; nick waits so first-session Home stays fair
@@ -6283,6 +6285,238 @@ function tickHighPondWork(){
   }
   return tiles.length;
 }
+/** Campaign Wind Ridge only. Home, leftover woodlot, Dust Flats, Market Cross, School Garden stay off. */
+function leftoverIsWindCatchFold(P){
+  if(!P) return false;
+  if(P.leftover || P.buyable) return false;
+  if(P.id==='home_garden' || P.lvIndex===0) return false;
+  if(P.id==='woodlot' || P.id==='dust_flats' || P.id==='market_cross' || P.id==='school_garden') return false;
+  return P.id==='wind_ridge' || P.levelId==='wind';
+}
+/** Field under the player, or the parked ridge fold while they are in the yard. */
+function windCatchFarm(){
+  if(typeof homesteadMode!=='undefined' && homesteadMode && typeof plotStateBackup!=='undefined'
+     && plotStateBackup && plotStateBackup.grid && !plotStateBackup.homesteadView){
+    return plotStateBackup;
+  }
+  if(state && !state.homesteadView) return state;
+  return null;
+}
+function currentWindCatchFold(s){
+  s = s || (typeof windCatchFarm==='function' ? windCatchFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s) return false;
+  if(s.homesteadView) return false;
+  const L = (typeof LEVELS!=='undefined' && LEVELS[s.lv]) ? LEVELS[s.lv] : null;
+  if(L && L.id==='home') return false;
+  if(L && L.id==='wind') return true;
+  if(L && (L.id==='market' || L.id==='school' || L.id==='flats' || L.id==='woodlot')) return false;
+  const P = typeof valleyParcelByLvIndex==='function' ? valleyParcelByLvIndex(s.lv) : null;
+  return leftoverIsWindCatchFold(P);
+}
+/** Wind Ridge after Home. First session, leftover woodlot, Dust Flats, Market Cross, and School Garden stay off. */
+function windCatchFoldReady(s){
+  if(!camp) return false;
+  if(typeof homePatchCleared==='function' && !homePatchCleared()) return false;
+  return currentWindCatchFold(s);
+}
+/** Living rain-catch seat — a tank or well the player placed. Windmill / solar stay coin earners. High-pond basin and woodlot trees are not catch. */
+function isWindCatchLiveT(t){
+  if(!t) return false;
+  if(t.terrain!=='raintank' && t.terrain!=='well') return false;
+  if(typeof isHighPondMarkedT==='function' && isHighPondMarkedT(t)) return false;
+  if(typeof isWoodlotT==='function' && isWoodlotT(t) && t.terrain==='trees') return false;
+  return true;
+}
+/** Marked catch seat — a living tank / well, or a stripped seat that once held one. Do not invent tanks on unmarked leftover soil. */
+function isWindCatchMarkT(t){
+  if(!t) return false;
+  if(typeof isHighPondMarkedT==='function' && isHighPondMarkedT(t)) return false;
+  if(typeof isWindCatchLiveT==='function' && isWindCatchLiveT(t)) return true;
+  return !!t.windCatch;
+}
+/** Remember a player-placed tank / well on this fold after Home. Bare ridge soil is not a seat. */
+function rememberWindCatchMark(t){
+  if(!t) return;
+  if(typeof isHighPondMarkedT==='function' && isHighPondMarkedT(t)) return;
+  if(typeof homePatchCleared==='function' && !homePatchCleared()) return;
+  if(typeof currentWindCatchFold==='function' && !currentWindCatchFold()) return;
+  if(t.terrain!=='raintank' && t.terrain!=='well' && !t.windCatch) return;
+  t.windCatch = true;
+}
+/** Plantable ridge beds — soil / dead, not the high pond, not woodlot trees, not a tank. */
+function windCatchPlantSeatOk(t){
+  if(!t) return false;
+  if(typeof isHighPondMarkedT==='function' && isHighPondMarkedT(t)) return false;
+  if(typeof isWoodlotT==='function' && isWoodlotT(t)) return false;
+  if(t.terrain!=='soil' && t.terrain!=='dead') return false;
+  if(t.feature==='path' || t.feature==='swale' || t.feature==='saltflat') return false;
+  if(typeof leftoverStampLand==='function') return leftoverStampLand(t);
+  return true;
+}
+/** Sisters / wheat kitchen on plantable ridge land — the fold treated as a kitchen. Clover is not kitchen. */
+function leftoverIsWindCatchKitchenT(t, s){
+  if(!t || !t.crop) return false;
+  if(t.crop.type!=='sisters' && t.crop.type!=='wheat') return false;
+  if(typeof currentWindCatchFold==='function' && !currentWindCatchFold(s)) return false;
+  return typeof windCatchPlantSeatOk==='function' ? windCatchPlantSeatOk(t) : (t.terrain==='soil' || t.terrain==='dead');
+}
+/** Clover / pioneer cover on marked catch seats — restores the drought hold after a strip.
+ *  Leftover wet-dress clover on unmarked ridge soil must not hold the catch (meadowfix / schoolmixfix). */
+function leftoverIsWindCatchCloverT(t, s){
+  if(!t || !t.crop) return false;
+  if(t.crop.type!=='clover' && t.crop.type!=='covercrop') return false;
+  if(typeof leftoverIsWindCatchKitchenT==='function' && leftoverIsWindCatchKitchenT(t, s)) return false;
+  if(typeof currentWindCatchFold==='function' && !currentWindCatchFold(s)) return false;
+  if(typeof isWindCatchMarkT==='function' && isWindCatchMarkT(t)) return true;
+  return false;
+}
+function windCatchCoverCount(s){
+  let live = 0, seats = 0, kitchen = 0, plant = 0, clover = 0;
+  s = s || (typeof windCatchFarm==='function' ? windCatchFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return {live, seats, kitchen, plant, clover};
+  s.grid.forEach(t=>{
+    if(!t) return;
+    const liveT = isWindCatchLiveT(t);
+    const markT = isWindCatchMarkT(t);
+    // Seats are living or marked catch only — bare leftover / ridge soil must not pad the live count.
+    // High-pond basin tiles and woodlot trees are not rain-catch. Windmill / solar are not catch.
+    if(liveT || markT) seats++;
+    if(liveT){
+      if(typeof rememberWindCatchMark==='function') rememberWindCatchMark(t);
+      live++;
+    }
+    if(leftoverIsWindCatchCloverT(t, s)) clover++;
+    if(windCatchPlantSeatOk(t)){
+      plant++;
+      if(leftoverIsWindCatchKitchenT(t, s)) kitchen++;
+    }
+  });
+  return {live, seats, kitchen, plant, clover};
+}
+/** Wind Ridge after Home, once a tank or well has been seated. First visit with no catch is the campaign lesson, not a nick. */
+function windCatchReady(s){
+  if(typeof windCatchFoldReady==='function' ? !windCatchFoldReady(s) : true) return false;
+  const n = windCatchCoverCount(s);
+  return (n.seats|0) > 0;
+}
+/** Living rain-catch still holds ≥ ~50% of marked catch seats, and sisters / wheat stay below ~50% of plantable ridge land. Clover restores. */
+function windCatchUsable(s){
+  if(!windCatchReady(s)) return false;
+  const n = windCatchCoverCount(s);
+  if((n.seats|0) <= 0) return false;
+  const halfSeats = Math.max(1, Math.ceil(n.seats * 0.5));
+  const halfPlant = Math.max(1, Math.ceil((n.plant|0) * 0.5));
+  if((n.plant|0) > 0 && (n.kitchen|0) >= halfPlant) return false;
+  if((n.live|0) >= halfSeats) return true;
+  if((n.clover|0) >= halfSeats) return true;
+  return false;
+}
+function windCatchNeed(s){
+  return !!(windCatchReady(s) && !windCatchUsable(s));
+}
+/** Ridge soil beds the catch still feeds — plantable land, not the tank itself, not the high pond, not woodlot trees. */
+function windCatchSoilTiles(s){
+  const tiles = [];
+  s = s || (typeof windCatchFarm==='function' ? windCatchFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return tiles;
+  s.grid.forEach((t, i)=>{
+    if(!t || !t.soil) return;
+    if(!windCatchPlantSeatOk(t)) return;
+    tiles.push({t, i});
+  });
+  return tiles;
+}
+function windCatchFloaterIdx(s){
+  s = s || (typeof windCatchFarm==='function' ? windCatchFarm() : (typeof state!=='undefined' ? state : null));
+  if(state && state.grid && s && s.grid && state.grid===s.grid){
+    for(let i=0;i<s.grid.length;i++){
+      if(isWindCatchMarkT(s.grid[i]) && !isWindCatchLiveT(s.grid[i])) return i;
+    }
+    const beds = windCatchSoilTiles(s);
+    for(let i=0;i<beds.length;i++){
+      if(leftoverIsWindCatchKitchenT(beds[i].t, s) || leftoverIsWindCatchCloverT(beds[i].t, s)
+         || !isWindCatchLiveT(beds[i].t))
+        return beds[i].i;
+    }
+    if(beds.length && beds[0] && beds[0].i>=0) return beds[0].i;
+    for(let i=0;i<s.grid.length;i++) if(isWindCatchLiveT(s.grid[i])) return i;
+  }
+  if(typeof selected==='number' && selected>=0 && state && state.grid && state.grid[selected]) return selected;
+  return (typeof selected==='number' && selected>=0) ? selected : 0;
+}
+function windCatchStory(t, opts){
+  opts = opts || {};
+  const ready = typeof windCatchReady==='function' && windCatchReady();
+  const need = typeof windCatchNeed==='function' && windCatchNeed();
+  const hold = ready && !need && (typeof windCatchUsable==='function' && windCatchUsable());
+  const live = typeof isWindCatchLiveT==='function' && isWindCatchLiveT(t);
+  const mark = typeof isWindCatchMarkT==='function' && isWindCatchMarkT(t);
+  const kitchen = typeof leftoverIsWindCatchKitchenT==='function' && leftoverIsWindCatchKitchenT(t);
+  const clover = typeof leftoverIsWindCatchCloverT==='function' && leftoverIsWindCatchCloverT(t);
+  if(!ready) return '';
+  if(opts.needOnly && !need) return '';
+  if(kitchen)
+    return need
+      ? '🛢️ This sisters or wheat kitchen on the ridge — rain-catch cannot hold. Drought nicks the beds until clover returns or the kitchen thins. Not a second pond, not the woodlot, not the weather-side break.'
+      : '🛢️ A kitchen row on Wind Ridge — not living rain-catch. Leave a tank or well so these beds can hold through drought.';
+  if(live)
+    return need
+      ? '🛢️ Living rain-catch is thin — tanks were stripped or the ridge was treated as a kitchen. Drought nicks until a tank, well, or clover returns. Not a second pond, not the woodlot, not the weather-side break.'
+      : '🛢️ Living rain-catch — this tank or well holds ridge beds through drought. Strip the catch or plant a sisters / wheat kitchen and the beds nick. Not a second pond, not the woodlot, not the weather-side break, not a kitchen.';
+  if(clover)
+    return need
+      ? '🛢️ Clover on a rain-catch seat — the drought hold is thin. Cover nicks until a tank, well, or this clover can hold again.'
+      : '🛢️ Clover on a rain-catch seat — rest cover holds this ridge until a tank or well stands again. Not a kitchen row.';
+  if(mark && t && (t.terrain==='soil' || t.terrain==='dead'))
+    return need
+      ? '🛢️ Stripped rain-catch — the tank or well is gone. Drought nicks until a tank, well, or clover returns. Not a second pond, not the woodlot.'
+      : '🛢️ A rain-catch seat — place a tank or well so the ridge can hold through drought.';
+  if(t && (t.terrain==='soil' || t.terrain==='dead')){
+    if(need) return '🛢️ Open ridge beds — rain-catch was stripped or the fold was treated as a kitchen. A tank, well, or clover so the drought hold can return. Not a second pond, not the woodlot, not the weather-side break.';
+    if(hold && !opts.needOnly) return '🛢️ Beside living rain-catch — tanks and the well still hold these beds through drought.';
+  }
+  return '';
+}
+/** One sim dawn: living rain-catch holds ridge beds; a stripped or kitchen fold nicks them. First session stays off. */
+function tickWindCatchWork(){
+  if(!camp || !windCatchReady()) return 0;
+  const s = typeof windCatchFarm==='function' ? windCatchFarm() : (typeof state!=='undefined' ? state : null);
+  if(!s || !s.grid) return 0;
+  const tiles = windCatchSoilTiles(s);
+  if(!tiles.length) return 0;
+  const open = windCatchUsable(s);
+  if(open){
+    const b = (typeof WIND_CATCH_HOLD_SOIL!=='undefined') ? WIND_CATCH_HOLD_SOIL : {water:0.32, erosion:0.28, om:0.1};
+    tiles.forEach(({t})=>{
+      if(!t || !t.soil) return;
+      if((t.soil.water||0) < 70) t.soil.water = clamp((t.soil.water||0) + (b.water||0));
+      if((t.soil.erosion||0) < 80) t.soil.erosion = clamp((t.soil.erosion||0) + (b.erosion||0));
+      if((t.soil.om||0) < 70) t.soil.om = clamp((t.soil.om||0) + (b.om||0));
+      if(typeof recalc==='function') recalc(t);
+    });
+    if(typeof toast==='function'){
+      toast('🛢️ Living rain-catch holds the ridge — tanks and the well keep beds moist through drought. Strip them or plant a kitchen and the beds nick.', {once:'wind_catch_hold_first', throttleMs:4000});
+    }
+    return tiles.length;
+  }
+  if(!windCatchNeed(s)) return 0;
+  const b = (typeof WIND_CATCH_NICK_SOIL!=='undefined') ? WIND_CATCH_NICK_SOIL : {water:-0.55, erosion:-0.5, om:-0.16};
+  tiles.forEach(({t})=>{
+    if(!t || !t.soil) return;
+    t.soil.water = clamp((t.soil.water||0) + (b.water||0));
+    t.soil.erosion = clamp((t.soil.erosion||0) + (b.erosion||0));
+    t.soil.om = clamp((t.soil.om||0) + (b.om||0));
+    if(typeof recalc==='function') recalc(t);
+  });
+  const fi = windCatchFloaterIdx(s);
+  if(typeof floater==='function' && state && state.grid && state.grid[fi]){
+    floater(fi, 'drought', '#c9a070');
+  }
+  if(typeof toast==='function'){
+    toast('🛢️ The rain-catch is gone or the ridge was treated as a kitchen — beds nick until a tank, well, or clover returns.', {once:'wind_catch_need_first', throttleMs:4000});
+  }
+  return tiles.length;
+}
 /** Living woodlot canopy on this fold — not orchard fruit, not a hay windbreak, not willow rods. */
 function isWoodlotTimberT(t, s){
   if(!t || t.terrain!=='trees') return false;
@@ -8771,6 +9005,17 @@ function getTileName(t){
       return 'Plugged lane-end';
     if(typeof isMarketYardLiveT==='function' && isMarketYardLiveT(t))
       return 'Lane-end trade yard';
+  }
+  if(typeof windCatchReady==='function' && windCatchReady()){
+    if(typeof leftoverIsWindCatchKitchenT==='function' && leftoverIsWindCatchKitchenT(t))
+      return 'Kitchen on the ridge';
+    if(typeof leftoverIsWindCatchCloverT==='function' && leftoverIsWindCatchCloverT(t))
+      return 'Clover on rain-catch';
+    if(typeof isWindCatchLiveT==='function' && isWindCatchLiveT(t))
+      return 'Rain-catch';
+    if(typeof isWindCatchMarkT==='function' && isWindCatchMarkT(t)
+       && (t.terrain==='soil' || t.terrain==='dead'))
+      return 'Stripped rain-catch';
   }
   if(t.crop && typeof CROPS!=='undefined' && CROPS[t.crop.type]) return CROPS[t.crop.type].name;
   return '';
@@ -13649,6 +13894,7 @@ function simStep(dt){
     if(typeof tickDustWashWork==='function') tickDustWashWork();
     if(typeof tickWashMouthWork==='function') tickWashMouthWork();
     if(typeof tickHighPondWork==='function') tickHighPondWork();
+    if(typeof tickWindCatchWork==='function') tickWindCatchWork();
     if(typeof tickHomeWaterWork==='function') tickHomeWaterWork();
     if(typeof tickLaneWork==='function') tickLaneWork();
     if(typeof tickRiparianBufferWork==='function') tickRiparianBufferWork();
@@ -17214,6 +17460,10 @@ function soilStoryLine(t){
       const ww = willowStandStory(t);
       if(ww) return ww;
     }
+    if(typeof windCatchStory==='function'){
+      const wc = windCatchStory(t);
+      if(wc) return wc;
+    }
     if(t.feature==='saltflat') return '🧂 Salt memory — leftover irrigation and drought. Extra life and time are the only rinse.';
     if(typeof highPondNeed==='function' && highPondNeed()
        && typeof isHighPondFillT==='function' && isHighPondFillT(t))
@@ -17443,6 +17693,12 @@ function soilStoryLine(t){
       return (typeof orchardFruitStory==='function' ? orchardFruitStory('') : '🍎 Living orchard fruit for the crate. The tree stays.');
     return '';
   }
+  if(t.terrain==='raintank' || t.terrain==='well'){
+    if(typeof windCatchStory==='function'){
+      const wc = windCatchStory(t);
+      if(wc) return wc;
+    }
+  }
   if(t.terrain!=='soil') return '';
   const h = t.health|0;
   const tier = h >= 80 ? '🌟 Rich living soil — keep diversity and rest; it pays you back.'
@@ -17482,6 +17738,10 @@ function soilStoryLine(t){
     if(typeof willowStandStory==='function'){
       const ww = willowStandStory(t);
       if(ww) return ww+' '+tier;
+    }
+    if(typeof windCatchStory==='function'){
+      const wc = windCatchStory(t);
+      if(wc) return wc+' '+tier;
     }
     if(typeof paddockStockThirstNeed==='function' && paddockStockThirstNeed())
       return '💧 Dry fold — the herd needs stock water they can stand beside. '+tier;
@@ -17553,6 +17813,10 @@ function soilStoryLine(t){
     if(typeof willowStandStory==='function'){
       const ww = willowStandStory(t);
       if(ww) return (edgeNeed?edgeNeed+' ':'')+ww+' '+tier;
+    }
+    if(typeof windCatchStory==='function'){
+      const wc = windCatchStory(t);
+      if(wc) return (edgeNeed?edgeNeed+' ':'')+wc+' '+tier;
     }
     if(t.crop.type==='sisters')
       return (edgeNeed?edgeNeed+' ':'')+'🌽 The guild — corn is the pole, beans feed nitrogen, squash shades weeds. A team feeds the soil. '+tier;
@@ -17627,6 +17891,10 @@ function soilStoryLine(t){
   if(typeof willowStandStory==='function'){
     const ww = willowStandStory(t);
     if(ww) return ww+' '+tier;
+  }
+  if(typeof windCatchStory==='function'){
+    const wc = windCatchStory(t);
+    if(wc) return wc+' '+tier;
   }
   if(typeof meadowStandStory==='function'){
     const ms = meadowStandStory(t);
@@ -17990,6 +18258,7 @@ function applyTool(i){
       if(state && (t.terrain==='water' || t.terrain==='soil')){ state._creekSpine = null; state._creekSpineTag = ''; }
     };
     else if(BUILD_SET.has(t.terrain)) did = ()=>{
+      if(typeof rememberWindCatchMark==='function') rememberWindCatchMark(t);
       if(typeof rememberHomeWaterMarks==='function') rememberHomeWaterMarks(t);
       if(typeof rememberHighPondMark==='function') rememberHighPondMark(t);
       if(typeof rememberMarshPondMark==='function') rememberMarshPondMark(t);
@@ -18569,9 +18838,11 @@ function applyTool(i){
       toast((tool==='windmill'?'🌬️ Windmill':'☀️ Solar')+' — clean power pays +2🪙 a day. Rain tanks and a well steady droughts.', {once:'first_power_build', throttleMs:4000});
     }
     if(tool==='raintank'){
+      if(typeof rememberWindCatchMark==='function') rememberWindCatchMark(t);
       toast('🛢️ Rain tank — keeps nearby soil moist through dry spells. Stack a few on the ridge.', {once:'first_raintank', throttleMs:4000});
     }
     if(tool==='well'){
+      if(typeof rememberWindCatchMark==='function') rememberWindCatchMark(t);
       toast('⛲ Well — groundwater for neighboring soil. Nice companion to rain tanks.', {once:'first_well', throttleMs:4000});
     }
     const bWords = {market:'🏪 open for business!', silo:'🌾 grain store!', greenhouse:'🪴 warm glass!', beehive:'🐝 buzzing!',
@@ -19038,7 +19309,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-26.whatsnew6';
+const SHIP_BUILD = '2026-08-26.windcatch';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -23744,6 +24015,11 @@ function openInfo(refreshOnly){
       body = (typeof dustWashNeed==='function' && dustWashNeed())
         ? `<div class="chiprow">This wetland filled the dry wash — drought nicks the flats. Clear it to open the bed again. Not a second river.</div>`
         : `<div class="chiprow">This wetland sits in the dry wash. Clear it to open the bed again. Not a second river.</div>`;
+    }else if((t.terrain==='raintank' || t.terrain==='well')
+              && typeof windCatchReady==='function' && windCatchReady()
+              && typeof windCatchStory==='function'){
+      const wc = windCatchStory(t);
+      if(wc) body = `<div class="chiprow">${wc}</div>`;
     }
     if(t.terrain==='orchard'){
       const osLine = (typeof orchardStandStory==='function') ? orchardStandStory(t) : '';
@@ -23913,6 +24189,13 @@ function openInfo(refreshOnly){
     else if(typeof willowStandReady==='function' && willowStandReady()
          && typeof isWillowStandLiveT==='function' && isWillowStandLiveT(t))
       chips.push('🌿 living willow — standing withies hold this bank');
+    if(typeof windCatchNeed==='function' && windCatchNeed())
+      chips.push('🛢️ rain-catch is thin — drought nicks until a tank, well, or clover returns');
+    else if(typeof windCatchReady==='function' && windCatchReady()
+         && ((typeof isWindCatchLiveT==='function' && isWindCatchLiveT(t))
+            || (typeof leftoverIsWindCatchCloverT==='function' && leftoverIsWindCatchCloverT(t))
+            || (typeof windCatchPlantSeatOk==='function' && windCatchPlantSeatOk(t))))
+      chips.push('🛢️ living rain-catch — tanks and the well hold these beds through drought');
     if(typeof meadowStandNeed==='function' && meadowStandNeed())
       chips.push('🌼 meadow stand is thin — pollinators miss this fold');
     else if(typeof meadowStandReady==='function' && meadowStandReady()
@@ -24091,6 +24374,12 @@ function openInfo(refreshOnly){
        && ((typeof isMarketYardLiveT==='function' && isMarketYardLiveT(t))
           || (typeof leftoverIsMarketKitchenT==='function' && leftoverIsMarketKitchenT(t))
           || (typeof isMarketLaneFillT==='function' && isMarketLaneFillT(t))))
+      ? yardTitle
+    : (yardTitle && typeof windCatchReady==='function' && windCatchReady()
+       && ((typeof isWindCatchLiveT==='function' && isWindCatchLiveT(t))
+          || (typeof leftoverIsWindCatchKitchenT==='function' && leftoverIsWindCatchKitchenT(t))
+          || (typeof leftoverIsWindCatchCloverT==='function' && leftoverIsWindCatchCloverT(t))
+          || (typeof isWindCatchMarkT==='function' && isWindCatchMarkT(t))))
       ? yardTitle
     : (names[t.terrain]||t.terrain);
   panel.innerHTML = `<h3>${healthFace(isLandT(t)?t.health:80)} ${headName} <span style="font-size:11px;color:var(--soft)">${regName}</span>
