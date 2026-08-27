@@ -5813,6 +5813,7 @@ function riparianBufferFloaterIdx(s){
 }
 function riparianBufferStory(t, opts){
   opts = opts || {};
+  if(typeof currentRiparianFold==='function' && !currentRiparianFold()) return '';
   const ready = typeof riparianBufferReady==='function' && riparianBufferReady();
   const need = typeof riparianBufferNeed==='function' && riparianBufferNeed();
   const live = typeof isRiparianLiveT==='function' && isRiparianLiveT(t);
@@ -11462,6 +11463,15 @@ function washMouthStory(t, opts){
   if(feed){
     if(need) return 'Stem bed beside the leftover wash mouth — the mouth is plugged, so this soil nicks until the bed reopens. Not bank-tree runoff, not Dust Flats.';
     if(hold && !opts.needOnly) return 'Stem bed beside the leftover wash mouth — open wash holds this leftover river soil. Keep the mouth open. Not Dust Flats, not a creek spine.';
+  }
+  // Leftover river-dress bank trees / leftover stem water: same leftover, not a riparian hold.
+  const leftoverDress = (t.terrain==='water')
+    || ((t.farmEdge==='riparian' || (typeof isRiparianT==='function' && isRiparianT(t)))
+        && t.terrain==='trees');
+  if(leftoverDress){
+    return need
+      ? 'This leftover wash bed is still open, but the mouth is blocked — stem beds nick until the wash arrives again. Not Dust Flats, not a creek spine.'
+      : 'Leftover wash arriving at the stem — keep this bed open so rare water can meet the river. Not Dust Flats drought, not a creek spine, not bank trees.';
   }
   return '';
 }
@@ -18069,6 +18079,11 @@ function soilStoryLine(t){
     return '💀 Sleeping soil — the living community is gone until you feed it.';
   }
   if(t.terrain==='water'){
+    if(typeof washMouthReady==='function' && washMouthReady()
+       && typeof washMouthStory==='function'){
+      const wm = washMouthStory(t);
+      if(wm) return wm;
+    }
     if(typeof creekSpineStory==='function'){
       const ck = creekSpineStory(t);
       if(ck) return ck;
@@ -18137,9 +18152,9 @@ function soilStoryLine(t){
       const hw = homeWaterStory(t);
       if(hw) return hw;
     }
-    if(typeof isWashMouthFillT==='function' && isWashMouthFillT(t)
-       && typeof washMouthReady==='function' && washMouthReady()){
-      const wm = (typeof washMouthStory==='function') ? washMouthStory(t) : '';
+    if(typeof washMouthReady==='function' && washMouthReady()
+       && typeof washMouthStory==='function'){
+      const wm = washMouthStory(t);
       if(wm) return wm;
     }
     if(typeof marketYardStory==='function'){
@@ -19879,7 +19894,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-26.whatsnew10';
+const SHIP_BUILD = '2026-08-26.washinspect';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -24712,10 +24727,11 @@ function openInfo(refreshOnly){
       if(ckLine) chips.push(ckLine);
     }
     {
+      const ripHold = typeof currentRiparianFold==='function' && currentRiparianFold();
       const ripLine = (typeof riparianBufferStory==='function') ? riparianBufferStory(t) : '';
-      if(ripLine) chips.push(ripLine);
-      else if(typeof riparianAdj==='function' && riparianAdj(t)) chips.push('🌳 bank buffer nearby — roots filter a little runoff');
-      else if(state && typeof atlasWaterAdjLocal==='function' && atlasWaterAdjLocal(state, t.c, t.r))
+      if(ripHold && ripLine) chips.push(ripLine);
+      else if(ripHold && typeof riparianAdj==='function' && riparianAdj(t)) chips.push('🌳 bank buffer nearby — roots filter a little runoff');
+      else if(ripHold && state && typeof atlasWaterAdjLocal==='function' && atlasWaterAdjLocal(state, t.c, t.r))
         chips.push('🟤 bare bank — mud slides into the water');
     }
     if(typeof washMouthReady==='function' && washMouthReady()){
@@ -24863,7 +24879,10 @@ function openInfo(refreshOnly){
       <div class="hbarw"><div class="hbar" style="width:${wq}%; background:linear-gradient(90deg,#9a8340,#4a9fd0)"></div></div>
       <div style="font-weight:800; font-size:13px">Water Quality <b>${wq}</b>/100</div>
       <div class="chiprow">${mood}</div>
-      <div class="chiprow">${(typeof creekSpineStory==='function' && creekSpineStory(t))
+      <div class="chiprow">${(typeof washMouthReady==='function' && washMouthReady())
+        ? ((typeof washMouthStory==='function' && washMouthStory(t))
+          || 'Leftover wash arriving at the stem — keep this bed open so rare water can meet the river. Not Dust Flats drought, not a creek spine, not bank trees.')
+        : (typeof creekSpineStory==='function' && creekSpineStory(t))
         ? '💡 Keep this tributary open — fill or block the spine and the feed beds nick until the water runs again. Bank trees are a separate hold.'
         : '💡 Plant 🌳 trees on the banks — riparian buffer roots filter the runoff. Keep the living buffer; strip it and wet-season runoff nicks the beds.'}</div>`;
   }else if(t.terrain==='trees'){
@@ -24912,7 +24931,11 @@ function openInfo(refreshOnly){
                 ? 'Ridge woodlot — a careful thinning is ready. Tap for firewood; the tree stays. Neighbors hold soil. Not an open plant bed.'
                 : 'Ridge woodlot — tap when a limb is ready, or wait for a dawn trickle. Neighbors hold soil. The herd walks around the canopy. Not an open plant bed.')
               : 'Ridge woodlot — neighbors hold soil and shrug dust. The herd walks around the canopy. Not an open plant bed.')))
-        : t.farmEdge==='riparian' || (typeof isRiparianT==='function' && isRiparianT(t))
+        : (typeof washMouthReady==='function' && washMouthReady()
+            && typeof washMouthStory==='function' && washMouthStory(t))
+          ? washMouthStory(t)
+        : (typeof currentRiparianFold==='function' ? currentRiparianFold() : false)
+          && (t.farmEdge==='riparian' || (typeof isRiparianT==='function' && isRiparianT(t)))
           ? ((typeof riparianBufferStory==='function' && riparianBufferStory(t))
             || 'A riparian buffer — roots filter runoff before it reaches the river. Keep the trees. Strip them and wet-season runoff nicks the beds. The herd walks around the bank.')
         : (typeof isHighPondFillT==='function' && isHighPondFillT(t) && typeof highPondReady==='function' && highPondReady())
