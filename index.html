@@ -9847,7 +9847,6 @@ function rememberWashMouthMark(t){
     const A = atlasGet(t.atlasC, t.atlasR);
     if(A && A.water==='wash') t.atlasWater = 'wash';
   }
-  if((t.terrain==='riverbed' || t.atlasWater==='wash') && !t.atlasWater) t.atlasWater = 'wash';
 }
 function washMouthShouldReopen(t){
   if(!t) return false;
@@ -9874,7 +9873,7 @@ function washMouthOnSharedEdgeAtlas(ac, ar){
     || (ac===dc-1 && ar===dr)
     || (ac===dc-1 && ar===dr-1);
 }
-/** Re-tag painted leftover wash. If the crop has none, seat atlas wash at the dust/south_reach shared edge only. */
+/** Re-tag painted leftover wash. If the crop has none, seat atlas wash at the dust/south_reach shared edge only. Never invent wash on leftover soil. */
 function ensureWashMouthKeep(s, P){
   if(!s || !s.grid) return;
   if(!leftoverIsWashMouthFold(P)) return;
@@ -9883,7 +9882,7 @@ function ensureWashMouthKeep(s, P){
   s.grid.forEach(t=>{
     if(!t) return;
     const A = (typeof atlasGet==='function' && t.atlasC!=null) ? atlasGet(t.atlasC, t.atlasR) : null;
-    if((A && A.water==='wash') || t.atlasWater==='wash'){
+    if(A && A.water==='wash'){
       t.atlasWater = 'wash';
       if(t.terrain==='water') return;
       if(t.crop || t.graze) return;
@@ -9906,20 +9905,6 @@ function ensureWashMouthKeep(s, P){
     if(typeof carveClear==='function') carveClear(t);
     t.atlasWater = 'wash';
   });
-  if(s.grid.some(t=>isWashMouthMarkedT(t))) return;
-  const cands = s.grid.filter(t=>{
-    if(!t || t.atlasC==null) return false;
-    if(!washMouthOnSharedEdgeAtlas(t.atlasC, t.atlasR)) return false;
-    if(t.terrain==='water' || t.terrain==='pond') return false;
-    return t.terrain==='soil' || t.terrain==='dead' || t.terrain==='riverbed';
-  }).sort((a,b)=> ((b.atlasC|0)-(a.atlasC|0)) || ((b.atlasR|0)-(a.atlasR|0)));
-  const want = Math.min(2, cands.length);
-  for(let i=0;i<want;i++){
-    const t = cands[i];
-    t.terrain = 'riverbed';
-    if(typeof carveClear==='function') carveClear(t);
-    t.atlasWater = 'wash';
-  }
 }
 /** Same gate as leftover holds: Home cleared, leftover South Reach in play, wash mouth exists. */
 function washMouthReady(s){
@@ -9942,12 +9927,13 @@ function washMouthCoverCount(s){
   }
   return {marked, open, plugged: marked-open};
 }
-/** Mouth is usable when ≥ ~50% of marked wash seats stay riverbed / open. */
+/** Mouth holds while plugged / kitchen seats stay below ~50%. Plug ≥ ~50% nicks the stem. */
 function washMouthUsable(s){
   if(!washMouthReady(s)) return false;
   const n = washMouthCoverCount(s);
   if((n.marked|0) <= 0) return false;
-  return n.open >= Math.max(1, Math.ceil(n.marked * 0.5));
+  if((n.plugged|0) >= Math.max(1, Math.ceil(n.marked * 0.5))) return false;
+  return (n.open|0) > 0;
 }
 function washMouthNeed(s){
   return !!(washMouthReady(s) && !washMouthUsable(s));
@@ -18255,7 +18241,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-26.washmouth';
+const SHIP_BUILD = '2026-08-26.washmouthfix';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
