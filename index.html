@@ -1131,6 +1131,8 @@ const MARSH_HOLD_SOIL = {water:0.28, erosion:0.4, om:0.12}; // mild dawn hold on
 const MARSH_NICK_SOIL = {water:-0.6, erosion:-0.65, om:-0.18}; // stand gone / ponds filled — filtration thins
 const CREEK_HOLD_SOIL = {water:0.28, om:0.12}; // mild dawn hold on creek-feed beds; cap so it cannot farm health
 const CREEK_NICK_SOIL = {water:-0.6, om:-0.18}; // plugged spine — feed beds nick until the tributary reopens
+const WASH_MOUTH_HOLD_SOIL = {water:0.28, om:0.12}; // mild capped hold on leftover stem beds beside an open wash mouth
+const WASH_MOUTH_NICK_SOIL = {water:-0.6, om:-0.18, erosion:-0.6}; // plugged / kitchened mouth nicks leftover stem beds
 const DRY_GRAZE_HOLD_SOIL = {erosion:0.4, water:0.28}; // mild dawn hold on dry-edge pasture; cap so it cannot farm health
 const DRY_GRAZE_NICK_SOIL = {erosion:-0.65, water:-0.6}; // kitchen / stripped crust — the edge nicks until rest/cover
 const OVERGRAZE_RATES = {om:-0.45, structure:-0.35, nutrients:-0.15, water:0, microbial:-0.1, erosion:-0.5};
@@ -6196,6 +6198,7 @@ function terrainAfterClearPlug(t){
   if(typeof highPondShouldReopen==='function' && highPondShouldReopen(t)) return 'pond';
   if(typeof marshPondShouldReopen==='function' && marshPondShouldReopen(t)) return 'pond';
   if(typeof creekSpineShouldReopen==='function' && creekSpineShouldReopen(t)) return 'water';
+  if(typeof washMouthShouldReopen==='function' && washMouthShouldReopen(t)) return 'riverbed';
   if(typeof dustWashShouldReopen==='function' && dustWashShouldReopen(t)) return 'riverbed';
   return 'soil';
 }
@@ -8529,6 +8532,15 @@ function getTileName(t){
     if(typeof leftoverIsPaddockRestStrippedT==='function' && leftoverIsPaddockRestStrippedT(t))
       return 'Stripped paddock rest';
   }
+  if(typeof washMouthReady==='function' && washMouthReady()){
+    if(typeof leftoverIsWashMouthKitchenT==='function' && leftoverIsWashMouthKitchenT(t))
+      return 'Kitchen on the wash mouth';
+    if(typeof isWashMouthMarkedT==='function' && isWashMouthMarkedT(t)
+       && typeof isWashMouthOpenT==='function' && !isWashMouthOpenT(t))
+      return 'Plugged wash mouth';
+    if(typeof isWashMouthMarkedT==='function' && isWashMouthMarkedT(t))
+      return 'Wash mouth';
+  }
   if(t.crop && typeof CROPS!=='undefined' && CROPS[t.crop.type]) return CROPS[t.crop.type].name;
   return '';
 }
@@ -9764,6 +9776,295 @@ function tickDustWashWork(){
   }
   return tiles.length;
 }
+/** Field under the player, or the parked leftover South Reach while they are in the yard. */
+function washMouthFarm(){
+  if(typeof homesteadMode!=='undefined' && homesteadMode && typeof plotStateBackup!=='undefined'
+     && plotStateBackup && plotStateBackup.grid && !plotStateBackup.homesteadView){
+    return plotStateBackup;
+  }
+  if(state && !state.homesteadView) return state;
+  return null;
+}
+/** Leftover South Reach only. Home, Dust Flats, Creek Bend, River Reach, East Pasture, and deeds stay off. */
+function leftoverIsWashMouthFold(P){
+  if(!P) return false;
+  if(P.buyable) return false;
+  if(P.id==='home_garden' || P.lvIndex===0) return false;
+  if(P.id==='dust_flats' || P.levelId==='flats') return false;
+  if(P.id==='creek_bend' || P.levelId==='creek') return false;
+  if(P.id==='river_reach' || P.levelId==='valley') return false;
+  if(P.id==='east_pasture') return false;
+  return !!(P.id==='south_reach' && P.leftover);
+}
+function currentWashMouthFold(s){
+  s = s || (typeof washMouthFarm==='function' ? washMouthFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s) return false;
+  if(s.homesteadView) return false;
+  const L = (typeof LEVELS!=='undefined' && LEVELS[s.lv]) ? LEVELS[s.lv] : null;
+  if(L && L.id==='home') return false;
+  if(L && (L.id==='flats' || L.id==='creek' || L.id==='valley' || L.id==='east_pasture')) return false;
+  if(L && L.id==='south_reach') return true;
+  const P = typeof valleyParcelByLvIndex==='function' ? valleyParcelByLvIndex(s.lv) : null;
+  return leftoverIsWashMouthFold(P);
+}
+/** Painted leftover wash mouth — atlas wash or a riverbed already tagged wash. Not live river, not Dust Flats biome fallback. */
+function isWashMouthMarkedT(t){
+  if(!t) return false;
+  if(t.atlasWater==='wash') return true;
+  if(t.atlasC!=null && typeof atlasGet==='function'){
+    const A = atlasGet(t.atlasC, t.atlasR);
+    if(A && A.water==='wash') return true;
+  }
+  return !!(t.terrain==='riverbed' && t.atlasWater==='wash');
+}
+/** Open mouth: riverbed (or restored water on the painted wash). Pond / trees / wetland / kitchen / buildings fill it. */
+function isWashMouthOpenT(t){
+  if(!isWashMouthMarkedT(t)) return false;
+  if(t.crop || t.graze) return false;
+  if(typeof BUILD_SET!=='undefined' && BUILD_SET.has(t.terrain)) return false;
+  if(t.terrain==='trees' || t.terrain==='pond' || t.terrain==='wetland') return false;
+  if(t.terrain==='water') return true;
+  return t.terrain==='riverbed';
+}
+function leftoverIsWashMouthKitchenT(t){
+  return !!(t && isWashMouthMarkedT(t) && t.crop && (t.crop.type==='wheat' || t.crop.type==='sisters'));
+}
+function washMouthHasMarkers(s){
+  return !!(s && s.grid && s.grid.some(t=>isWashMouthMarkedT(t)));
+}
+function washMouthFillTool(tool){
+  return tool==='pond' || tool==='trees' || tool==='wetland' || tool==='wheat' || tool==='sisters';
+}
+function washMouthCanFill(t, tool){
+  if(!t || !washMouthFillTool(tool)) return false;
+  if(typeof currentWashMouthFold==='function' && !currentWashMouthFold()) return false;
+  if(!isWashMouthMarkedT(t)) return false;
+  return t.terrain==='riverbed';
+}
+function rememberWashMouthMark(t){
+  if(!t) return;
+  if(t.atlasC!=null && typeof atlasGet==='function'){
+    const A = atlasGet(t.atlasC, t.atlasR);
+    if(A && A.water==='wash') t.atlasWater = 'wash';
+  }
+  if((t.terrain==='riverbed' || t.atlasWater==='wash') && !t.atlasWater) t.atlasWater = 'wash';
+}
+function washMouthShouldReopen(t){
+  if(!t) return false;
+  if(typeof currentWashMouthFold==='function' && !currentWashMouthFold()) return false;
+  if(!isWashMouthMarkedT(t)) return false;
+  return !isWashMouthOpenT(t);
+}
+function isWashMouthFillT(t){
+  return !!(t && isWashMouthMarkedT(t) && !isWashMouthOpenT(t));
+}
+/** Atlas cell on leftover South Reach that touches Dust Flats. Never Home, never a Dust Flats crop cell. */
+function washMouthOnSharedEdgeAtlas(ac, ar){
+  const DF = typeof valleyParcel==='function' ? valleyParcel('dust_flats') : null;
+  const SR = typeof valleyParcel==='function' ? valleyParcel('south_reach') : null;
+  if(!DF || !DF.origin || !DF.size || !SR) return false;
+  const box = typeof leftoverPlayBox==='function' ? leftoverPlayBox(SR) : null;
+  if(!box) return false;
+  if(ac < box.c || ar < box.r || ac >= box.c+box.w || ar >= box.r+box.h) return false;
+  const dc = DF.origin.c|0, dr = DF.origin.r|0, dw = DF.size.w|0, dh = DF.size.h|0;
+  if(ac>=dc && ac<dc+dw && ar>=dr && ar<dr+dh) return false;
+  return (ac===dc-1 && ar>=dr && ar<dr+dh)
+    || (ar===dr-1 && ac>=dc && ac<dc+dw)
+    || (ac===dc && ar===dr-1)
+    || (ac===dc-1 && ar===dr)
+    || (ac===dc-1 && ar===dr-1);
+}
+/** Re-tag painted leftover wash. If the crop has none, seat atlas wash at the dust/south_reach shared edge only. */
+function ensureWashMouthKeep(s, P){
+  if(!s || !s.grid) return;
+  if(!leftoverIsWashMouthFold(P)) return;
+  if(P.id==='home_garden' || P.lvIndex===0) return;
+  if(P.id==='dust_flats' || P.levelId==='flats') return;
+  s.grid.forEach(t=>{
+    if(!t) return;
+    const A = (typeof atlasGet==='function' && t.atlasC!=null) ? atlasGet(t.atlasC, t.atlasR) : null;
+    if((A && A.water==='wash') || t.atlasWater==='wash'){
+      t.atlasWater = 'wash';
+      if(t.terrain==='water') return;
+      if(t.crop || t.graze) return;
+      if(typeof BUILD_SET!=='undefined' && BUILD_SET.has(t.terrain)) return;
+      if(t.terrain==='trees' || t.terrain==='pond' || t.terrain==='wetland') return;
+      if(t.terrain!=='riverbed' && (t.terrain==='soil' || t.terrain==='dead')){
+        t.terrain = 'riverbed';
+        if(typeof carveClear==='function') carveClear(t);
+      }
+    }
+  });
+  if(s.grid.some(t=>isWashMouthMarkedT(t))) return;
+  s.grid.forEach(t=>{
+    if(!t || t.atlasC==null) return;
+    if(t.terrain==='water') return;
+    if(!washMouthOnSharedEdgeAtlas(t.atlasC, t.atlasR)) return;
+    const A = typeof atlasGet==='function' ? atlasGet(t.atlasC, t.atlasR) : null;
+    if(!A || A.water!=='wash') return;
+    t.terrain = 'riverbed';
+    if(typeof carveClear==='function') carveClear(t);
+    t.atlasWater = 'wash';
+  });
+  if(s.grid.some(t=>isWashMouthMarkedT(t))) return;
+  const cands = s.grid.filter(t=>{
+    if(!t || t.atlasC==null) return false;
+    if(!washMouthOnSharedEdgeAtlas(t.atlasC, t.atlasR)) return false;
+    if(t.terrain==='water' || t.terrain==='pond') return false;
+    return t.terrain==='soil' || t.terrain==='dead' || t.terrain==='riverbed';
+  }).sort((a,b)=> ((b.atlasC|0)-(a.atlasC|0)) || ((b.atlasR|0)-(a.atlasR|0)));
+  const want = Math.min(2, cands.length);
+  for(let i=0;i<want;i++){
+    const t = cands[i];
+    t.terrain = 'riverbed';
+    if(typeof carveClear==='function') carveClear(t);
+    t.atlasWater = 'wash';
+  }
+}
+/** Same gate as leftover holds: Home cleared, leftover South Reach in play, wash mouth exists. */
+function washMouthReady(s){
+  if(!camp) return false;
+  if(typeof homePatchCleared==='function' && !homePatchCleared()) return false;
+  s = s || (typeof washMouthFarm==='function' ? washMouthFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return false;
+  if(!currentWashMouthFold(s)) return false;
+  return washMouthHasMarkers(s);
+}
+function washMouthCoverCount(s){
+  let marked = 0, open = 0;
+  s = s || (typeof washMouthFarm==='function' ? washMouthFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return {marked, open, plugged:0};
+  for(let i=0;i<s.grid.length;i++){
+    const t = s.grid[i];
+    if(!isWashMouthMarkedT(t)) continue;
+    marked++;
+    if(isWashMouthOpenT(t)) open++;
+  }
+  return {marked, open, plugged: marked-open};
+}
+/** Mouth is usable when ≥ ~50% of marked wash seats stay riverbed / open. */
+function washMouthUsable(s){
+  if(!washMouthReady(s)) return false;
+  const n = washMouthCoverCount(s);
+  if((n.marked|0) <= 0) return false;
+  return n.open >= Math.max(1, Math.ceil(n.marked * 0.5));
+}
+function washMouthNeed(s){
+  return !!(washMouthReady(s) && !washMouthUsable(s));
+}
+function washMouthAdj(t, s){
+  s = s || (typeof washMouthFarm==='function' ? washMouthFarm() : (typeof state!=='undefined' ? state : null));
+  if(!t || !s || !s.grid) return false;
+  if(isWashMouthMarkedT(t)) return false;
+  const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+  for(let i=0;i<dirs.length;i++){
+    const c = (t.c|0)+dirs[i][0], r = (t.r|0)+dirs[i][1];
+    if(typeof inGrid==='function' && !inGrid(c,r)) continue;
+    const n = s.grid[typeof idx==='function' ? idx(c,r) : (r*(s.gridSize||GRID||0)+c)];
+    if(isWashMouthMarkedT(n)) return true;
+  }
+  return false;
+}
+/** Leftover stem beds beside the mouth — not the wash itself, not a second river. */
+function washMouthStemBedAt(t, s){
+  if(!t) return false;
+  if(t.terrain!=='soil' && t.terrain!=='dead') return false;
+  if(t.feature==='path' || t.feature==='swale' || t.feature==='saltflat') return false;
+  if(isWashMouthMarkedT(t)) return false;
+  return washMouthAdj(t, s);
+}
+function washMouthSoilTiles(s){
+  const tiles = [];
+  s = s || (typeof washMouthFarm==='function' ? washMouthFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return tiles;
+  s.grid.forEach((t, i)=>{
+    if(!t || !t.soil) return;
+    if(!washMouthStemBedAt(t, s)) return;
+    tiles.push({t, i});
+  });
+  return tiles;
+}
+function washMouthFloaterIdx(s){
+  s = s || (typeof washMouthFarm==='function' ? washMouthFarm() : (typeof state!=='undefined' ? state : null));
+  if(state && state.grid && s && s.grid && state.grid===s.grid){
+    for(let i=0;i<s.grid.length;i++){
+      if(isWashMouthFillT(s.grid[i])) return i;
+    }
+    const beds = washMouthSoilTiles(s);
+    if(beds.length && beds[0] && beds[0].i>=0) return beds[0].i;
+    for(let i=0;i<s.grid.length;i++){
+      if(isWashMouthMarkedT(s.grid[i])) return i;
+    }
+  }
+  if(typeof selected==='number' && selected>=0 && state && state.grid && state.grid[selected]) return selected;
+  return (typeof selected==='number' && selected>=0) ? selected : 0;
+}
+function washMouthStory(t, opts){
+  opts = opts || {};
+  const ready = typeof washMouthReady==='function' && washMouthReady();
+  const need = typeof washMouthNeed==='function' && washMouthNeed();
+  const hold = ready && !need;
+  const marked = typeof isWashMouthMarkedT==='function' && isWashMouthMarkedT(t);
+  const open = typeof isWashMouthOpenT==='function' && isWashMouthOpenT(t);
+  const kitchen = typeof leftoverIsWashMouthKitchenT==='function' && leftoverIsWashMouthKitchenT(t);
+  const plugged = marked && !open;
+  const feed = typeof washMouthStemBedAt==='function' && washMouthStemBedAt(t);
+  if(!ready) return '';
+  if(opts.needOnly && !need) return '';
+  if(kitchen)
+    return need
+      ? 'This kitchen row plugged the leftover wash mouth — the stem nicks until the bed reopens. Not Dust Flats drought, not a creek spine, not bank trees.'
+      : 'A kitchen row on the leftover wash mouth — not a hay kitchen. Leave the bed open so the wash can arrive at the stem.';
+  if(plugged)
+    return 'This plugged the leftover wash mouth — the stem nicks until the bed reopens. Not Dust Flats drought, not a creek spine, not bank trees.';
+  if(open || marked)
+    return need
+      ? 'This leftover wash bed is still open, but the mouth is blocked — stem beds nick until the wash arrives again. Not Dust Flats, not a creek spine.'
+      : 'Leftover wash arriving at the stem — keep this bed open so rare water can meet the river. Not Dust Flats drought, not a creek spine, not bank trees.';
+  if(feed){
+    if(need) return 'Stem bed beside the leftover wash mouth — the mouth is plugged, so this soil nicks until the bed reopens. Not bank-tree runoff, not Dust Flats.';
+    if(hold && !opts.needOnly) return 'Stem bed beside the leftover wash mouth — open wash holds this leftover river soil. Keep the mouth open. Not Dust Flats, not a creek spine.';
+  }
+  return '';
+}
+/** One sim dawn: open leftover wash mouth holds stem beds; a plugged / kitchened mouth nicks them. First session stays off. */
+function tickWashMouthWork(){
+  if(!camp || !washMouthReady()) return 0;
+  const s = typeof washMouthFarm==='function' ? washMouthFarm() : (typeof state!=='undefined' ? state : null);
+  if(!s || !s.grid) return 0;
+  const tiles = washMouthSoilTiles(s);
+  if(!tiles.length) return 0;
+  const open = washMouthUsable(s);
+  if(open){
+    const b = (typeof WASH_MOUTH_HOLD_SOIL!=='undefined') ? WASH_MOUTH_HOLD_SOIL : {water:0.28, om:0.12};
+    tiles.forEach(({t})=>{
+      if(!t || !t.soil) return;
+      if((t.soil.water||0) < 70) t.soil.water = clamp((t.soil.water||0) + (b.water||0));
+      if((t.soil.om||0) < 70) t.soil.om = clamp((t.soil.om||0) + (b.om||0));
+      if(typeof recalc==='function') recalc(t);
+    });
+    if(typeof toast==='function'){
+      toast('The wash still arrives at the stem — open mouth holds the leftover river beds. Keep the bed open.', {once:'wash_mouth_hold_first', throttleMs:4000});
+    }
+    return tiles.length;
+  }
+  const b = (typeof WASH_MOUTH_NICK_SOIL!=='undefined') ? WASH_MOUTH_NICK_SOIL : {water:-0.6, om:-0.18, erosion:-0.6};
+  tiles.forEach(({t})=>{
+    if(!t || !t.soil) return;
+    t.soil.water = clamp((t.soil.water||0) + (b.water||0));
+    t.soil.om = clamp((t.soil.om||0) + (b.om||0));
+    if(b.erosion!=null) t.soil.erosion = clamp((t.soil.erosion||0) + (b.erosion||0));
+    if(typeof recalc==='function') recalc(t);
+  });
+  const fi = washMouthFloaterIdx(s);
+  if(typeof floater==='function' && state && state.grid && state.grid[fi]){
+    floater(fi, 'plugged', '#c9a070');
+  }
+  if(typeof toast==='function'){
+    toast('The wash mouth is plugged — leftover stem beds nick until the bed reopens.', {once:'wash_mouth_need_first', throttleMs:4000});
+  }
+  return tiles.length;
+}
 /** Clover / flowers on leftover meadow or leftover wet. No wheat, no sisters, no second river. */
 function dressLeftoverMeadowBloom(s, P, opts){
   if(!s || !s.grid || !P) return;
@@ -10963,6 +11264,7 @@ function genLeftoverStamp(s){
     seatLeftoverFarmEdges(s, P);
     if(typeof ensureAtlasLaneOnCrop==='function') ensureAtlasLaneOnCrop(s, P.id);
     if(typeof ensureDryWashKeep==='function') ensureDryWashKeep(s, P);
+    if(typeof ensureWashMouthKeep==='function') ensureWashMouthKeep(s, P);
     if(typeof ensureNoInventedRiverOnDust==='function') ensureNoInventedRiverOnDust(s, P);
   }
 }
@@ -12648,6 +12950,7 @@ function simStep(dt){
     if(typeof tickWindShelterWork==='function') tickWindShelterWork();
     if(typeof tickHedgeCorridorWork==='function') tickHedgeCorridorWork();
     if(typeof tickDustWashWork==='function') tickDustWashWork();
+    if(typeof tickWashMouthWork==='function') tickWashMouthWork();
     if(typeof tickHighPondWork==='function') tickHighPondWork();
     if(typeof tickHomeWaterWork==='function') tickHomeWaterWork();
     if(typeof tickLaneWork==='function') tickLaneWork();
@@ -16247,6 +16550,10 @@ function soilStoryLine(t){
       const ck = creekSpineStory(t, {needOnly:true});
       if(ck) return ck;
     }
+    if(typeof washMouthStory==='function'){
+      const wm = washMouthStory(t, {needOnly:true});
+      if(wm) return wm;
+    }
     if(typeof dryGrazeStandStory==='function'){
       const dg = dryGrazeStandStory(t, {needOnly:true});
       if(dg) return dg;
@@ -16277,6 +16584,11 @@ function soilStoryLine(t){
       const mf = (typeof marshStandStory==='function') ? marshStandStory(t) : '';
       return mf || '🌾 Marsh pond — runoff settles here before it reaches the main river.';
     }
+    if(typeof isWashMouthFillT==='function' && isWashMouthFillT(t)
+       && typeof washMouthReady==='function' && washMouthReady()){
+      const wm = (typeof washMouthStory==='function') ? washMouthStory(t) : '';
+      if(wm) return wm;
+    }
     return '💧 Water held on the land — a pond keeps neighbors moist.';
   }
   if(t.terrain==='trees'){
@@ -16302,6 +16614,11 @@ function soilStoryLine(t){
        && typeof homeWaterStory==='function'){
       const hw = homeWaterStory(t);
       if(hw) return hw;
+    }
+    if(typeof isWashMouthFillT==='function' && isWashMouthFillT(t)
+       && typeof washMouthReady==='function' && washMouthReady()){
+      const wm = (typeof washMouthStory==='function') ? washMouthStory(t) : '';
+      if(wm) return wm;
     }
     if(typeof isDustWashFillT==='function' && isDustWashFillT(t))
       return (typeof dustWashNeed==='function' && dustWashNeed())
@@ -16358,6 +16675,11 @@ function soilStoryLine(t){
        && typeof homeWaterStory==='function'){
       const hw = homeWaterStory(t);
       if(hw) return hw;
+    }
+    if(typeof isWashMouthFillT==='function' && isWashMouthFillT(t)
+       && typeof washMouthReady==='function' && washMouthReady()){
+      const wm = (typeof washMouthStory==='function') ? washMouthStory(t) : '';
+      if(wm) return wm;
     }
     if(typeof isDustWashFillT==='function' && isDustWashFillT(t))
       return (typeof dustWashNeed==='function' && dustWashNeed())
@@ -16430,6 +16752,10 @@ function soilStoryLine(t){
       const ck = creekSpineStory(t);
       if(ck) return ck+' '+tier;
     }
+    if(typeof washMouthStory==='function'){
+      const wm = washMouthStory(t);
+      if(wm) return wm+' '+tier;
+    }
     if(g.kind==='team' || g.synergy) return '🐄🐔 Follow the herd — hooves open the sod; chickens follow. That\'s how prairie stayed fertile. '+tier;
     if(g.kind==='cattle' || g.kind==='cow') return '🐄 Cattle remaking this pad — send 🐔 chickens next. '+tier;
     if(g.kind==='chicken') return '🐔 Chickens working the surface. '+tier;
@@ -16481,6 +16807,10 @@ function soilStoryLine(t){
       const ck = creekSpineStory(t);
       if(ck) return (edgeNeed?edgeNeed+' ':'')+ck+' '+tier;
     }
+    if(typeof washMouthStory==='function'){
+      const wm = washMouthStory(t);
+      if(wm) return (edgeNeed?edgeNeed+' ':'')+wm+' '+tier;
+    }
     if(t.crop.type==='wheat' || (!c.diverse && !c.cover)){
       const days = t.crop.days||0;
       if(days >= 1)
@@ -16530,6 +16860,10 @@ function soilStoryLine(t){
   if(typeof creekSpineStory==='function'){
     const ck = creekSpineStory(t);
     if(ck) return ck+' '+tier;
+  }
+  if(typeof washMouthStory==='function'){
+    const wm = washMouthStory(t);
+    if(wm) return wm+' '+tier;
   }
   if(typeof highPondNeed==='function' && highPondNeed()
      && typeof isHighPondFillT==='function' && isHighPondFillT(t))
@@ -16697,11 +17031,17 @@ function applyTool(i){
   if(t.terrain==='barn' || t.terrain==='coop'){ toast('That\'s the farmstead — pick open soil tiles around it.'); SND.uhoh(); return false; }
   if(t.terrain==='riverbed'){
     const fillWash = typeof dustWashCanFill==='function' && dustWashCanFill(t, tool);
-    if(!fillWash){
+    const fillMouth = typeof washMouthCanFill==='function' && washMouthCanFill(t, tool);
+    if(!fillWash && !fillMouth){
       toast(isValleyLevel(state.lv) ? '🏜️ Dry creekbed — revive Dry Wash soil first, then water returns.' : '🏜️ Dry creekbed — heal the banks first; water once ran here.');
       SND.uhoh(); return false;
     }
-    if(typeof rememberDustWashMark==='function') rememberDustWashMark(t);
+    if(fillWash && typeof rememberDustWashMark==='function') rememberDustWashMark(t);
+    if(fillMouth && typeof rememberWashMouthMark==='function') rememberWashMouthMark(t);
+    if(fillMouth && (tool==='wheat' || tool==='sisters')){
+      t.terrain = 'soil';
+      if(!t.soil && typeof seedSoil==='function') seedSoil(t, 20, 8);
+    }
   }
   if(t.terrain==='water'){
     if(tool==='bridge'){
@@ -16855,6 +17195,7 @@ function applyTool(i){
       if(typeof rememberHighPondMark==='function') rememberHighPondMark(t);
       if(typeof rememberMarshPondMark==='function') rememberMarshPondMark(t);
       if(typeof rememberCreekSpineMark==='function') rememberCreekSpineMark(t);
+      if(typeof rememberWashMouthMark==='function') rememberWashMouthMark(t);
       if(typeof rememberAtlasLaneMark==='function') rememberAtlasLaneMark(t);
       t.terrain = (typeof terrainAfterClearPlug==='function') ? terrainAfterClearPlug(t) : 'soil';
       if((t.terrain==='pond' || t.terrain==='water') && typeof carveClear==='function') carveClear(t);
@@ -16872,6 +17213,7 @@ function applyTool(i){
       if(typeof rememberHighPondMark==='function') rememberHighPondMark(t);
       if(typeof rememberMarshPondMark==='function') rememberMarshPondMark(t);
       if(typeof rememberCreekSpineMark==='function') rememberCreekSpineMark(t);
+      if(typeof rememberWashMouthMark==='function') rememberWashMouthMark(t);
       if(typeof rememberAtlasLaneMark==='function') rememberAtlasLaneMark(t);
       t.terrain = (typeof terrainAfterClearPlug==='function') ? terrainAfterClearPlug(t) : 'soil';
       if((t.terrain==='pond' || t.terrain==='water') && typeof carveClear==='function') carveClear(t);
@@ -16914,6 +17256,11 @@ function applyTool(i){
       if(typeof carveClear==='function') carveClear(t);
       if(state){ state._creekSpine = null; state._creekSpineTag = ''; }
     };
+    else if(isLandT(t) && typeof washMouthShouldReopen==='function' && washMouthShouldReopen(t)) did = ()=>{
+      if(typeof rememberWashMouthMark==='function') rememberWashMouthMark(t);
+      t.terrain = 'riverbed';
+      if(typeof carveClear==='function') carveClear(t);
+    };
     else if(isLandT(t) && typeof laneShouldReopen==='function' && laneShouldReopen(t)) did = ()=>{
       if(typeof reopenAtlasLane==='function') reopenAtlasLane(t);
     };
@@ -16923,7 +17270,10 @@ function applyTool(i){
     floater(i, '🚜 cleared', '#e8dcc0'); burst(i, '#c9b896', 8); SND.place();
     afterBuild(); return true;
   }
-  if(!isLandT(t) && !(t.terrain==='riverbed' && typeof dustWashCanFill==='function' && dustWashCanFill(t, tool))){
+  if(!isLandT(t) && !(t.terrain==='riverbed' && (
+        (typeof dustWashCanFill==='function' && dustWashCanFill(t, tool))
+        || (typeof washMouthCanFill==='function' && washMouthCanFill(t, tool))
+      ))){
     if(typeof isGardenPondT==='function' && isGardenPondT(t)){
       toast('💧 The garden pond keeps the kitchen beds moist — it is not a plant bed.');
       ringAt(i, '#7fc4ee'); SND.uhoh(); return false;
@@ -17148,6 +17498,7 @@ function applyTool(i){
     if(!spend(td.cost)) return false;
     if(typeof rememberHomeWaterMarks==='function') rememberHomeWaterMarks(t);
     if(typeof rememberMarshPondMark==='function') rememberMarshPondMark(t);
+    if(typeof rememberWashMouthMark==='function') rememberWashMouthMark(t);
     if(typeof rememberAtlasLaneMark==='function') rememberAtlasLaneMark(t);
     if(t.terrain==='wetland' && typeof marshFoldReady==='function' && marshFoldReady()
        && !(typeof isMarshPondMarkedT==='function' && isMarshPondMarkedT(t))){
@@ -17194,6 +17545,7 @@ function applyTool(i){
     }
     if(typeof rememberHomeWaterMarks==='function') rememberHomeWaterMarks(t);
     if(typeof rememberMarshPondMark==='function') rememberMarshPondMark(t);
+    if(typeof rememberWashMouthMark==='function') rememberWashMouthMark(t);
     if(typeof rememberAtlasLaneMark==='function') rememberAtlasLaneMark(t);
     if(t.terrain==='wetland' && typeof marshFoldReady==='function' && marshFoldReady()
        && !(typeof isMarshPondMarkedT==='function' && isMarshPondMarkedT(t))){
@@ -17392,6 +17744,7 @@ function applyTool(i){
     if(typeof rememberHomeWaterMarks==='function') rememberHomeWaterMarks(t);
     if(typeof rememberMarshPondMark==='function') rememberMarshPondMark(t);
     if(typeof rememberCreekSpineMark==='function') rememberCreekSpineMark(t);
+    if(typeof rememberWashMouthMark==='function') rememberWashMouthMark(t);
     if(typeof rememberAtlasLaneMark==='function') rememberAtlasLaneMark(t);
     if(tool==='wetland' && typeof isReedT==='function' && isReedT(t)
        && typeof marshFoldReady==='function' && marshFoldReady()){
@@ -17902,7 +18255,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-26.paddockrestfix';
+const SHIP_BUILD = '2026-08-26.washmouth';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -22510,6 +22863,8 @@ function openInfo(refreshOnly){
                : t.feature==='path' ? ((typeof laneStory==='function' && laneStory(t)) || '🛤️ The farm lane — keep it clear for the herd.')
                : ((typeof laneStory==='function' && laneStory(t, {needOnly:true})) || '');
     const washNeed = typeof dustWashNeed==='function' && dustWashNeed();
+    const mouthReady = typeof washMouthReady==='function' && washMouthReady();
+    const mouthLine = mouthReady && typeof washMouthStory==='function' ? washMouthStory(t) : '';
     const highNeed = typeof highPondNeed==='function' && highPondNeed();
     const homeNeedLine = (typeof homeWaterStory==='function') ? homeWaterStory(t, {needOnly:true}) : '';
     const highLine = highNeed
@@ -22520,7 +22875,9 @@ function openInfo(refreshOnly){
           : ''))
       : '';
     const dryEdgeReady = typeof dryGrazeStandReady==='function' && dryGrazeStandReady();
-    const washLine = dryEdgeReady
+    const washLine = mouthLine
+      ? mouthLine
+      : (dryEdgeReady
       ? ''
       : (washNeed
       ? '🏜️ Dry wash is blocked — drought nicks these flats. Keep the bed open.'
@@ -22530,7 +22887,7 @@ function openInfo(refreshOnly){
         : '🏜️ Wash bank — dry between storms, a little kinder than the open flats.')
       : ((typeof dustAwayFromWash==='function' && dustAwayFromWash(t))
         ? '🌵 Bare dust — this ground will not hold.'
-        : '')));
+        : ''))));
     const wk = deadWakeShown(t);
     const need = wk.need;
     const story = soilStoryLine(t);
@@ -22554,8 +22911,11 @@ function openInfo(refreshOnly){
   }else if(t.terrain==='riverbed'){
     const pulsed = (t.washPulse||0) > 8;
     const washNeed = typeof dustWashNeed==='function' && dustWashNeed();
+    const mouthLine = (typeof washMouthStory==='function') ? washMouthStory(t) : '';
     const creekLine = (typeof creekSpineStory==='function') ? creekSpineStory(t) : '';
-    if(creekLine){
+    if(mouthLine){
+      body = `<div class="chiprow">${mouthLine}</div>`;
+    }else if(creekLine){
       body = `<div class="chiprow">${creekLine}</div>`;
     }else if(washNeed){
       body = `<div class="chiprow">🏜️ Dry wash is filled or blocked — drought nicks the flats. Keep this bed open so rare water can move. Not a second river.</div>`;
@@ -22594,6 +22954,9 @@ function openInfo(refreshOnly){
     }else if(t.terrain==='wetland' && typeof isHomeSwaleFillT==='function' && isHomeSwaleFillT(t)
               && typeof homeWaterReady==='function' && homeWaterReady()){
       body = `<div class="chiprow">${(typeof homeWaterStory==='function' && homeWaterStory(t)) || 'This wetland filled the swale. Clear it to open the contour again.'}</div>`;
+    }else if(t.terrain==='wetland' && typeof isWashMouthFillT==='function' && isWashMouthFillT(t)
+              && typeof washMouthReady==='function' && washMouthReady()){
+      body = `<div class="chiprow">${(typeof washMouthStory==='function' && washMouthStory(t)) || 'This wetland plugged the leftover wash mouth — the stem nicks until the bed reopens. Not Dust Flats drought, not a creek spine.'}</div>`;
     }else if(t.terrain==='wetland' && typeof isDustWashFillT==='function' && isDustWashFillT(t)){
       body = (typeof dustWashNeed==='function' && dustWashNeed())
         ? `<div class="chiprow">This wetland filled the dry wash — drought nicks the flats. Clear it to open the bed again. Not a second river.</div>`
@@ -22712,7 +23075,10 @@ function openInfo(refreshOnly){
       else if(state && typeof atlasWaterAdjLocal==='function' && atlasWaterAdjLocal(state, t.c, t.r))
         chips.push('🟤 bare bank — mud slides into the water');
     }
-    if(!(typeof dryGrazeStandReady==='function' && dryGrazeStandReady())){
+    if(typeof washMouthReady==='function' && washMouthReady()){
+      const mouthLine = (typeof washMouthStory==='function') ? washMouthStory(t) : '';
+      if(mouthLine) chips.push(mouthLine);
+    }else if(!(typeof dryGrazeStandReady==='function' && dryGrazeStandReady())){
       if(typeof dustWashNeed==='function' && dustWashNeed())
         chips.push('🏜️ dry wash blocked — drought nicks the flats');
       else if(typeof washAdj==='function' && washAdj(t))
@@ -22756,6 +23122,11 @@ function openInfo(refreshOnly){
     else if(typeof creekSpineReady==='function' && creekSpineReady()
          && typeof isCreekSpineLiveT==='function' && isCreekSpineLiveT(t))
       chips.push('🏞️ working tributary — open spine feeds the beds that shed toward it');
+    if(typeof washMouthNeed==='function' && washMouthNeed())
+      chips.push('The leftover wash mouth is plugged — stem beds nick until the bed reopens');
+    else if(typeof washMouthReady==='function' && washMouthReady()
+         && typeof isWashMouthOpenT==='function' && isWashMouthOpenT(t))
+      chips.push('Leftover wash arriving at the stem — keep this bed open');
     if(t.flowers>0.3) chips.push('🌼 wildflowers');
     if(t.soil.microbial>=70) chips.push('🪱 worms!');
     if(t.health>=70) chips.push('💚 restored!');
@@ -22777,6 +23148,8 @@ function openInfo(refreshOnly){
     const paddockDrink = typeof currentPaddockFold==='function' && currentPaddockFold();
     const manureReady = typeof paddockManureReady==='function' && paddockManureReady();
     const thirstNeed = typeof paddockStockThirstNeed==='function' && paddockStockThirstNeed();
+    const mouthFilled = typeof isWashMouthFillT==='function' && isWashMouthFillT(t)
+      && typeof washMouthReady==='function' && washMouthReady();
     const washFilled = typeof isDustWashFillT==='function' && isDustWashFillT(t);
     const washNeed = typeof dustWashNeed==='function' && dustWashNeed();
     const garden = typeof isGardenPondT==='function' && isGardenPondT(t);
@@ -22792,6 +23165,8 @@ function openInfo(refreshOnly){
         ? `<div class="chiprow">${gardenLine}${gardenNeed?'':' Not a ridge high pond.'}</div>`
       : marsh
         ? `<div class="chiprow">${(typeof marshStandStory==='function' && marshStandStory(t)) || 'A marsh pond — runoff settles here before it reaches the main river. Reeds and wet soil feed it. Not a kitchen bed.'}</div>`
+      : mouthFilled
+        ? `<div class="chiprow">${(typeof washMouthStory==='function' && washMouthStory(t)) || 'This pond plugged the leftover wash mouth — the stem nicks until the bed reopens. Not Dust Flats drought, not a creek spine.'}</div>`
       : washFilled
         ? `<div class="chiprow">${washNeed?'This pond filled the dry wash — drought nicks the flats. Clear it to open the bed again. Not a second river.':'This pond sits in the dry wash. Clear it to open the bed again. Not a second river.'}</div>`
       : (typeof isLaneFloodedT==='function' && isLaneFloodedT(t) && typeof laneWorkReady==='function' && laneWorkReady())
@@ -22865,6 +23240,10 @@ function openInfo(refreshOnly){
           ? ((typeof homeWaterStory==='function' && homeWaterStory(t)) || 'This tree filled the garden pond. Clear it to open the kitchen basin again.')
         : (typeof isHomeSwaleFillT==='function' && isHomeSwaleFillT(t) && typeof homeWaterReady==='function' && homeWaterReady())
           ? ((typeof homeWaterStory==='function' && homeWaterStory(t)) || 'This tree filled the swale. Clear it to open the contour again.')
+        : (typeof isWashMouthFillT==='function' && isWashMouthFillT(t)
+            && typeof washMouthReady==='function' && washMouthReady())
+          ? ((typeof washMouthStory==='function' && washMouthStory(t))
+            || 'This tree plugged the leftover wash mouth — the stem nicks until the bed reopens. Not Dust Flats drought, not a creek spine.')
         : (typeof isDustWashFillT==='function' && isDustWashFillT(t))
           ? ((typeof dustWashNeed==='function' && dustWashNeed())
             ? 'This tree filled the dry wash — drought nicks the flats. Clear it to open the bed again. Not a second river.'
@@ -22886,7 +23265,12 @@ function openInfo(refreshOnly){
   const pileChip = pileLine ? `<div class="chiprow">🪣 ${pileLine}</div>` : '';
   const wildLine = (typeof parcelWildlifeInspectLine==='function') ? parcelWildlifeInspectLine() : '';
   const wildChip = wildLine ? `<div class="chiprow">${wildLine}</div>` : '';
-  panel.innerHTML = `<h3>${healthFace(isLandT(t)?t.health:80)} ${names[t.terrain]||t.terrain} <span style="font-size:11px;color:var(--soft)">${regName}</span>
+  const mouthTitle = (typeof getTileName==='function') ? getTileName(t) : '';
+  const headName = (mouthTitle && typeof washMouthReady==='function' && washMouthReady()
+    && typeof isWashMouthMarkedT==='function' && isWashMouthMarkedT(t))
+    ? mouthTitle
+    : (names[t.terrain]||t.terrain);
+  panel.innerHTML = `<h3>${healthFace(isLandT(t)?t.health:80)} ${headName} <span style="font-size:11px;color:var(--soft)">${regName}</span>
     <button class="closex" id="infoClose">✕</button></h3>${body}${pileChip}${wildChip}${crateChip}`;
   panel.classList.add('show');
   document.getElementById('infoClose').onclick = ()=>{ selected = -1; closeInfo(); };
