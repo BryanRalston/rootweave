@@ -5705,13 +5705,13 @@ function riparianBufferFarm(){
   if(state && !state.homesteadView) return state;
   return null;
 }
-/** Creek Bend, River Reach, leftover South Reach. Home, dust, ridge, woodlot/willow/hedge/reed stay off. */
+/** Creek Bend and River Reach. Leftover South Reach is wash mouth, not a second creek spine. Home, dust, ridge, woodlot/willow/hedge/reed stay off. */
 function leftoverIsRiparianFold(P){
   if(!P) return false;
   if(P.id==='home_garden' || P.lvIndex===0) return false;
+  if(P.id==='south_reach' || P.levelId==='south_reach') return false;
   if(P.id==='creek_bend' || P.levelId==='creek') return true;
   if(P.id==='river_reach' || P.levelId==='valley') return true;
-  if(P.id==='south_reach') return true;
   const feel = typeof leftoverStampFeelFor==='function' ? leftoverStampFeelFor(P) : (P.stampFeel||'');
   return feel==='river';
 }
@@ -5721,6 +5721,7 @@ function currentRiparianFold(s){
   if(s.homesteadView) return false;
   const L = (typeof LEVELS!=='undefined' && LEVELS[s.lv]) ? LEVELS[s.lv] : null;
   if(L && L.id==='home') return false;
+  if(L && L.id==='south_reach') return false;
   if(L && (L.id==='creek' || L.id==='valley')) return true;
   const P = typeof valleyParcelByLvIndex==='function' ? valleyParcelByLvIndex(s.lv) : null;
   return leftoverIsRiparianFold(P);
@@ -19878,7 +19879,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-26.whatsnew9';
+const SHIP_BUILD = '2026-08-26.riparianfix';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
