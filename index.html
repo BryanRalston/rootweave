@@ -1146,6 +1146,8 @@ const WASH_MOUTH_HOLD_SOIL = {water:0.28, om:0.12}; // mild capped hold on lefto
 const WASH_MOUTH_NICK_SOIL = {water:-0.6, om:-0.18, erosion:-0.6}; // plugged / kitchened mouth nicks leftover stem beds
 const DRY_GRAZE_HOLD_SOIL = {erosion:0.4, water:0.28}; // mild dawn hold on dry-edge pasture; cap so it cannot farm health
 const DRY_GRAZE_NICK_SOIL = {erosion:-0.65, water:-0.6}; // kitchen / stripped crust — the edge nicks until rest/cover
+const SCRUB_STAND_HOLD_SOIL = {erosion:0.4, water:0.28}; // mild dawn hold on leftover beds around living thorn; cap so it cannot farm health
+const SCRUB_STAND_NICK_SOIL = {erosion:-0.65, water:-0.6}; // living catch thin or kitchen — beds nick until thorn or Trees on a marked seat
 const OVERGRAZE_RATES = {om:-0.45, structure:-0.35, nutrients:-0.15, water:0, microbial:-0.1, erosion:-0.5};
 function emptyHerd(){ return {cattle:0, chicken:0, sheep:0, goat:0, pig:0, duckT:0}; }
 function ensureHerd(c){
@@ -9030,6 +9032,15 @@ function getTileName(t){
        && (t.terrain==='soil' || t.terrain==='dead'))
       return 'Stripped rain-catch';
   }
+  if(typeof scrubStandReady==='function' && scrubStandReady()){
+    if(typeof leftoverIsScrubKitchenT==='function' && leftoverIsScrubKitchenT(t))
+      return 'Kitchen on the scrub';
+    if(typeof isScrubStandLiveT==='function' && isScrubStandLiveT(t))
+      return 'Living thorn';
+    if(typeof isNativeScrubMarkT==='function' && isNativeScrubMarkT(t)
+       && (t.terrain==='soil' || t.terrain==='dead'))
+      return 'Cleared thorn stump';
+  }
   if(t.crop && typeof CROPS!=='undefined' && CROPS[t.crop.type]) return CROPS[t.crop.type].name;
   return '';
 }
@@ -10269,18 +10280,22 @@ function leftoverMeadowSeatOk(t, g){
   if(typeof isStockDrinkT==='function' && isStockDrinkT(t)) return false;
   return true;
 }
-/** Clover / pioneer cover or a flowered soil tile — meadow, not hay wheat or sisters. */
+/** Clover / pioneer cover or a flowered soil tile — meadow, not hay wheat or sisters.
+ *  Dust Scrub leftover clover / flower dress must not fake meadow bloom (or this fold's thorn hold). */
 function leftoverIsMeadowBloomT(t){
   if(!t) return false;
+  if(typeof currentScrubStandFold==='function' && currentScrubStandFold()) return false;
   if(t.crop && (t.crop.type==='clover' || t.crop.type==='covercrop')) return true;
   return t.terrain==='soil' && (t.flowers||0) > 0.14;
 }
-/** Leftover / bought wet-meadow folds. Home Patch and campaign marsh stay off. */
+/** Leftover / bought wet-meadow folds. Home Patch, campaign marsh, and Dust Scrub stay off. */
 function leftoverIsMeadowFold(P){
   if(!P) return false;
   if(P.id==='home_garden' || P.lvIndex===0) return false;
   if(P.id==='marsh_finger' || P.levelId==='marsh') return false;
+  if(P.id==='dust_scrub' || P.levelId==='dust_scrub') return false;
   const feel = typeof leftoverStampFeelFor==='function' ? leftoverStampFeelFor(P) : (P.stampFeel||'');
+  if(feel==='scrub') return false;
   if(feel==='meadow' || P.id==='wet_meadow') return true;
   return (feel==='wet') && !!(P.leftover || P.buyable);
 }
@@ -10825,12 +10840,14 @@ function dustWashFarm(){
   if(state && !state.homesteadView) return state;
   return null;
 }
-/** Campaign Dust Flats + leftover dustfeel. Home, dry-graze, and river leftovers stay off. */
+/** Campaign Dust Flats + leftover dustfeel. Home, dry-graze, river leftovers, and Dust Scrub stay off. */
 function leftoverIsDustWashFold(P){
   if(!P) return false;
   if(P.id==='home_garden' || P.lvIndex===0) return false;
+  if(P.id==='dust_scrub' || P.levelId==='dust_scrub') return false;
   if(P.id==='dust_flats' || P.levelId==='flats') return true;
   const feel = typeof leftoverStampFeelFor==='function' ? leftoverStampFeelFor(P) : (P.stampFeel||'');
+  if(feel==='scrub') return false;
   return feel==='dust';
 }
 function currentDustWashFold(s){
@@ -10994,6 +11011,219 @@ function tickDustWashWork(){
   }
   if(typeof toast==='function'){
     toast('🏜️ The dry wash is blocked — drought nicks the flats. Keep the bed open so rare water can move.', {once:'dust_wash_work_first', throttleMs:4000});
+  }
+  return tiles.length;
+}
+/** Leftover Dust Scrub only. Home, Dust Flats wash, East Pasture dry-edge, woodlot, hay, willow, meadow stay off. */
+function leftoverIsScrubStandFold(P){
+  if(!P) return false;
+  if(P.buyable) return false;
+  if(P.id==='home_garden' || P.lvIndex===0) return false;
+  if(P.id==='dust_flats' || P.levelId==='flats') return false;
+  if(P.id==='east_pasture' || P.levelId==='east_pasture') return false;
+  if(P.id==='woodlot' || P.id==='hay_field' || P.id==='south_lane') return false;
+  if(P.id==='willow_bottom' || P.id==='wet_meadow') return false;
+  if(P.id==='dust_scrub' || P.levelId==='dust_scrub') return true;
+  const feel = typeof leftoverStampFeelFor==='function' ? leftoverStampFeelFor(P) : (P.stampFeel||'');
+  if(feel==='dust' || feel==='dry_graze' || feel==='woodlot' || feel==='hay'
+     || feel==='wet' || feel==='meadow' || feel==='paddock' || feel==='river') return false;
+  return feel==='scrub';
+}
+/** Field under the player, or the parked leftover Dust Scrub while they are in the yard. */
+function scrubStandFarm(){
+  if(typeof homesteadMode!=='undefined' && homesteadMode && typeof plotStateBackup!=='undefined'
+     && plotStateBackup && plotStateBackup.grid && !plotStateBackup.homesteadView){
+    return plotStateBackup;
+  }
+  if(state && !state.homesteadView) return state;
+  return null;
+}
+function currentScrubStandFold(s){
+  s = s || (typeof scrubStandFarm==='function' ? scrubStandFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s) return false;
+  if(s.homesteadView) return false;
+  const L = (typeof LEVELS!=='undefined' && LEVELS[s.lv]) ? LEVELS[s.lv] : null;
+  if(L && L.id==='home') return false;
+  if(L && (L.id==='dust_scrub' || L.stampFeel==='scrub')) return true;
+  if(L && (L.id==='flats' || L.id==='east_pasture' || L.id==='woodlot' || L.id==='hay_field'
+     || L.id==='willow_bottom' || L.id==='wet_meadow'
+     || L.stampFeel==='dust' || L.stampFeel==='dry_graze')) return false;
+  const P = typeof valleyParcelByLvIndex==='function' ? valleyParcelByLvIndex(s.lv) : null;
+  return leftoverIsScrubStandFold(P);
+}
+/** Leftover Dust Scrub after Home. First session, Dust Flats, East Pasture, and other leftover holds stay off. */
+function scrubStandFoldReady(s){
+  if(!camp) return false;
+  if(typeof homePatchCleared==='function' && !homePatchCleared()) return false;
+  return currentScrubStandFold(s);
+}
+/** Plantable leftover beds the thorn still feeds — not the berrybush, not saltflat / gully, not farm-edge. */
+function scrubStandPlantSeatOk(t){
+  if(!t) return false;
+  if(t.terrain!=='soil' && t.terrain!=='dead') return false;
+  if(t.feature==='path' || t.feature==='swale' || t.feature==='saltflat' || t.feature==='gully') return false;
+  if(typeof isFarmEdgeT==='function' && isFarmEdgeT(t)) return false;
+  if(typeof isNativeScrubT==='function' && isNativeScrubT(t)) return false;
+  if(typeof leftoverStampLand==='function') return leftoverStampLand(t);
+  return true;
+}
+/** Sisters / wheat kitchen on plantable leftover land — the fold treated as a kitchen. Clover is not kitchen. */
+function leftoverIsScrubKitchenT(t, s){
+  if(!t || !t.crop) return false;
+  if(t.crop.type!=='sisters' && t.crop.type!=='wheat') return false;
+  if(typeof currentScrubStandFold==='function' && !currentScrubStandFold(s)) return false;
+  return typeof scrubStandPlantSeatOk==='function' ? scrubStandPlantSeatOk(t) : (t.terrain==='soil' || t.terrain==='dead');
+}
+/** Living thorn seat — marked native scrub + berrybush, or Trees on a marked stump.
+ *  A cleared mark is not live. Bare leftover soil, saltflat, gully, farm-edge, goat-browsed
+ *  dead brush, flower-only dress, and unmarked leftover clover do not pad live. */
+function isScrubStandLiveT(t){
+  if(!t) return false;
+  if(typeof leftoverIsScrubKitchenT==='function' && leftoverIsScrubKitchenT(t)) return false;
+  if(t.feature==='saltflat' || t.feature==='gully') return false;
+  if(typeof isFarmEdgeT==='function' && isFarmEdgeT(t)) return false;
+  if(t.scrubBrowsed && t.terrain!=='berrybush' && t.terrain!=='trees') return false;
+  if(typeof leftoverIsPastureCoverT==='function' && leftoverIsPastureCoverT(t)) return false;
+  if(typeof leftoverIsMeadowBloomT==='function' && leftoverIsMeadowBloomT(t)) return false;
+  if(typeof isNativeScrubT==='function' && isNativeScrubT(t)) return true;
+  if(typeof isNativeScrubMarkT==='function' && isNativeScrubMarkT(t) && t.terrain==='trees') return true;
+  return false;
+}
+function scrubStandCoverCount(s){
+  let live = 0, marked = 0, kitchen = 0, plant = 0;
+  s = s || (typeof scrubStandFarm==='function' ? scrubStandFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return {live, marked, kitchen, plant};
+  s.grid.forEach(t=>{
+    if(!t) return;
+    const markT = typeof isNativeScrubMarkT==='function' && isNativeScrubMarkT(t);
+    const liveT = typeof isScrubStandLiveT==='function' && isScrubStandLiveT(t);
+    // Seats are living or marked thorn only — bare leftover soil must not pad the live count.
+    if(markT) marked++;
+    if(liveT) live++;
+    if(typeof scrubStandPlantSeatOk==='function' && scrubStandPlantSeatOk(t)){
+      plant++;
+      if(typeof leftoverIsScrubKitchenT==='function' && leftoverIsScrubKitchenT(t, s)) kitchen++;
+    }
+  });
+  return {live, marked, kitchen, plant};
+}
+/** Leftover Dust Scrub after Home, once a living or marked thorn seat exists. First visit already has ensureNativeScrubPatches. If 0 marks, stay off — do not invent. */
+function scrubStandReady(s){
+  if(typeof scrubStandFoldReady==='function' ? !scrubStandFoldReady(s) : true) return false;
+  const n = scrubStandCoverCount(s);
+  return (n.marked|0) > 0;
+}
+/** Living thorn still holds ≥ ~50% of marked seats, and sisters / wheat stay below ~50% of plantable leftover land. */
+function scrubStandUsable(s){
+  if(!scrubStandReady(s)) return false;
+  const n = scrubStandCoverCount(s);
+  if((n.marked|0) <= 0) return false;
+  const halfSeats = Math.max(1, Math.ceil(n.marked * 0.5));
+  const halfPlant = Math.max(1, Math.ceil((n.plant|0) * 0.5));
+  if((n.plant|0) > 0 && (n.kitchen|0) >= halfPlant) return false;
+  return (n.live|0) >= halfSeats;
+}
+function scrubStandNeed(s){
+  return !!(scrubStandReady(s) && !scrubStandUsable(s));
+}
+/** Plantable leftover beds around the scrub — not the berrybush tile, not saltflat / gully. */
+function scrubStandSoilTiles(s){
+  const tiles = [];
+  s = s || (typeof scrubStandFarm==='function' ? scrubStandFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return tiles;
+  s.grid.forEach((t, i)=>{
+    if(!t || !t.soil) return;
+    if(typeof scrubStandPlantSeatOk==='function' ? !scrubStandPlantSeatOk(t) : true) return;
+    tiles.push({t, i});
+  });
+  return tiles;
+}
+function scrubStandFloaterIdx(s){
+  s = s || (typeof scrubStandFarm==='function' ? scrubStandFarm() : (typeof state!=='undefined' ? state : null));
+  if(state && state.grid && s && s.grid && state.grid===s.grid){
+    for(let i=0;i<s.grid.length;i++){
+      if(typeof isNativeScrubMarkT==='function' && isNativeScrubMarkT(s.grid[i])
+         && !(typeof isScrubStandLiveT==='function' && isScrubStandLiveT(s.grid[i]))) return i;
+    }
+    const beds = scrubStandSoilTiles(s);
+    for(let i=0;i<beds.length;i++){
+      if(leftoverIsScrubKitchenT(beds[i].t, s) || !isScrubStandLiveT(beds[i].t))
+        return beds[i].i;
+    }
+    if(beds.length && beds[0] && beds[0].i>=0) return beds[0].i;
+    for(let i=0;i<s.grid.length;i++) if(isScrubStandLiveT(s.grid[i])) return i;
+  }
+  if(typeof selected==='number' && selected>=0 && state && state.grid && state.grid[selected]) return selected;
+  return (typeof selected==='number' && selected>=0) ? selected : 0;
+}
+function scrubStandStory(t, opts){
+  opts = opts || {};
+  const ready = typeof scrubStandReady==='function' && scrubStandReady();
+  const need = typeof scrubStandNeed==='function' && scrubStandNeed();
+  const hold = ready && !need && (typeof scrubStandUsable==='function' && scrubStandUsable());
+  const live = typeof isScrubStandLiveT==='function' && isScrubStandLiveT(t);
+  const mark = typeof isNativeScrubMarkT==='function' && isNativeScrubMarkT(t);
+  const kitchen = typeof leftoverIsScrubKitchenT==='function' && leftoverIsScrubKitchenT(t);
+  const grazeGoat = !!(t && t.graze && (t.graze.kind==='goat' || (typeof grazeHasKind==='function' && grazeHasKind(t.graze, 'goat'))));
+  if(!ready) return '';
+  if(opts.needOnly && !need) return '';
+  if(kitchen)
+    return need
+      ? '🌵 This sisters or wheat kitchen on Dust Scrub — living thorn cannot hold south-east wind cover. Beds nick until a marked seat is living thorn or Trees again. Not another dust flat, not East Pasture dry-edge, not leftover woodlot.'
+      : '🌵 A kitchen row on Dust Scrub — not living thorn. Leave the stand so south-east wind cover can hold. Goats browse the open dead brush.';
+  if(live)
+    return need
+      ? '🌵 Living thorn is thin — south-east wind cover is gone. Beds nick until a marked seat is living thorn or Trees again. Goats still browse the open dead brush. Not another dust flat, not East Pasture dry-edge, not leftover woodlot.'
+      : '🌵 Living thorn — south-east wind cover. Goats browse the open dead brush. Clearing living patches strips water and cover from neighbors. Replant a cleared stump with Trees. Not another dust flat, not East Pasture dry-edge, not leftover woodlot, not a kitchen.';
+  if(grazeGoat)
+    return need
+      ? '🌵 Goat browse on a nicked scrub — light walk on open dead brush. Living thorn is thin; beds nick until a marked seat is living thorn or Trees again. Browse does not nick living patches.'
+      : '🌵 Goat browse of dead brush — light, and it does not nick living thorn. South-east wind cover still holds. Not another dust flat, not a kitchen.';
+  if(mark && t && (t.terrain==='soil' || t.terrain==='dead'))
+    return need
+      ? '🌵 Cleared thorn stump — south-east wind cover nicks until this marked seat is living thorn or Trees again. Not another dust flat, not East Pasture dry-edge, not leftover woodlot.'
+      : '🌵 A marked thorn seat — replant with Trees so south-east wind cover holds again. Goats browse the open dead brush.';
+  if(t && (t.terrain==='soil' || t.terrain==='dead')){
+    if(need) return '🌵 Open leftover beds — living thorn is thin or the fold was treated as a kitchen. South-east wind cover nicks until a marked seat is living thorn or Trees again. Not another dust flat, not East Pasture dry-edge.';
+    if(hold && !opts.needOnly) return '🌵 Beside living thorn — south-east wind cover still holds these leftover beds. Goats browse the open dead brush. Not another dust flat, not East Pasture dry-edge, not leftover woodlot, not a kitchen.';
+  }
+  return '';
+}
+/** One sim dawn: living leftover Dust Scrub holds water / erosion; a thin stand or kitchen nicks them. First session stays off. */
+function tickScrubStandWork(){
+  if(!camp || !scrubStandReady()) return 0;
+  const s = typeof scrubStandFarm==='function' ? scrubStandFarm() : (typeof state!=='undefined' ? state : null);
+  if(!s || !s.grid) return 0;
+  const tiles = scrubStandSoilTiles(s);
+  if(!tiles.length) return 0;
+  const open = scrubStandUsable(s);
+  if(open){
+    const b = (typeof SCRUB_STAND_HOLD_SOIL!=='undefined') ? SCRUB_STAND_HOLD_SOIL : {erosion:0.4, water:0.28};
+    tiles.forEach(({t})=>{
+      if(!t || !t.soil) return;
+      if((t.soil.erosion||0) < 80) t.soil.erosion = clamp((t.soil.erosion||0) + (b.erosion||0));
+      if((t.soil.water||0) < 70) t.soil.water = clamp((t.soil.water||0) + (b.water||0));
+      if(typeof recalc==='function') recalc(t);
+    });
+    if(typeof toast==='function'){
+      toast('🌵 Living thorn holds south-east wind cover — goats browse the open dead brush. Clearing living patches strips water and cover from neighbors. Replant a stump with Trees.', {once:'scrub_stand_hold_first', throttleMs:4000});
+    }
+    return tiles.length;
+  }
+  if(!scrubStandNeed(s)) return 0;
+  const b = (typeof SCRUB_STAND_NICK_SOIL!=='undefined') ? SCRUB_STAND_NICK_SOIL : {erosion:-0.65, water:-0.6};
+  tiles.forEach(({t})=>{
+    if(!t || !t.soil) return;
+    t.soil.erosion = clamp((t.soil.erosion||0) + (b.erosion||0));
+    t.soil.water = clamp((t.soil.water||0) + (b.water||0));
+    if(typeof recalc==='function') recalc(t);
+  });
+  const fi = scrubStandFloaterIdx(s);
+  if(typeof floater==='function' && state && state.grid && state.grid[fi]){
+    floater(fi, 'wind nicks', '#c9a070');
+  }
+  if(typeof toast==='function'){
+    toast('🌵 Living thorn is thin or the fold was treated as a kitchen — south-east wind cover nicks until a marked seat is living thorn or Trees again.', {once:'scrub_stand_need_first', throttleMs:4000});
   }
   return tiles.length;
 }
@@ -12610,6 +12840,10 @@ function countGroveTiles(){
 function currentNativeScrubFold(s){
   s = s || state;
   if(!s || s.homesteadView) return false;
+  if(typeof leftoverIsScrubStandFold==='function'){
+    const P = typeof valleyParcelByLvIndex==='function' ? valleyParcelByLvIndex(s.lv) : null;
+    if(P) return leftoverIsScrubStandFold(P);
+  }
   const P = typeof valleyParcelByLvIndex==='function' ? valleyParcelByLvIndex(s.lv) : null;
   return !!(P && P.id==='dust_scrub');
 }
@@ -14165,6 +14399,7 @@ function simStep(dt){
     if(typeof tickWindShelterWork==='function') tickWindShelterWork();
     if(typeof tickHedgeCorridorWork==='function') tickHedgeCorridorWork();
     if(typeof tickDustWashWork==='function') tickDustWashWork();
+    if(typeof tickScrubStandWork==='function') tickScrubStandWork();
     if(typeof tickWashMouthWork==='function') tickWashMouthWork();
     if(typeof tickHighPondWork==='function') tickHighPondWork();
     if(typeof tickWindCatchWork==='function') tickWindCatchWork();
@@ -17709,6 +17944,10 @@ function soilStoryLine(t){
       const dg = dryGrazeStandStory(t);
       if(dg) return dg;
     }
+    if(typeof scrubStandStory==='function'){
+      const ss = scrubStandStory(t);
+      if(ss) return ss;
+    }
     if(typeof paddockRestStory==='function'){
       const pr = paddockRestStory(t);
       if(pr) return pr;
@@ -17740,6 +17979,10 @@ function soilStoryLine(t){
     if(typeof windCatchStory==='function'){
       const wc = windCatchStory(t);
       if(wc) return wc;
+    }
+    if(typeof scrubStandStory==='function'){
+      const ss = scrubStandStory(t);
+      if(ss) return ss;
     }
     if(t.feature==='saltflat') return '🧂 Salt memory — leftover irrigation and drought. Extra life and time are the only rinse.';
     if(typeof highPondNeed==='function' && highPondNeed()
@@ -17816,6 +18059,10 @@ function soilStoryLine(t){
       const dg = dryGrazeStandStory(t, {needOnly:true});
       if(dg) return dg;
     }
+    if(typeof scrubStandStory==='function'){
+      const ss = scrubStandStory(t, {needOnly:true});
+      if(ss) return ss;
+    }
     if(typeof dustWashNeed==='function' && dustWashNeed())
       return '🏜️ Dry wash is blocked — drought nicks these flats. Keep the bed open so rare water can move.';
     return '💀 Sleeping soil — the living community is gone until you feed it.';
@@ -17861,6 +18108,10 @@ function soilStoryLine(t){
     if(typeof orchardStandStory==='function'){
       const os = orchardStandStory(t);
       if(os) return os;
+    }
+    if(typeof scrubStandStory==='function'){
+      const ss = scrubStandStory(t);
+      if(ss) return ss;
     }
     if(typeof isOrchardFruitT==='function' && isOrchardFruitT(t))
       return (typeof orchardFruitStory==='function' ? orchardFruitStory('') : '🍎 Living orchard fruit for the crate. The tree stays.');
@@ -17984,6 +18235,12 @@ function soilStoryLine(t){
       if(wc) return wc;
     }
   }
+  if(t.terrain==='berrybush'){
+    if(typeof scrubStandStory==='function'){
+      const ss = scrubStandStory(t);
+      if(ss) return ss;
+    }
+  }
   if(t.terrain!=='soil') return '';
   const h = t.health|0;
   const tier = h >= 80 ? '🌟 Rich living soil — keep diversity and rest; it pays you back.'
@@ -18031,6 +18288,10 @@ function soilStoryLine(t){
     if(typeof windCatchStory==='function'){
       const wc = windCatchStory(t);
       if(wc) return wc+' '+tier;
+    }
+    if(typeof scrubStandStory==='function'){
+      const ss = scrubStandStory(t);
+      if(ss) return ss+' '+tier;
     }
     if(typeof paddockStockThirstNeed==='function' && paddockStockThirstNeed())
       return '💧 Dry fold — the herd needs stock water they can stand beside. '+tier;
@@ -18110,6 +18371,10 @@ function soilStoryLine(t){
     if(typeof windCatchStory==='function'){
       const wc = windCatchStory(t);
       if(wc) return (edgeNeed?edgeNeed+' ':'')+wc+' '+tier;
+    }
+    if(typeof scrubStandStory==='function'){
+      const ss = scrubStandStory(t);
+      if(ss) return (edgeNeed?edgeNeed+' ':'')+ss+' '+tier;
     }
     if(t.crop.type==='sisters')
       return (edgeNeed?edgeNeed+' ':'')+'🌽 The guild — corn is the pole, beans feed nitrogen, squash shades weeds. A team feeds the soil. '+tier;
@@ -18192,6 +18457,10 @@ function soilStoryLine(t){
   if(typeof windCatchStory==='function'){
     const wc = windCatchStory(t);
     if(wc) return wc+' '+tier;
+  }
+  if(typeof scrubStandStory==='function'){
+    const ss = scrubStandStory(t);
+    if(ss) return ss+' '+tier;
   }
   if(typeof meadowStandStory==='function'){
     const ms = meadowStandStory(t);
@@ -19609,7 +19878,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-26.whatsnew8';
+const SHIP_BUILD = '2026-08-26.scrubstand';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -24229,10 +24498,11 @@ function openInfo(refreshOnly){
           : ''))
       : '';
     const dryEdgeReady = typeof dryGrazeStandReady==='function' && dryGrazeStandReady();
+    const scrubReady = typeof scrubStandReady==='function' && scrubStandReady();
     const washLine = mouthLine
       ? mouthLine
-      : (dryEdgeReady
-      ? ''
+      : (dryEdgeReady || scrubReady
+      ? ((typeof scrubStandStory==='function' && scrubStandStory(t)) || '')
       : (washNeed
       ? '🏜️ Dry wash is blocked — drought nicks these flats. Keep the bed open.'
       : ((typeof washAdj==='function' && washAdj(t))
@@ -24282,9 +24552,14 @@ function openInfo(refreshOnly){
     }
   }else if(BUILD_SET.has(t.terrain)){
     body = `<div class="chiprow">${nativeScrub
-      ? 'Living thorn scrub — shelter against the south-east wind. Goats browse the open dead brush around it; clearing this patch opens ground but strips water and cover from its neighbors.'
+      ? ((typeof scrubStandReady==='function' && scrubStandReady() && typeof scrubStandStory==='function' && scrubStandStory(t))
+        || 'Living thorn scrub — shelter against the south-east wind. Goats browse the open dead brush around it; clearing this patch opens ground but strips water and cover from its neighbors.')
       : (BUILD_INFO[t.terrain]||'')}</div>`;
     if(nativeScrub){
+      if(typeof scrubStandReady==='function' && scrubStandReady() && typeof scrubStandNeed==='function' && scrubStandNeed())
+        body += `<div class="chiprow">🌵 living thorn is thin — south-east wind cover nicks until thorn or Trees return</div>`;
+      else if(typeof scrubStandReady==='function' && scrubStandReady())
+        body += `<div class="chiprow">🌵 living thorn — south-east wind cover; goats browse the open dead brush</div>`;
       body += `<div class="chiprow">🌵 ${countNativeScrub()} native patches still stand in this fold.</div>`;
     }else if(t.terrain==='wetland' && typeof isMarshPondFillT==='function' && isMarshPondFillT(t)
               && typeof marshFoldReady==='function' && marshFoldReady()){
@@ -24445,7 +24720,8 @@ function openInfo(refreshOnly){
     if(typeof washMouthReady==='function' && washMouthReady()){
       const mouthLine = (typeof washMouthStory==='function') ? washMouthStory(t) : '';
       if(mouthLine) chips.push(mouthLine);
-    }else if(!(typeof dryGrazeStandReady==='function' && dryGrazeStandReady())){
+    }else if(!(typeof dryGrazeStandReady==='function' && dryGrazeStandReady())
+            && !(typeof scrubStandReady==='function' && scrubStandReady())){
       if(typeof dustWashNeed==='function' && dustWashNeed())
         chips.push('🏜️ dry wash blocked — drought nicks the flats');
       else if(typeof washAdj==='function' && washAdj(t))
@@ -24501,6 +24777,13 @@ function openInfo(refreshOnly){
             || (typeof leftoverIsWindCatchCloverT==='function' && leftoverIsWindCatchCloverT(t))
             || (typeof windCatchPlantSeatOk==='function' && windCatchPlantSeatOk(t))))
       chips.push('🛢️ living rain-catch — tanks and the well hold these beds through drought');
+    if(typeof scrubStandNeed==='function' && scrubStandNeed())
+      chips.push('🌵 living thorn is thin — south-east wind cover nicks until thorn or Trees return');
+    else if(typeof scrubStandReady==='function' && scrubStandReady()
+         && ((typeof isScrubStandLiveT==='function' && isScrubStandLiveT(t))
+            || (typeof isNativeScrubMarkT==='function' && isNativeScrubMarkT(t))
+            || (typeof scrubStandPlantSeatOk==='function' && scrubStandPlantSeatOk(t))))
+      chips.push('🌵 living thorn — south-east wind cover; goats browse the open dead brush');
     if(typeof meadowStandNeed==='function' && meadowStandNeed())
       chips.push('🌼 meadow stand is thin — pollinators miss this fold');
     else if(typeof meadowStandReady==='function' && meadowStandReady()
