@@ -1080,6 +1080,9 @@ const PADDOCK_SHELTER_REACH = 2; // chebyshev tiles — herd can walk into the l
 const PADDOCK_EXPOSE_STAY = 0.12; // modest tired-pad tick; thirst uses 0.15
 const PADDOCK_REST_HOLD_SOIL = {om:0.16, microbial:0.22}; // mild dawn hold on leftover extra-paddock rest; cap so it cannot farm health
 const PADDOCK_REST_NICK_SOIL = {om:-0.2, microbial:-0.16}; // kitchen / overstock — rest nicks until clover or living graze returns
+const SCHOOL_MIX_LOT = 3;   // modest crate lot — a light sisters pick, well under a wheat cut
+const SCHOOL_MIX_HOLD_SOIL = {om:0.16, microbial:0.22}; // mild dawn hold on School Garden mix; cap so it cannot farm health
+const SCHOOL_MIX_NICK_SOIL = {om:-0.2, microbial:-0.16}; // wheat-only / strip — cover nicks until sisters or clover return
 const WIND_SHELTER_NICK_SOIL = {water:-0.8, erosion:-0.6, om:-0.2}; // dawn nick: weather-edge bare after Home
 const WIND_SHELTER_HOLD_SOIL = {water:0.35, erosion:0.3, om:0.1}; // modest hold when the weather-side break stays
 const DUST_WASH_DRY_SOIL = {water:-2.0, om:-0.5, erosion:-0.8}; // dawn nick: dry season, wash filled / blocked / missing
@@ -8541,6 +8544,14 @@ function getTileName(t){
     if(typeof isWashMouthMarkedT==='function' && isWashMouthMarkedT(t))
       return 'Wash mouth';
   }
+  if(typeof schoolMixReady==='function' && schoolMixReady()){
+    if(typeof leftoverIsSchoolWheatKitchenT==='function' && leftoverIsSchoolWheatKitchenT(t))
+      return 'Wheat kitchen';
+    if(typeof leftoverIsSchoolMixStrippedT==='function' && leftoverIsSchoolMixStrippedT(t))
+      return 'Stripped school bed';
+    if(typeof isSchoolMixLiveT==='function' && isSchoolMixLiveT(t))
+      return 'Teach-back mix';
+  }
   if(t.crop && typeof CROPS!=='undefined' && CROPS[t.crop.type]) return CROPS[t.crop.type].name;
   return '';
 }
@@ -8578,6 +8589,249 @@ function tickPaddockRestWork(){
   }
   if(typeof toast==='function'){
     toast('🌿 Extra paddock was treated as a kitchen or overstocked — standing rest is gone. Clover or living graze so the leftover fold can hold again.', {once:'paddock_rest_need_first', throttleMs:4000});
+  }
+  return tiles.length;
+}
+/** Campaign School Garden only. Home, leftover hay, leftover North/West, East Pasture, and buyable South Lane stay off. */
+function leftoverIsSchoolGardenFold(P){
+  if(!P) return false;
+  if(P.buyable) return false;
+  if(P.leftover) return false;
+  if(P.id==='home_garden' || P.lvIndex===0) return false;
+  if(P.id==='south_lane' || P.id==='north_folds' || P.id==='west_folds' || P.id==='east_pasture') return false;
+  return P.id==='school_garden' || P.levelId==='school' || P.lvIndex===8;
+}
+/** Field under the player, or the parked school plot while they are in the yard. */
+function schoolMixFarm(){
+  if(typeof homesteadMode!=='undefined' && homesteadMode && typeof plotStateBackup!=='undefined'
+     && plotStateBackup && plotStateBackup.grid && !plotStateBackup.homesteadView){
+    return plotStateBackup;
+  }
+  if(state && !state.homesteadView) return state;
+  return null;
+}
+function currentSchoolMixFold(s){
+  s = s || (typeof schoolMixFarm==='function' ? schoolMixFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s) return false;
+  if(s.homesteadView) return false;
+  const L = (typeof LEVELS!=='undefined' && LEVELS[s.lv]) ? LEVELS[s.lv] : null;
+  if(L && L.id==='home') return false;
+  if(L && L.id==='school') return true;
+  if((s.lv|0)===8 && L && L.id==='school') return true;
+  const P = typeof valleyParcelByLvIndex==='function' ? valleyParcelByLvIndex(s.lv) : null;
+  return leftoverIsSchoolGardenFold(P);
+}
+/** School Garden after Home. First session, leftover hay, leftover paddock rest, and South Lane stay off. */
+function schoolMixFoldReady(s){
+  if(!camp) return false;
+  if(typeof homePatchCleared==='function' && !homePatchCleared()) return false;
+  return currentSchoolMixFold(s);
+}
+/** School plant seat — soil / dead beds, not lane, swale, water, or buildings. */
+function schoolMixSeatOk(t){
+  if(!t) return false;
+  if(t.terrain!=='soil' && t.terrain!=='dead') return false;
+  if(t.feature==='path' || t.feature==='swale' || t.feature==='saltflat') return false;
+  if(t.terrain==='water' || t.terrain==='pond' || t.terrain==='riverbed') return false;
+  if(t.terrain==='barn' || t.terrain==='coop' || t.terrain==='house' || t.terrain==='nstand') return false;
+  if(t.terrain==='trees' || t.terrain==='orchard') return false;
+  if(typeof isFarmEdgeT==='function' && isFarmEdgeT(t)) return false;
+  return true;
+}
+/** Sisters, clover, or pioneer cover — the humble teach-back mix. */
+function leftoverIsSchoolMixCropT(t){
+  return !!(t && t.crop && (t.crop.type==='sisters' || t.crop.type==='clover' || t.crop.type==='covercrop'));
+}
+/** Wheat-only kitchen on school beds — not a teach-back mix. */
+function leftoverIsSchoolWheatKitchenT(t){
+  return !!(t && t.crop && t.crop.type==='wheat');
+}
+function leftoverIsSchoolMixStrippedT(t){
+  if(!t || leftoverIsSchoolMixCropT(t) || leftoverIsSchoolWheatKitchenT(t)) return false;
+  return !!t.schoolMixStripped;
+}
+function noteSchoolMixStripped(t){
+  if(!t) return;
+  if(typeof currentSchoolMixFold==='function' && currentSchoolMixFold()) t.schoolMixStripped = true;
+}
+function noteSchoolMixRestored(t){
+  if(t) t.schoolMixStripped = false;
+}
+function schoolMixCoverCount(s){
+  let seats = 0, mix = 0, wheat = 0, stripped = 0, other = 0;
+  const types = Object.create(null);
+  s = s || (typeof schoolMixFarm==='function' ? schoolMixFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return {seats, mix, wheat, stripped, types:0};
+  s.grid.forEach(t=>{
+    if(!schoolMixSeatOk(t)) return;
+    seats++;
+    if(t.crop && t.crop.type) types[t.crop.type] = 1;
+    if(leftoverIsSchoolMixCropT(t)) mix++;
+    else if(leftoverIsSchoolWheatKitchenT(t)) wheat++;
+    else if(t.crop) other++;
+    else if(leftoverIsSchoolMixStrippedT(t)) stripped++;
+  });
+  const typeN = Object.keys(types).length;
+  // Two-or-more crop types on the school beds count as living mix, including wheat in that mix.
+  if(typeN >= 2){
+    mix += wheat + other;
+    wheat = 0;
+  }
+  return {seats, mix, wheat, stripped, types:typeN};
+}
+/** School Garden after Home. First session stays off. */
+function schoolMixReady(s){
+  if(typeof schoolMixFoldReady==='function' ? !schoolMixFoldReady(s) : true) return false;
+  const n = schoolMixCoverCount(s);
+  return (n.seats|0) > 0;
+}
+/** Living teach-back mix still holds ≥ ~50% of school plant seats. A light crate pick does not drop this. */
+function schoolMixUsable(s){
+  if(!schoolMixReady(s)) return false;
+  const n = schoolMixCoverCount(s);
+  if((n.seats|0) <= 0) return false;
+  return (n.mix|0) >= Math.max(1, Math.ceil(n.seats * 0.5));
+}
+/** Wheat-only or stripped bare majority — the mix is gone. */
+function schoolMixNeed(s){
+  if(!schoolMixReady(s)) return false;
+  if(schoolMixUsable(s)) return false;
+  const n = schoolMixCoverCount(s);
+  const half = Math.max(1, Math.ceil((n.seats|0) * 0.5));
+  return ((n.wheat|0) >= half) || ((n.stripped|0) >= half);
+}
+function isSchoolMixLiveT(t){
+  if(!t) return false;
+  if(typeof leftoverIsSchoolWheatKitchenT==='function' && leftoverIsSchoolWheatKitchenT(t)
+     && typeof schoolMixCoverCount==='function'){
+    const n = schoolMixCoverCount();
+    if((n.types|0) < 2) return false;
+  }
+  if(typeof leftoverIsSchoolMixCropT==='function' && leftoverIsSchoolMixCropT(t)) return true;
+  if(t.crop && typeof schoolMixCoverCount==='function'){
+    const n = schoolMixCoverCount();
+    return (n.types|0) >= 2;
+  }
+  return false;
+}
+function schoolMixSoilTiles(s){
+  const tiles = [];
+  s = s || (typeof schoolMixFarm==='function' ? schoolMixFarm() : (typeof state!=='undefined' ? state : null));
+  if(!s || !s.grid) return tiles;
+  s.grid.forEach((t, i)=>{
+    if(!t || !t.soil) return;
+    if(!schoolMixSeatOk(t)) return;
+    tiles.push({t, i});
+  });
+  return tiles;
+}
+function schoolMixFloaterIdx(s){
+  s = s || (typeof schoolMixFarm==='function' ? schoolMixFarm() : (typeof state!=='undefined' ? state : null));
+  if(state && state.grid && s && s.grid && state.grid===s.grid){
+    const beds = schoolMixSoilTiles(s);
+    for(let i=0;i<beds.length;i++){
+      if(leftoverIsSchoolWheatKitchenT(beds[i].t) || leftoverIsSchoolMixStrippedT(beds[i].t)
+         || !isSchoolMixLiveT(beds[i].t))
+        return beds[i].i;
+    }
+    if(beds.length && beds[0] && beds[0].i>=0) return beds[0].i;
+  }
+  if(typeof selected==='number' && selected>=0 && state && state.grid && state.grid[selected]) return selected;
+  return (typeof selected==='number' && selected>=0) ? selected : 0;
+}
+function schoolMixStory(t, opts){
+  opts = opts || {};
+  const ready = typeof schoolMixReady==='function' && schoolMixReady();
+  const need = typeof schoolMixNeed==='function' && schoolMixNeed();
+  const hold = ready && !need && (typeof schoolMixUsable==='function' && schoolMixUsable());
+  const live = typeof isSchoolMixLiveT==='function' && isSchoolMixLiveT(t);
+  const wheat = typeof leftoverIsSchoolWheatKitchenT==='function' && leftoverIsSchoolWheatKitchenT(t);
+  const strip = typeof leftoverIsSchoolMixStrippedT==='function' && leftoverIsSchoolMixStrippedT(t);
+  if(!ready) return '';
+  if(opts.needOnly && !need) return '';
+  if(wheat)
+    return need
+      ? '📚 This wheat-only kitchen on the school beds — the teach-back mix is gone. Cover nicks until sisters or clover return. Not Home Patch, not leftover hay, not leftover extra paddock rest, not East Pasture salt.'
+      : '📚 A wheat row on the school beds — not the humble mix. Leave sisters, clover, or cover so this teach-back garden can hold.';
+  if(strip)
+    return need
+      ? '📚 Stripped school beds — tractor or plow took the mix. Cover nicks until sisters or clover return. Not leftover hay, not leftover extra paddock rest, not East Pasture salt.'
+      : '📚 Rest was stripped on this school bed. Sisters or clover keep the humble mix from nicking.';
+  if(live)
+    return need
+      ? '📚 School mix is thin — wheat-only or a strip nicked this teach-back garden. Sisters or clover so the mix can hold again. Not Home Patch, not leftover hay, not leftover extra paddock rest.'
+      : '📚 Humble teach-back mix — sisters, clover, and cover hold this school garden. A light crate pick leaves the mix; wheat-only or a strip nicks it. Not Home Patch, not leftover hay, not leftover extra paddock rest, not East Pasture salt.';
+  if(t && (t.terrain==='soil' || t.terrain==='dead')){
+    if(need) return '📚 Open school beds — wheat-only or a strip nicked this mix. Sisters or clover so the humble garden can hold. Not Home Patch, not leftover hay.';
+    if(hold && !opts.needOnly) return '📚 Beside the teach-back mix — sisters, clover, and cover still hold this school garden.';
+  }
+  return '';
+}
+function leftoverIsSchoolMixPickT(t){
+  if(!t || !t.crop) return false;
+  if(t.crop.type!=='sisters' && t.crop.type!=='clover' && t.crop.type!=='covercrop') return false;
+  return typeof schoolMixReady==='function' && schoolMixReady();
+}
+/** Light crate pick — bank a modest lot, leave the mix standing. Do not nick. */
+function harvestSchoolMixTile(t, i){
+  if(!leftoverIsSchoolMixPickT(t)) return false;
+  const c = (typeof CROPS!=='undefined' && CROPS[t.crop.type]) ? CROPS[t.crop.type] : null;
+  const lot = (typeof SCHOOL_MIX_LOT!=='undefined') ? SCHOOL_MIX_LOT : 3;
+  if(c && (c.yield|0)>0 && typeof bankHarvestLot==='function'){
+    bankHarvestLot({type:t.crop.type, em:c.em, name:c.name, coins:lot});
+    if(typeof floater==='function') floater(i, '🧺 crate', '#ffd45e', 16);
+    if(typeof burst==='function') burst(i, '#e8d4a0', 6);
+    if(typeof SND!=='undefined' && SND && typeof SND.place==='function') SND.place();
+  }else{
+    if(typeof floater==='function') floater(i, '🌼 mix stays', '#fff2b0');
+    if(c && c.cover){
+      if(t.soil){
+        t.soil.om = clamp((t.soil.om||0) + 3);
+        t.soil.microbial = clamp((t.soil.microbial||0) + 2);
+      }
+    }
+  }
+  if(state && state.stats) state.stats.harvests = (state.stats.harvests|0) + 1;
+  t.crop.growth = 0.35;
+  t.crop.days = 0;
+  if(typeof recalc==='function') recalc(t);
+  return true;
+}
+/** One sim dawn: School Garden mix holds om / cover; wheat-only or a stripped majority nicks them. First session stays off. */
+function tickSchoolMixWork(){
+  if(!camp || !schoolMixReady()) return 0;
+  const s = typeof schoolMixFarm==='function' ? schoolMixFarm() : (typeof state!=='undefined' ? state : null);
+  if(!s || !s.grid) return 0;
+  const tiles = schoolMixSoilTiles(s);
+  if(!tiles.length) return 0;
+  const open = schoolMixUsable(s);
+  if(open){
+    const b = (typeof SCHOOL_MIX_HOLD_SOIL!=='undefined') ? SCHOOL_MIX_HOLD_SOIL : {om:0.16, microbial:0.22};
+    tiles.forEach(({t})=>{
+      if(!t || !t.soil) return;
+      if((t.soil.om||0) < 72) t.soil.om = clamp((t.soil.om||0) + (b.om||0));
+      if((t.soil.microbial||0) < 74) t.soil.microbial = clamp((t.soil.microbial||0) + (b.microbial||0));
+      if(typeof recalc==='function') recalc(t);
+    });
+    if(typeof toast==='function'){
+      toast('📚 Humble teach-back mix holds — sisters, clover, and cover keep this school garden. A light crate pick leaves the mix; wheat-only or a strip nicks it.', {once:'school_mix_hold_first', throttleMs:4000});
+    }
+    return tiles.length;
+  }
+  if(!schoolMixNeed(s)) return 0;
+  const b = (typeof SCHOOL_MIX_NICK_SOIL!=='undefined') ? SCHOOL_MIX_NICK_SOIL : {om:-0.2, microbial:-0.16};
+  tiles.forEach(({t})=>{
+    if(!t || !t.soil) return;
+    t.soil.om = clamp((t.soil.om||0) + (b.om||0));
+    t.soil.microbial = clamp((t.soil.microbial||0) + (b.microbial||0));
+    if(typeof recalc==='function') recalc(t);
+  });
+  const fi = schoolMixFloaterIdx(s);
+  if(typeof floater==='function' && state && state.grid && state.grid[fi]){
+    floater(fi, 'mix nicks', '#c9a070');
+  }
+  if(typeof toast==='function'){
+    toast('📚 School beds went wheat-only or stripped — the teach-back mix is gone. Sisters or clover so the humble garden can hold again.', {once:'school_mix_need_first', throttleMs:4000});
   }
   return tiles.length;
 }
@@ -12932,6 +13186,7 @@ function simStep(dt){
     if(typeof tickPaddockStockThirst==='function') tickPaddockStockThirst();
     if(typeof tickPaddockWindShelter==='function') tickPaddockWindShelter();
     if(typeof tickPaddockRestWork==='function') tickPaddockRestWork();
+    if(typeof tickSchoolMixWork==='function') tickSchoolMixWork();
     if(typeof tickDryGrazeStandWork==='function') tickDryGrazeStandWork();
     if(typeof tickWindShelterWork==='function') tickWindShelterWork();
     if(typeof tickHedgeCorridorWork==='function') tickHedgeCorridorWork();
@@ -12983,6 +13238,12 @@ function harvestCrop(t, i){
          && typeof leftoverIsHayForageT==='function' && leftoverIsHayForageT(t)
          && t.crop && t.crop.type!=='sisters')){
     if(t.crop) t.crop.growth = Math.min(0.99, +t.crop.growth || 0);
+    return;
+  }
+  // School Garden mix is perennial. A light crate pick leaves sisters / cover standing.
+  if(typeof leftoverIsSchoolMixPickT==='function' && leftoverIsSchoolMixPickT(t)
+     && typeof harvestSchoolMixTile==='function'){
+    harvestSchoolMixTile(t, i);
     return;
   }
   const f = farmCache || farmStats();
@@ -16477,6 +16738,10 @@ function soilStoryLine(t){
       const pr = paddockRestStory(t);
       if(pr) return pr;
     }
+    if(typeof schoolMixStory==='function'){
+      const sm = schoolMixStory(t);
+      if(sm) return sm;
+    }
     if(typeof hayStandStory==='function'){
       const hy = hayStandStory(t);
       if(hy) return hy;
@@ -16519,6 +16784,10 @@ function soilStoryLine(t){
     if(typeof paddockRestStory==='function'){
       const pr = paddockRestStory(t, {needOnly:true});
       if(pr) return pr;
+    }
+    if(typeof schoolMixStory==='function'){
+      const sm = schoolMixStory(t, {needOnly:true});
+      if(sm) return sm;
     }
     if(typeof hayStandStory==='function'){
       const hy = hayStandStory(t, {needOnly:true});
@@ -16706,6 +16975,10 @@ function soilStoryLine(t){
       const pr = paddockRestStory(t);
       if(pr) return pr+' '+tier;
     }
+    if(typeof schoolMixStory==='function'){
+      const sm = schoolMixStory(t);
+      if(sm) return sm+' '+tier;
+    }
     if(typeof hayStandStory==='function'){
       const hy = hayStandStory(t);
       if(hy) return hy+' '+tier;
@@ -16764,6 +17037,10 @@ function soilStoryLine(t){
     if(typeof paddockRestStory==='function'){
       const pr = paddockRestStory(t);
       if(pr) return (edgeNeed?edgeNeed+' ':'')+pr+' '+tier;
+    }
+    if(typeof schoolMixStory==='function'){
+      const sm = schoolMixStory(t);
+      if(sm) return (edgeNeed?edgeNeed+' ':'')+sm+' '+tier;
     }
     if(typeof hayStandStory==='function'){
       const hy = hayStandStory(t);
@@ -16826,6 +17103,10 @@ function soilStoryLine(t){
   if(typeof paddockRestStory==='function'){
     const pr = paddockRestStory(t);
     if(pr) return pr+' '+tier;
+  }
+  if(typeof schoolMixStory==='function'){
+    const sm = schoolMixStory(t);
+    if(sm) return sm+' '+tier;
   }
   if(typeof hayStandStory==='function'){
     const hy = hayStandStory(t);
@@ -17080,8 +17361,10 @@ function applyTool(i){
         && typeof leftoverIsMeadowBloomT==='function' && leftoverIsMeadowBloomT(t);
       const restCover = typeof leftoverIsPastureCoverT==='function' && leftoverIsPastureCoverT(t);
       if(mowMeadow) t.flowers = Math.min(t.flowers||0, 0.04);
+      const schoolMix = typeof leftoverIsSchoolMixCropT==='function' && leftoverIsSchoolMixCropT(t);
       if(t.crop) t.crop = null;
       if(restCover && typeof notePaddockRestStripped==='function') notePaddockRestStripped(t);
+      if(schoolMix && typeof noteSchoolMixStripped==='function') noteSchoolMixStripped(t);
       if(mowMeadow && typeof toast==='function'){
         toast('🌼 That cut took the dress — a light harvest still leaves the meadow standing.', {once:'meadow_mow_first', throttleMs:4000});
       }
@@ -17350,7 +17633,9 @@ function applyTool(i){
       state.stats.coverPlanted = (state.stats.coverPlanted|0) + 1;
       if(typeof noteDryEdgeRestored==='function') noteDryEdgeRestored(t);
       if(typeof notePaddockRestRestored==='function') notePaddockRestRestored(t);
+      if(typeof noteSchoolMixRestored==='function') noteSchoolMixRestored(t);
     }
+    if(tool==='sisters' && typeof noteSchoolMixRestored==='function') noteSchoolMixRestored(t);
     if(tool==='wheat') state.stats.wheatPlanted = (state.stats.wheatPlanted|0) + 1;
     SOIL_ATTRS.forEach(k=>t.soil[k]=clamp(t.soil[k]));
     recalc(t);
@@ -18241,7 +18526,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-26.whatsnew3';
+const SHIP_BUILD = '2026-08-26.schoolmix';
 /** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
@@ -18391,7 +18676,7 @@ function openAboutCredits(){
   if(showNew) camp.tipsShown['whats_new_'+ver] = true;
   const whatsNew = showNew
     ? `<div class="lesson" style="text-align:left;margin-top:6px;border-color:rgba(234,181,67,.45)">
-        <b>What's new (${ver}):</b><br>🌿 North Folds / West Folds: standing rest (clover and living graze cover) holds these leftover extra-paddock seats after Home; a kitchen row or overstock nicks until rest returns. Light manure still feeds the pile. Not East Pasture dry-edge, not Back Paddock.<br>💧 South Reach: leftover wash arriving at the stem holds if the mouth stays open; plug or kitchen it and the leftover river nicks. Not Dust Flats drought, not a creek spine.<br>🐎 East Pasture: salt-crust and sparse cover hold the dry edge; wheat or sisters nicks until rest or cover returns; a light graze still feeds the pile.<br>🐝 Valley map: bees, butterflies, and birds sit on the fold they came back to (same 30 / 45 / 60 as the chips); strip that fold and they leave.<br>🌾 Hay Field: standing forage holds cover after Home; strip or plant sisters and it nicks; a light crate cut leaves the stand. Unbought South Lane stays a deed.<br>🍎 Orchard Block / Orchard Slope: the living grove holds the slope; strip or plant a kitchen and it nicks; a light fruit pick leaves the tree.<br><br>After Home Patch the journey map shows the farm you run — living herd marks (cattle, hens, ducks, goats, sheep, pigs) on owned paddocks, yard, and marsh; leftover compost on the homestead pile; the neighbor stand when crate lots or surplus meat are ready. Surplus meat is a herd tradeoff. Adjacent leftover folds can be bought with coins. Wildlife chips still return at 30 / 45 / 60. The high-dry lane, barn compost yard, garden–orchard coop, weather-side windbreak, living hedges, ridge woodlot, wet meadow forage, and Dust Scrub browse play as land you run. Campaign Marsh Finger plays as a standing filter — the reed belt and the open marsh ponds each have to hold. A light crate cut still leaves the dress; strip the reeds or fill the ponds and filtration nicks until wetland returns. Creek Bend is a working tributary. Fogged land and the first-session garden stay empty. Play stays free; no pay-to-revive.
+        <b>What's new (${ver}):</b><br>📚 School Garden: after Home, mixed beds (sisters, clover / cover, or two crops together) hold this humble teach-back garden; wheat-only or a strip nicks until the mix returns. A light crate pick leaves the mix. Not Home Patch, not leftover hay, not leftover extra paddock rest.<br>🌿 North Folds / West Folds: standing rest (clover and living graze cover) holds these leftover extra-paddock seats after Home; a kitchen row or overstock nicks until rest returns. Light manure still feeds the pile. Not East Pasture dry-edge, not Back Paddock.<br>💧 South Reach: leftover wash arriving at the stem holds if the mouth stays open; plug or kitchen it and the leftover river nicks. Not Dust Flats drought, not a creek spine.<br>🐎 East Pasture: salt-crust and sparse cover hold the dry edge; wheat or sisters nicks until rest or cover returns; a light graze still feeds the pile.<br>🐝 Valley map: bees, butterflies, and birds sit on the fold they came back to (same 30 / 45 / 60 as the chips); strip that fold and they leave.<br>🌾 Hay Field: standing forage holds cover after Home; strip or plant sisters and it nicks; a light crate cut leaves the stand. Unbought South Lane stays a deed.<br>🍎 Orchard Block / Orchard Slope: the living grove holds the slope; strip or plant a kitchen and it nicks; a light fruit pick leaves the tree.<br><br>After Home Patch the journey map shows the farm you run — living herd marks (cattle, hens, ducks, goats, sheep, pigs) on owned paddocks, yard, and marsh; leftover compost on the homestead pile; the neighbor stand when crate lots or surplus meat are ready. Surplus meat is a herd tradeoff. Adjacent leftover folds can be bought with coins. Wildlife chips still return at 30 / 45 / 60. The high-dry lane, barn compost yard, garden–orchard coop, weather-side windbreak, living hedges, ridge woodlot, wet meadow forage, and Dust Scrub browse play as land you run. Campaign Marsh Finger plays as a standing filter — the reed belt and the open marsh ponds each have to hold. A light crate cut still leaves the dress; strip the reeds or fill the ponds and filtration nicks until wetland returns. Creek Bend is a working tributary. Fogged land and the first-session garden stay empty. Play stays free; no pay-to-revive.
       </div>`
     : '';
   // CD — first About open literacy (in-modal; no toast spam)
@@ -23083,6 +23368,11 @@ function openInfo(refreshOnly){
     else if(typeof paddockRestReady==='function' && paddockRestReady()
          && typeof isPaddockRestLiveT==='function' && isPaddockRestLiveT(t))
       chips.push('🌿 extra paddock rest — clover and living graze hold these leftover seats');
+    if(typeof schoolMixNeed==='function' && schoolMixNeed())
+      chips.push('📚 school mix is thin — wheat-only or a strip nicks until sisters or clover return');
+    else if(typeof schoolMixReady==='function' && schoolMixReady()
+         && typeof isSchoolMixLiveT==='function' && isSchoolMixLiveT(t))
+      chips.push('📚 humble teach-back mix — sisters, clover, and cover hold this school garden');
     if(typeof hayStandNeed==='function' && hayStandNeed())
       chips.push('🌾 standing hay is thin — cover nicks until clover or the stand returns');
     else if(typeof hayStandReady==='function' && hayStandReady()
@@ -23252,9 +23542,15 @@ function openInfo(refreshOnly){
   const wildLine = (typeof parcelWildlifeInspectLine==='function') ? parcelWildlifeInspectLine() : '';
   const wildChip = wildLine ? `<div class="chiprow">${wildLine}</div>` : '';
   const mouthTitle = (typeof getTileName==='function') ? getTileName(t) : '';
+  const mixTitle = (typeof getTileName==='function') ? getTileName(t) : '';
   const headName = (mouthTitle && typeof washMouthReady==='function' && washMouthReady()
     && typeof isWashMouthMarkedT==='function' && isWashMouthMarkedT(t))
     ? mouthTitle
+    : (mixTitle && typeof schoolMixReady==='function' && schoolMixReady()
+       && ((typeof isSchoolMixLiveT==='function' && isSchoolMixLiveT(t))
+          || (typeof leftoverIsSchoolWheatKitchenT==='function' && leftoverIsSchoolWheatKitchenT(t))
+          || (typeof leftoverIsSchoolMixStrippedT==='function' && leftoverIsSchoolMixStrippedT(t))))
+      ? mixTitle
     : (names[t.terrain]||t.terrain);
   panel.innerHTML = `<h3>${healthFace(isLandT(t)?t.health:80)} ${headName} <span style="font-size:11px;color:var(--soft)">${regName}</span>
     <button class="closex" id="infoClose">✕</button></h3>${body}${pileChip}${wildChip}${crateChip}`;
