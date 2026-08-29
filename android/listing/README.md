@@ -1,6 +1,7 @@
 # Play listing graphics
 
-- `icon-512.png` — high-res icon from `icons/icon-512.png`.
-- Feature graphic (1024×500) and extra phone shots are **not** generated here. Crop the title-splash farm painting for the feature graphic. Capture 2–4 **Home Patch / one-farm Journey** phone screenshots. Do not use journey-map padlock / lock shots.
+- `icon-512.png` — 512×512, same bytes as live Pages `icons/icon-512.png`.
+- `feature-graphic-1024x500.png` — 1024×500 crop of `sprites/title_farm.webp` (title-splash farm painting, no HUD).
+- Phone screenshots: add 2–4 **Home Patch / one-farm Journey** captures (first session, 40 coins). Do **not** use journey-map padlock / lock shots.
 
 See `../PLAY_LISTING.md`.
