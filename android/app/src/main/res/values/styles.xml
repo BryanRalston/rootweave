@@ -1,0 +1,12 @@
+<resources>
+    <style name="Theme.RootweaveTwa" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="colorPrimary">@color/colorPrimary</item>
+        <item name="android:statusBarColor">@color/colorPrimary</item>
+        <item name="android:navigationBarColor">@color/colorPrimary</item>
+        <item name="android:windowBackground">@color/backgroundColor</item>
+    </style>
+    <style name="Theme.RootweaveTwa.Launcher" parent="@android:style/Theme.Translucent.NoTitleBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@color/backgroundColor</item>
+    </style>
+</resources>
