@@ -95,7 +95,7 @@ canvas#game.tooling{cursor:crosshair}
 .hudbtn:active{transform:translateY(2px); box-shadow:0 1px 4px rgba(20,14,4,.2)}
 .hudbtn.on{background:linear-gradient(180deg,#ffedb8,#f5d98a); border-color:var(--gold2)}
 a.hudbtn{text-decoration:none; color:inherit}
-/* Quiet Support control — opens the coin shop. Hidden on first-run coach / map / cottage. */
+/* Quiet Support control — opens the coin shop on web, Play-safe copy on TWA. Hidden on first-run coach / map / cottage. */
 #btnSupport{font-size:15px; padding:4px 8px}
 #btnSupport .slbl{font-size:11.5px; font-weight:800; letter-spacing:.01em}
 body.tut-open #btnSupport,
@@ -873,7 +873,7 @@ body.reduce-motion #badgeBanner{ transition:none; }
     <button class="hudbtn" id="btnGoals" title="Goals & badges" aria-label="Goals and badges">⭐</button>
     <button class="hudbtn" id="btnMore" title="Map overlays & views" aria-label="Overlays menu">⋯</button>
     <button class="hudbtn" id="btnSound" title="Sound on/off" aria-label="Toggle sound">🔊</button>
-    <button type="button" class="hudbtn" id="btnSupport" title="Support the farm — optional coins, play stays free" aria-label="Support the farm">💛 <span class="slbl">Support</span></button>
+    <button type="button" class="hudbtn" id="btnSupport" title="Support the farm — play stays free" aria-label="Support the farm">💛 <span class="slbl">Support</span></button>
   </div>
 </div>
 
@@ -19908,15 +19908,44 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-26.whatsnew12';
-/** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. */
+const SHIP_BUILD = '2026-08-29.playtwa';
+/* PLAY_STORE_SIGNAL_BEGIN */
+/** Explicit Play/TWA signal only (?store=play). Never Android UA — mobile Safari/Chrome on github.io keep the web shop. */
+const PLAY_STORE_CHANNEL = 'play';
+const PLAY_STORE_SESSION_KEY = 'rw_store_channel';
+function readStoreQueryValue(){
+  try{
+    const search = (typeof location !== 'undefined' && location.search) ? location.search : '';
+    return String(new URLSearchParams(search).get('store') || '').trim().toLowerCase();
+  }catch(e){ return ''; }
+}
+function persistPlayStoreSignal(){
+  try{
+    if(readStoreQueryValue() === PLAY_STORE_CHANNEL && typeof sessionStorage !== 'undefined'){
+      sessionStorage.setItem(PLAY_STORE_SESSION_KEY, PLAY_STORE_CHANNEL);
+    }
+  }catch(e){}
+}
+function isPlayStoreClient(){
+  try{
+    if(readStoreQueryValue() === PLAY_STORE_CHANNEL) return true;
+    if(typeof sessionStorage !== 'undefined' && sessionStorage.getItem(PLAY_STORE_SESSION_KEY) === PLAY_STORE_CHANNEL) return true;
+  }catch(e){}
+  return false;
+}
+function playStoreHidesCoinShop(){ return isPlayStoreClient(); }
+function playStoreAllowsGumroadCoinCheckout(){ return !isPlayStoreClient(); }
+function playStoreAllowsGrantCoinPack(){ return !isPlayStoreClient(); }
+persistPlayStoreSignal();
+/* PLAY_STORE_SIGNAL_END */
+/** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. Web-only checkout; Play/TWA hides packs. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
   email: 'b.ralston62989@gmail.com',
   label: 'Support the farm',
   thankYou: '💛 Thank you for supporting the farm. Play stays free — this early build starts on the Home Patch.'
 };
-/** Swap Gumroad slugs here when the listings go live. Query grant: ?pack=coins80 or ?pack=coins200. */
+/** Swap Gumroad slugs here when the listings go live. Query grant: ?pack=coins80 or ?pack=coins200. Play/TWA never fulfills these. */
 const COIN_PACKS = [
   {id:'coins80',  name:'Seed pouch', coins:80,  price:'$1.99', url:'https://ralstonia5.gumroad.com/l/rootweave-coins-80'},
   {id:'coins200', name:'Crate',      coins:200, price:'$4.99', url:'https://ralstonia5.gumroad.com/l/rootweave-coins-200'},
@@ -19980,6 +20009,7 @@ function creditShopCoins(n){
   applyPendingShopCoinsToState();
 }
 function grantCoinPack(pack, opts){
+  if(typeof playStoreAllowsGrantCoinPack === 'function' && !playStoreAllowsGrantCoinPack()) return false;
   const o = opts || {};
   if(!pack || !camp) return false;
   if(!camp.grantedPacks || typeof camp.grantedPacks!=='object') camp.grantedPacks = {};
@@ -19996,7 +20026,23 @@ function grantCoinPack(pack, opts){
   else fire();
   return true;
 }
+function openPlayStoreSupport(){
+  showModal(`
+    <h2>💛 Support the farm</h2>
+    <div class="sub">Play is free. No ads.</div>
+    <div class="lesson" style="text-align:left">
+      This Play build does not sell coin packs. Play Billing is not in this closed test.
+      <b>Home Patch</b> still starts with 40 coins — no purchase required.
+      Optional support lives on the website and does not add coins in this app.
+    </div>
+    <div class="modalbtns"><button class="mbtn" data-act="close">Back</button></div>
+  `);
+}
 function openCoinShop(){
+  if(typeof playStoreHidesCoinShop === 'function' && playStoreHidesCoinShop()){
+    openPlayStoreSupport();
+    return;
+  }
   const bal = homesteadMode ? (camp.bank|0) : (state && (state.coins|0));
   const items = COIN_PACKS.map(p=>`<div class="shopitem">
       <div class="sem">${p.id==='coins200'?'📦':'🌱'}</div>
@@ -20037,8 +20083,12 @@ function maybeThankSupporter(){
     toast(msg, {force:true, throttleMs:400, once:'supporter_thanks'});
   });
 }
-/** Fulfill ?pack=coins80 / ?pack=coins200 once per save. Easy to cheat; that is OK for now. */
+/** Fulfill ?pack=coins80 / ?pack=coins200 once per save. Easy to cheat; that is OK for now. Play/TWA never grants. */
 function maybeGrantCoinPack(){
+  if(typeof playStoreAllowsGrantCoinPack === 'function' && !playStoreAllowsGrantCoinPack()){
+    try{ stripPlayQueryParam('pack'); }catch(e){}
+    return;
+  }
   let raw = '';
   try{
     const q = new URLSearchParams(location.search || '');
@@ -20083,15 +20133,17 @@ function openAboutCredits(){
     <div class="lesson" style="text-align:left">
       This is an early build — <b>Home Patch</b> is the playable start. Play stays free: no ads, no pay-to-revive.
       You do not need to buy coins to play.
-      Optional packs live in the <a href="#" data-act="coinshop">${SUPPORT_FARM.label}</a> shop
-      (💛 Support). ${SUPPORT_FARM.email ? 'Questions: '+SUPPORT_FARM.email+'.' : ''}
+      ${isPlayStoreClient()
+        ? 'Optional support lives on the website and does not add coins in this Play app. Coin packs are hidden until Play Billing exists.'
+        : `Optional packs live in the <a href="#" data-act="coinshop">${SUPPORT_FARM.label}</a> shop
+      (💛 Support). ${SUPPORT_FARM.email ? 'Questions: '+SUPPORT_FARM.email+'.' : ''}`}
     </div>
     <div class="legal-row">
       <a href="legal/privacy.html">Privacy</a>
       <span style="opacity:.45"> · </span>
       <a href="legal/terms.html">Terms</a>
-      <span style="opacity:.45"> · </span>
-      <a href="#" data-act="coinshop">${SUPPORT_FARM.label}</a>
+      ${isPlayStoreClient() ? '' : `<span style="opacity:.45"> · </span>
+      <a href="#" data-act="coinshop">${SUPPORT_FARM.label}</a>`}
     </div>
     <div class="modalbtns" style="flex-wrap:wrap">
       <button class="mbtn wood" data-act="exportsave">Export save</button>
@@ -27902,6 +27954,9 @@ function init(){
   document.getElementById('btnSound').title = soundOn ? 'Sound on — tap to mute' : 'Sound off — tap to unmute farm life';
   const btnSupport = document.getElementById('btnSupport');
   if(btnSupport){
+    if(typeof isPlayStoreClient === 'function' && isPlayStoreClient()){
+      btnSupport.title = 'Support the farm — play is free; coin packs are not sold in this Play app';
+    }
     btnSupport.addEventListener('click', ()=>{ openCoinShop(); SND.pop(); });
   }
   // BV/CH — quieter cold boot; skip while Journey/splash owns the screen (defer to first plot)
