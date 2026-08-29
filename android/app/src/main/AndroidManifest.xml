@@ -45,7 +45,7 @@
 
             <meta-data
                 android:name="android.support.customtabs.trusted.SCREEN_ORIENTATION"
-                android:value="any" />
+                android:value="0" />
 
             <meta-data
                 android:name="android.support.customtabs.trusted.SPLASH_IMAGE_DRAWABLE"
