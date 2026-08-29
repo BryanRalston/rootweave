@@ -42,7 +42,7 @@ Coin packs are not sold in this Play app (Play Billing is not in this build). Op
 | --- | --- | --- |
 | High-res icon | 512 × 512 PNG | `listing/icon-512.png` (same bytes as live Pages `icons/icon-512.png`) |
 | Feature graphic | 1024 × 500 | `listing/feature-graphic-1024x500.png` — cropped from `sprites/title_farm.webp` (farm painting only, no HUD). |
-| Phone screenshots | 2–4, 16:9 or 9:16 | Capture Home Patch / one-farm Journey (first session, 40 coins). **Not** a padlock map. |
+| Phone screenshots | 2–4, 16:9 or 9:16 | `listing/03-home-patch-tutorial.png` (9:16) and `listing/04-home-patch-landscape.png` (16:9): Home Patch first session, 🪙40. **Not** a padlock map. |
 
 If you have better phone captures, replace these. Do not upload journey-map lock / fog padlock screenshots.
 
