@@ -11,6 +11,8 @@ data/
 docs/
 public/
 src/
+!android/app/src/
+!android/app/src/**
 scripts/
 node_modules/
 # ship only WebP sprites (small, fast on mobile); source PNG/JPG stay local
@@ -63,6 +65,10 @@ local.properties
 *.aab
 *.apk
 *.idsig
+android/.gradle/
+android/build/
+android/app/build/
+android/.cxx/
 android-twa/.gradle/
 android-twa/build/
 android-twa/app/build/

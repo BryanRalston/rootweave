@@ -47,5 +47,6 @@ GitHub Pages serves **repo root `index.html`**, not `public/` (that folder is lo
 - Freeze / deploy checklist: `scripts/playtest/SHIP_FREEZE.md`, `DEPLOY_PACKAGE.md` (gitignored QA docs)  
 - Outdoor heroes load **webp** on Pages (`.png` is gitignored)  
 - Agents do not push; Bryan commits + deploys `main` → Pages `/ (root)`
+- Play closed-test TWA (Cortex Developments): `android/PLAY_LISTING.md` — package `com.cortexdevelopments.rootweave`, start URL `?store=play`. Do not touch Manager Schedule Pro (`com.managerschedulebuilder.pro`).
 
 Built with Cortex.
