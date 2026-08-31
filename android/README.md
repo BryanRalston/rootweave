@@ -12,6 +12,10 @@ so the in-app Gumroad coin shop stays hidden. Ordinary mobile browsers (no `stor
 
 This is a checked-in Gradle TWA (android-browser-helper `LauncherActivity`), same shape as a bubblewrap project. Re-running `bubblewrap init` is optional; `twa-manifest.json` is here if you want that later.
 
+**compileSdk / targetSdk 36** · **minSdk 21** · **versionName 1.0.2** · **versionCode 3**
+
+`androidbrowserhelper` 2.6.1 must ship with `androidx.browser:browser:1.9.0+` (`setLaunchHandlerClientMode`). Do not pin browser 1.8.0 — that `NoSuchMethodError` crashed closed testers on open.
+
 ## Assemble on a machine with Android SDK
 
 ```bash

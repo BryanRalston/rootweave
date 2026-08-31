@@ -5,6 +5,8 @@ Package: **`com.cortexdevelopments.rootweave`**
 App name: **Rootweave**  
 Do **not** create or upload this under Manager Schedule Pro (`com.managerschedulebuilder.pro`).
 
+**targetSdk / compileSdk 36** · **versionName 1.0.2** · **versionCode 3**. Closed testers on **1.0.1 (2)** crash on open (`setLaunchHandlerClientMode`); upload signed **1.0.2 (3)**.
+
 This document is the listing pack + the Play Console taps Bryan must do. A closed-test track and opt-in link **do not exist until you create them** in Play Console. This PR does not claim they exist.
 
 ---
@@ -71,7 +73,7 @@ A closed-test track is **not** created by this PR. You create it.
    - If Play asks for package on first AAB upload, the AAB’s `applicationId` sets it. Do not reuse MSP’s package.
 3. Fill **Store listing** from the copy above. Upload 512 icon, feature graphic, 2–4 Home Patch screenshots.
 4. **App content:** privacy policy URL, ads = **No**, target audience (not designed for children under 13; complete IARC — expect Everyone if you answer honestly), news / COVID / data safety (no collected data beyond Play install).
-5. **Assemble + sign an AAB** (see `README.md`). Gradle in this repo is enough; `./gradlew bundleRelease` was verified on a Linux JDK 21 + SDK 35 machine and produces an **unsigned** `app/build/outputs/bundle/release/app-release.aab` (~3.1 MB). Play will reject unsigned. Create **your** upload keystore (keep it; you need it for every update), then either fill `keystore.properties` and rebuild, or `jarsigner` the unsigned AAB. Upload the **signed** AAB to **Testing → Closed testing** (not Production). GitHub Actions on this PR can also emit the unsigned AAB as a workflow artifact.
+5. **Assemble + sign an AAB** (see `README.md`). Upload signed **1.0.2 (versionCode 3)** to **Testing → Closed testing**. Play rejects unsigned. **1.0.1 (2)** is the crashing closed-test build (`androidx.browser` 1.8.0). GitHub Actions (`Android TWA`) also emits an unsigned AAB artifact.
 6. **Create a closed testing track** (e.g. `closed` or `alpha`). Add yourself as a tester (email or Google Group), same pattern you use for Manager Schedule Pro.
 7. Start the closed test. Play will give you an **opt-in URL** after review. That link does not exist until you start the track. Share it with testers; they must opt in, then install from Play.
 8. **App integrity → App signing:** copy the **App signing key certificate SHA-256**.
