@@ -284,6 +284,17 @@ body.reduce-motion #btnPause.play-nudge{
   animation:none;
   box-shadow:0 0 0 3px rgba(234,181,67,.85), 0 0 12px rgba(234,181,67,.4);
 }
+#seasonPill.dawn-flash{
+  animation:dawnFlash .9s ease;
+  background:linear-gradient(180deg,#fff6d0,#f0c86a);
+  color:#4a3210;
+}
+@keyframes dawnFlash{
+  0%{ box-shadow:0 0 0 0 rgba(255,210,120,0); }
+  35%{ box-shadow:0 0 0 6px rgba(255,200,100,.55); }
+  100%{ box-shadow:0 0 0 0 rgba(255,210,120,0); }
+}
+body.reduce-motion #seasonPill.dawn-flash{ animation:none; box-shadow:0 0 0 3px rgba(255,200,100,.55); }
 .tool.coach{
   position:relative; z-index:6;
   animation:playNudgePulse 1.05s ease 0s 4;
@@ -521,9 +532,10 @@ body.home-plot #tut{
   font-size:10px; font-weight:800; color:#fff8e4; letter-spacing:.01em; white-space:nowrap;
   text-shadow:0 1px 2px #1a1208, 0 0 8px rgba(0,0,0,.75); padding:2px 7px; border-radius:999px;
   background:rgba(20,16,8,.38); border:1px solid rgba(255,236,200,.18)}
-.vlab.locked{opacity:.82; color:#e8eef2; background:rgba(28,34,40,.48); border-color:rgba(210,220,230,.28)}
+.vlab.locked{opacity:.92; color:#e8eef2; background:rgba(28,34,40,.58); border-color:rgba(210,220,230,.32); white-space:normal; max-width:118px; line-height:1.15; text-align:center}
 .vlab.deed{color:#fff6d8; background:rgba(72,48,16,.55); border-color:rgba(234,181,67,.48)}
 .vlab.leftover{font-size:9px}
+.vlab .vlab-hint{display:block; font-size:8.5px; font-weight:700; opacity:.92; margin-top:1px; letter-spacing:0}
 .vlab.restored::after{content:' ✓'}
 .vlab.mastered::after{content:' ★'}
 .vmap-compass{position:absolute; top:8px; right:10px; z-index:4; pointer-events:none;
@@ -851,8 +863,8 @@ body.reduce-motion #badgeBanner{ transition:none; }
   <div class="tb-mid">
     <span class="hudpill" aria-label="Coins">🪙 <b id="coinsEl">75</b></span>
     <span id="clockGroup">
-      <button class="hudbtn" id="btnPause" title="Pause / play" aria-label="Pause or play">⏸️</button>
-      <button class="hudbtn" id="btnSpeed" title="Game speed" aria-label="Game speed">1×</button>
+      <button class="hudbtn" id="btnPause" title="Play — advance one morning" aria-label="Play — advance one morning">▶️</button>
+      <button class="hudbtn" id="btnSpeed" title="One labeled day at a time" aria-label="One labeled day at a time">1d</button>
     </span>
     <span class="hudpill" id="goalPill" title="Plot goals" aria-label="Plot goals">
       <span id="goalEm">🎯</span> <b id="restoredEl">Goals 0/3</b>
@@ -2877,7 +2889,7 @@ const LEVELS = [
    gen:genHomePatch,
    tut:[
      {html:'🏡 <b>Dead ground.</b> You start with <b>🪙40</b>. Two 🪣 composts (🪙5) wake a corner — keep <b>🪙18</b> for 🌽 Three Sisters. 🌿 Pioneers 🪙2 crack more gray.<br><br>🪣 Compost is selected — two paints, then save coins for the crop team. Taps go through this card onto the land.', on:'feed_dead'},
-     {html:'🪣 Feeding. Press <b>▶️ Play</b> up top so days pass. A waking tile shows 🌅 <b>REVIVED!</b>', on:'revive'},
+     {html:'🪣 Feeding. Press <b>▶️ Play</b> once — one morning. A waking tile shows 🌅 <b>REVIVED!</b> and <b>ready in X days</b> on the bed.', on:'revive'},
      {html:'🌅 Brown soil! Tap a revived tile with 🌽 <b>3 Sisters</b> — one successful plant is the next beat.', on:'plant_crop'},
      {html:'🎯 Three goals — the strip reads <b>Goals 0/3</b> until you finish them. Compost a corner, plant Sisters, keep tending.', btn:'I\'ve got this 🌿'},
    ]},
@@ -3297,7 +3309,7 @@ function leftoverStampLevel(spec){
     story: spec.story || leftoverStampStory(feel, spec),
     doneText: spec.doneText || profile.doneText,
     tools: profile.tools,
-    shop: false, river: !!profile.river, events: false, startPaused: false, regen: profile.regen,
+    shop: false, river: !!profile.river, events: false, startPaused: true, regen: profile.regen,
     ovs: profile.ovs,
     goalText: spec.goalText || profile.goalText,
     goals: profile.goals,
@@ -4584,7 +4596,7 @@ function newGame(lv){
     v:6, lv, gridSize:GRID, levelDone:false, introSeen:false,
     _introModalShown:false, _introDismissed:false, _lastMissionSig:'',
     year:1, season:0, day:1, dayFrac:0, seasonCount:0, tod:0.30,
-    coins:L.coins, speed:1, paused:!!L.startPaused, waterQuality:L.river?30:55,
+    coins:L.coins, speed:1, paused:true, waterQuality:L.river?30:55,
     riparianTip:false, incomeTip:false, deadTip:false,
     regionIdx:0, tasks:[], tasksDone:{}, unlocks:{}, washRestored:false,
     grid:[], badges:{}, won:false, tutStep:0, tutDone:false, sound:false, // AB/AA quiet first boot
@@ -12804,6 +12816,61 @@ function deadWakeShown(t){
   const shown = Math.round(t && t.health || 0);
   return { need, shown, full: shown >= need };
 }
+/** Dead ground that has been fed but has not crossed into Field yet. */
+function tileIsSleeping(t){
+  return !!(t && t.terrain==='dead' && ((t.compost||0)>0 || t.crop || (t.playerFed|0)>0));
+}
+/** Same feed the dawn tick uses — estimate days until the wake bar fills. */
+function deadWakeFeedPerDay(t){
+  if(!t || t.terrain!=='dead') return 0;
+  let feed = 0;
+  const homeWake = !!(typeof LV==='function' && LV() && LV().id==='home');
+  const salt = t.feature==='saltflat';
+  if((t.compost||0)>0) feed += (salt?0.55:1.05) * (homeWake?2.2:1);
+  if(t.crop) feed += (salt?0.5:0.75) * (homeWake?2.0:1);
+  if(t.graze){
+    const g = (typeof hydrateGraze==='function') ? hydrateGraze(t.graze) : t.graze;
+    const stock = (typeof herdStock==='function' && typeof grazeStockN==='function') ? herdStock(grazeStockN(g)) : 1;
+    const thin = (typeof grazeThinMult==='function') ? grazeThinMult(g) : 1;
+    const fence = (typeof hasFence==='function' && hasFence(t)) ? 1.5 : 1;
+    feed += 0.5 * stock * thin * fence;
+  }
+  const lvB = (typeof LV==='function' && LV() && LV().regen) ? LV().regen : 1;
+  feed *= lvB;
+  if(feed>0 && typeof pondNear==='function' && pondNear(t)) feed *= 1.3;
+  if(t.crop) feed *= (3*1.4 + 3)/6;
+  return feed;
+}
+/** Integer days until this dead tile can wake, or null if it still needs compost. */
+function deadWakeDaysLeft(t){
+  if(!t || t.terrain!=='dead') return 0;
+  const wk = deadWakeShown(t);
+  if(wk.full) return 0;
+  const feed = deadWakeFeedPerDay(t);
+  if(feed<=0.04) return null;
+  return Math.max(1, Math.ceil((wk.need - wk.shown) / feed));
+}
+function readyInDaysLine(t){
+  if(!t || t.terrain!=='dead') return '';
+  const d = deadWakeDaysLeft(t);
+  if(d===0) return 'ready now — press Play';
+  if(d==null) return 'Compost first';
+  return 'ready in '+d+' day'+(d===1?'':'s');
+}
+function readyInDaysShort(t){
+  if(!t || t.terrain!=='dead') return '';
+  const d = deadWakeDaysLeft(t);
+  if(d===0) return 'now';
+  if(d==null) return '';
+  return d+'d';
+}
+function pondRefuseLine(t){
+  if(!t) return 'That\'s water, not soil.';
+  if(t.terrain==='pond') return 'That\'s pond water, not soil.';
+  if(t.terrain==='water') return 'That\'s river water, not soil.';
+  if(t.terrain==='wetland') return 'That\'s wetland, not a plant bed.';
+  return 'That\'s water, not soil.';
+}
 function maybeWakeDeadTile(t, i){
   if(!t || t.terrain!=='dead') return false;
   if(!deadWakeShown(t).full) return false;
@@ -17960,7 +18027,12 @@ function openFieldNotes(){
 function soilStoryLine(t){
   if(!t) return '';
   if(t.terrain==='dead'){
-    if(t.compost>0 || t.crop) return '🌅 Waking — food and living roots are calling the community back.';
+    if(t.compost>0 || t.crop){
+      const ready = typeof readyInDaysLine==='function' ? readyInDaysLine(t) : '';
+      return ready && ready!=='Compost first'
+        ? ('🌅 Still sleeping — '+ready+'. Food and living roots are calling the community back.')
+        : '🌅 Waking — food and living roots are calling the community back.';
+    }
     if(typeof dryGrazeStandStory==='function'){
       const dg = dryGrazeStandStory(t);
       if(dg) return dg;
@@ -18602,6 +18674,10 @@ function applyTool(i){
     const src = state.grid[i];
     recalc(src);
     const winter = !!(SEASONS[state.season] && SEASONS[state.season].canPlant===false);
+    if(src.terrain==='pond' || src.terrain==='water' || src.terrain==='wetland'){
+      toast(typeof pondRefuseLine==='function' ? pondRefuseLine(src) : 'That\'s pond water, not soil.');
+      ringAt(i, '#7fc4ee'); SND.uhoh(); return false;
+    }
     if(src.terrain==='soil' && LV() && LV().id==='home'){
       toast('🌱 Already awake — compost gray cracked tiles. No coins taken.');
       SND.uhoh(); return false;
@@ -18713,6 +18789,10 @@ function applyTool(i){
       if(state){ state._creekSpine = null; state._creekSpineTag = ''; }
       floater(i, '🚜 cleared', '#e8dcc0'); burst(i, '#c9b896', 8); SND.place();
       afterBuild(); return true;
+    }
+    if(tool==='compost' || tool==='sisters' || tool==='wheat' || tool==='clover' || tool==='covercrop'){
+      toast(typeof pondRefuseLine==='function' ? pondRefuseLine(t) : 'That\'s river water, not soil.');
+      ringAt(i, '#7fc4ee'); SND.uhoh(); return false;
     }
     toast('The river flows here! 🌊 Plant 🌳 trees BESIDE it to filter the runoff.');
     return false;
@@ -18925,15 +19005,22 @@ function applyTool(i){
       toast('💧 The garden pond keeps the kitchen beds moist — it is not a plant bed.');
       ringAt(i, '#7fc4ee'); SND.uhoh(); return false;
     }
-    toast(isWaterT(t) ? 'That\'s water! 💧' : t.terrain==='trees' ? 'Trees live here! 🌳' : 'Something is already built here! 🏗️'); return false;
+    if(isWaterT(t) || t.terrain==='wetland'){
+      toast(typeof pondRefuseLine==='function' ? pondRefuseLine(t) : 'That\'s pond water, not soil.');
+      ringAt(i, '#7fc4ee'); SND.uhoh(); return false;
+    }
+    toast(t.terrain==='trees' ? 'Trees live here! 🌳' : 'Something is already built here! 🏗️'); return false;
   }
   const dead = t.terrain==='dead';
   // ======== THE REMEDIATION GATE: dead ground rejects productive crops ========
   if(tool==='sisters' || tool==='wheat'){
     if(dead){
       if(!state.deadTip){ state.deadTip = true; }
-      // H3 — name the next action (compost/pioneers), not just "dead"
-      toast('💀 Needs compost first — paint 🪣 Compost or 🌿 Pioneers on this gray tile.');
+      const sleeping = typeof tileIsSleeping==='function' && tileIsSleeping(t);
+      const ready = typeof readyInDaysLine==='function' ? readyInDaysLine(t) : '';
+      toast(sleeping
+        ? ('Still sleeping — '+(ready || 'wait for Play'))
+        : 'Compost first');
       ringAt(i, '#c98a3d'); SND.uhoh();
       return false;
     }
@@ -19540,7 +19627,7 @@ function maybeNudgePlayAfterFirstPaint(){
   if(tutEl && tutEl.classList.contains('show') && !state.tutDone) return;
   // Don't fire if toast lane is busy with another tip — retry next paint/build
   if(toastBusyUntil && performance.now() < toastBusyUntil) return;
-  toast('▶️ Press play so days pass — dead ground needs time to wake.', {once:'first_paint_play', throttleMs:4000});
+  toast('▶️ Press Play for one morning — dead ground needs a labeled day to wake.', {once:'first_paint_play', throttleMs:4000});
   // toast reserves once-key only when it commits; pulse when that succeeded
   if(camp.tipsShown.first_paint_play) pulsePlayButtonNudge();
 }
@@ -19550,13 +19637,12 @@ function pulsePlayButtonNudge(){
     if(!btn || !state || !state.paused) return;
     if(typeof updateClockUI==='function') updateClockUI(); // ensure ▶️ glyph while paused
     btn.classList.add('play-nudge');
-    btn.setAttribute('aria-label', 'Play — press to let days pass');
-    btn.title = 'Play — let days pass so the ground can wake';
+    btn.setAttribute('aria-label', 'Play — advance one morning');
+    btn.title = 'Play — one morning so the ground can wake';
     clearTimeout(btn._nudgeT);
     btn._nudgeT = setTimeout(()=>{
       btn.classList.remove('play-nudge');
-      btn.setAttribute('aria-label', 'Pause or play');
-      btn.title = 'Pause / play';
+      if(typeof updateClockUI==='function') updateClockUI();
     }, 3400);
   }catch(e){}
 }
@@ -19908,7 +19994,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-08-29.playtwa';
+const SHIP_BUILD = '2026-09-07.closed3';
 /* PLAY_STORE_SIGNAL_BEGIN */
 /** Explicit Play/TWA signal only (?store=play). Never Android UA — mobile Safari/Chrome on github.io keep the web shop. */
 const PLAY_STORE_CHANNEL = 'play';
@@ -20108,7 +20194,11 @@ function openAboutCredits(){
   if(showNew) camp.tipsShown['whats_new_'+ver] = true;
   const whatsNew = showNew
     ? `<div class="lesson" style="text-align:left;margin-top:6px;border-color:rgba(234,181,67,.45)">
-        <b>What's new (${ver}):</b><br>💧 South Reach: leftover wash arriving at the stem now inspects as leftover wash at the mouth. Plug or kitchen it and the leftover river nicks. Not a creek spine, not a riparian hold, not Dust Flats. Creek Bend and River Reach stay the bank-buffer lesson.<br>🌵 Dust Scrub: after Home, living thorn holds the south-east wind. Goats browse the open dead brush. Clear the living patches or plant a kitchen and the beds nick until thorn or Trees on a marked seat returns. Not another dust flat, not East Pasture dry-edge, not leftover woodlot.<br>🐄 Back Paddock: after Home, clover or cover holds the campaign fold around the stock pond. First visit with no rest stays the lesson (bring cattle, plant cover). A kitchen row or overstock nicks until rest on a marked seat returns. Not leftover extra paddock, not East Pasture dry-edge, not a kitchen.<br>🌬️ Wind Ridge: after Home, a living rain tank or well holds the ridge through drought. First visit with no tank stays the campaign lesson. Strip the catch or plant a kitchen and the beds nick until a tank, well, or clover on a marked seat returns. Windmill and solar stay coin earners. High pond and woodlot stay their own loops. Not leftover woodlot, not the weather-side break, not a kitchen.<br>🌿 Willow Bottom: after Home, a bought living willow stand holds the bank. A light withy pick leaves the tree; strip it or plant a kitchen and the bank nicks until willow or clover on a marked seat returns. Unbought deed stays off. Leftover dress clover on unmarked stamp soil does not fake the hold. Not firewood, not meadow forage, not marsh reeds, not a second neighbor stand.<br>🏪 Market Cross: after Home, holds as the lane-end trade yard. Keep the painted lane open and the yard off a kitchen; wheat or a plugged lane nicks until clover or tractor restores it. Not a second neighbor stand (that stays by the house).<br>📚 School Garden: after Home, holds as a humble teach-back mix (sisters, clover / cover, or two non-wheat crops). Wheat-only or a strip nicks until the mix returns. A light crate pick leaves the plants. Not Home Patch, not leftover hay.<br>🌿 North Folds / West Folds: standing rest (clover and living graze cover) holds these leftover extra-paddock seats after Home; a kitchen row or overstock nicks until rest returns. Light manure still feeds the pile. Not East Pasture dry-edge, not Back Paddock.<br>🌲 Leftover woodlot: standing woodlot now inspects as leftover timber / pond-edge. A heavy cut nicks soil and dries the pond edge. Not the Ridge high pond, not downhill filter, not orchard fruit. Wind Ridge stays the high-pond lesson.<br>🐎 East Pasture: salt-crust and sparse cover hold the dry edge; wheat or sisters nicks until rest or cover returns; a light graze still feeds the pile.<br>🐝 Valley map: bees, butterflies, and birds sit on the fold they came back to (same 30 / 45 / 60 as the chips); strip that fold and they leave.<br>🌾 Hay Field: standing forage holds cover after Home; strip or plant sisters and it nicks; a light crate cut leaves the stand. Unbought South Lane stays a deed.<br>🍎 Orchard Block / Orchard Slope: the living grove holds the slope; strip or plant a kitchen and it nicks; a light fruit pick leaves the tree.<br><br>After Home Patch the journey map shows the farm you run — living herd marks (cattle, hens, ducks, goats, sheep, pigs) on owned paddocks, yard, and marsh; leftover compost on the homestead pile; the neighbor stand when crate lots or surplus meat are ready. Surplus meat is a herd tradeoff. Adjacent leftover folds can be bought with coins. Wildlife chips still return at 30 / 45 / 60. The high-dry lane, barn compost yard, garden–orchard coop, weather-side windbreak, living hedges, ridge woodlot, wet meadow forage, and Dust Scrub browse play as land you run. Campaign Marsh Finger plays as a standing filter — the reed belt and the open marsh ponds each have to hold. A light crate cut still leaves the dress; strip the reeds or fill the ponds and filtration nicks until wetland returns. Creek Bend is a working tributary. Fogged land and the first-session garden stay empty. Play stays free; no pay-to-revive.
+        <b>What's new (${ver}):</b><br>
+        🟫 <b>Tiles read clearly.</b> Dead, sleeping, awake, and pond beds no longer look the same. Sleeping ground shows <b>ready in X days</b> (from the real wake bar). Wrong-tool taps speak: compost on a pond is pond water, not soil; planting on sleeping ground says wait — or compost first.<br>
+        ▶️ <b>Play is one morning.</b> Each Play click advances exactly one labeled day. The date pill flashes dawn when beds wake. Compost → wait → plant stays the same loop — time is just readable.<br>
+        🗺️ <b>Journey is one valley.</b> House corner, laneway, and river stay on the map. Locked neighbors show the real unlock line (clear Home Patch, clear a neighbor, or a land deed) — not “still in mist.” Tap an unlocked fold and you walk that land.<br>
+        First session stays free. Play/TWA still hides coin packs.
       </div>`
     : '';
   // CD — first About open literacy (in-modal; no toast spam)
@@ -20127,7 +20217,7 @@ function openAboutCredits(){
     ${whatsNew}
     <div class="lesson" style="text-align:left">
       <b>How to heal:</b> feed dead ground → plant many kinds → move animals (cattle then chickens) → buffer water → rest and wait.<br><br>
-      <b>Desktop keys:</b> Space pause · Esc back · 1–9 tools · R turn fence · +/- zoom<br><br>
+      <b>Desktop keys:</b> Space advances one morning · Esc back · 1–9 tools · R turn fence · +/- zoom<br><br>
       Built with Cortex · data-driven crops, animals & tunables · version <b>${ver}</b>
     </div>
     <div class="lesson" style="text-align:left">
@@ -21452,16 +21542,25 @@ function drawGround(t, time){
           ctx.fillStyle = q < 0.4 ? '#5a4828' : '#6e5b31';
           diamondPath(o.x,o.y); ctx.fill();
           ctx.globalAlpha = 1;
-        }else{
-          ctx.globalAlpha = (q-0.82)*0.35;
-          ctx.fillStyle = '#3a9ed0';
-          diamondPath(o.x,o.y); ctx.fill();
-          ctx.globalAlpha = 1;
         }
+        // Pond must read as water even when the sprite is dark or muddy.
+        ctx.globalAlpha = 0.28 + q*0.18;
+        ctx.fillStyle = q < 0.4 ? '#2a6a88' : '#2a9ad0';
+        diamondPath(o.x,o.y); ctx.fill();
+        ctx.globalAlpha = 0.16;
+        ctx.fillStyle = '#7ad4f2';
+        diamondPath(o.x,o.y); ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = 'rgba(90,200,230,.45)';
+        ctx.lineWidth = 1.15;
+        diamondPath(o.x,o.y); ctx.stroke();
       }else{
         diamondPath(o.x,o.y);
-        ctx.fillStyle = `rgb(${lerp(110,45,q)|0},${lerp(88,150,q)|0},${lerp(42,210,q)|0})`;
+        ctx.fillStyle = `rgb(${lerp(70,36,q)|0},${lerp(120,168,q)|0},${lerp(160,220,q)|0})`;
         ctx.fill();
+        ctx.strokeStyle = 'rgba(90,200,230,.5)';
+        ctx.lineWidth = 1.15;
+        diamondPath(o.x,o.y); ctx.stroke();
       }
     }else{
       // SHIP_FIVE: flowing water uses ribbon only (no connector sprites)
@@ -21572,11 +21671,26 @@ function drawGround(t, time){
       }
     }
     if(t.terrain==='dead' && !t.feature){
-      // light dust veil only — tile art carries warm cracked earth (no cool asphalt wash)
-      ctx.globalAlpha = 0.1;
-      ctx.fillStyle = '#c4b498';
-      diamondPath(o.x,o.y); ctx.fill();
+      const sleeping = typeof tileIsSleeping==='function' && tileIsSleeping(t);
+      if(sleeping){
+        ctx.globalAlpha = 0.22;
+        ctx.fillStyle = '#8a5a32';
+        diamondPath(o.x,o.y); ctx.fill();
+        ctx.globalAlpha = 0.12;
+        ctx.fillStyle = '#c4a06a';
+        diamondPath(o.x,o.y); ctx.fill();
+      }else{
+        ctx.globalAlpha = 0.28;
+        ctx.fillStyle = '#4a4038';
+        diamondPath(o.x,o.y); ctx.fill();
+        ctx.globalAlpha = 0.16;
+        ctx.fillStyle = '#2a2620';
+        diamondPath(o.x,o.y); ctx.fill();
+      }
       ctx.globalAlpha = 1;
+      ctx.strokeStyle = sleeping ? 'rgba(180,120,60,.35)' : 'rgba(30,26,22,.45)';
+      ctx.lineWidth = 1.05;
+      diamondPath(o.x,o.y); ctx.stroke();
     }
     if(state.season===3){   // winter snow veil
       ctx.globalAlpha = 0.45; ctx.fillStyle = '#eef4fb';
@@ -22136,6 +22250,29 @@ function drawCompostObj(t){
   }
   drawCompostMoundAt(seat, 20, false);
 }
+/** Short in-world wake cue on sleeping / ready dead tiles. */
+function drawWakeDaysCue(t){
+  if(!t || t.terrain!=='dead' || homesteadMode) return;
+  const label = typeof readyInDaysShort==='function' ? readyInDaysShort(t) : '';
+  if(!label) return;
+  const o = tileOrigin(t);
+  const x = o.x;
+  const y = o.y + TH2 + 7;
+  ctx.save();
+  ctx.font = '800 9px ui-rounded,system-ui,sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const w = Math.max(22, ctx.measureText(label).width + 8);
+  ctx.fillStyle = 'rgba(20,14,8,.58)';
+  if(ctx.roundRect){
+    ctx.beginPath(); ctx.roundRect(x-w/2, y-6, w, 12, 6); ctx.fill();
+  }else{
+    ctx.fillRect(x-w/2, y-6, w, 12);
+  }
+  ctx.fillStyle = label==='now' ? '#ffe89a' : '#f0e0c0';
+  ctx.fillText(label, x, y+0.5);
+  ctx.restore();
+}
 /** Leftover stock pile by the barn — seated on the diamond, grows with camp.compostStock. */
 function drawLeftoverCompostPile(t){
   if(!t || typeof leftoverPileWanted!=='function' || !leftoverPileWanted()) return;
@@ -22607,6 +22744,7 @@ function drawTileObjects(t, i, time){
   if(hasFence(t)) drawFenceObj(t);
   if(t.deco) drawDecoObj(t, time, seed);
   if(t.compost>0) drawCompostObj(t);
+  if(typeof drawWakeDaysCue==='function') drawWakeDaysCue(t);
   drawFlowersObj(t, time, seed);
   if(t.crop) drawCropObj(t, time, seed);
   else if(hovered===i && isPlantTool(tool)) drawCropGhost(t, tool);
@@ -23402,7 +23540,7 @@ function renderDiorama(time){
   // Skip cartoon weather/birds over photoreal plate (style clash)
   drawParts(screenParts);
   if(typeof drawEarthBreath==='function') drawEarthBreath();
-  if(state.paused || modalOpen || journeyOpen){
+  if(modalOpen || journeyOpen){
     ctx.fillStyle = 'rgba(20,16,8,.14)';
     ctx.fillRect(0,0,viewW,viewH);
   }
@@ -23469,7 +23607,7 @@ function render(time){
   if(!((GRID|0) >= 12 && agents.length > 40)) drawWeather(time);
   drawParts(screenParts);
   if(typeof drawEarthBreath==='function') drawEarthBreath();
-  if(state.paused || modalOpen || journeyOpen){
+  if(modalOpen || journeyOpen){
     ctx.fillStyle = 'rgba(20,16,8,.14)';
     ctx.fillRect(0,0,viewW,viewH);
   }
@@ -23486,13 +23624,17 @@ function frame(now){
       return;
     }
     farmCache = farmStats();
-    const simDt = (state.paused || modalOpen || journeyOpen || homesteadMode) ? 0 : dt*(state.speed||1);
-    if(simDt>0) simStep(simDt);
+    if(state && state._dawnBeat>0){
+      const dur = 0.85;
+      state._dawnBeat = Math.max(0, state._dawnBeat - dt);
+      const u = 1 - (state._dawnBeat / dur);
+      state.tod = 0.05 + Math.min(1, u) * 0.20;
+    }
+    // Discrete days: Play calls playAdvanceOneDay → simStep(DAY_LEN). The loop never blurs time.
     // wakeDeadTile / applyTool dirty farmCache mid-tick — never read a null cache
     if(!farmCache) farmCache = farmStats();
-    // Homestead clock stays frozen; yard stock still walks with the 12-frame packs.
-    const yardWalk = !!(homesteadMode && !modalOpen && !journeyOpen && agents && agents.length);
-    updateAgents(yardWalk ? dt : simDt);
+    // Herd still wanders while you plan the next morning; graze days only tick on Play.
+    updateAgents((!modalOpen && !journeyOpen) ? dt : 0);
     const bio = (farmCache && typeof farmCache.bio==='number') ? farmCache.bio : 0;
     updateWildlife(dt, bio);
     // beacon fades in real time (even while paused looking around)
@@ -23763,7 +23905,7 @@ function scheduleSpeedDiscoverTip(){
     if((state.speed|0) > 1){ camp.tipsShown.speed_discover = true; return; }
     // only nudge after they've actually run the clock a bit
     if(state.paused && (state.day|0) < 2) return;
-    toast('⏩ Tap ⏩ to run days faster (1× → 2× → 3×).', {once:'speed_nudge', throttleMs:4000});
+    toast('▶️ Each Play click is one morning. Crop days stay readable.', {once:'speed_nudge', throttleMs:4000});
   }, 40000);
 }
 
@@ -24378,10 +24520,74 @@ function updateHUD(){
   });
 }
 function updateClockUI(){
-  document.getElementById('btnPause').textContent = state.paused ? '▶️' : '⏸️';
-  document.getElementById('btnPause').classList.toggle('on', state.paused);
-  document.getElementById('btnSpeed').textContent = state.speed+'×';
-  document.getElementById('btnSpeed').classList.toggle('on', state.speed>1);
+  const stepping = !!(state && state._dayStepping);
+  const pauseBtn = document.getElementById('btnPause');
+  if(pauseBtn){
+    pauseBtn.textContent = stepping ? '⏳' : '▶️';
+    pauseBtn.classList.toggle('on', !stepping);
+    pauseBtn.title = stepping ? 'A morning is passing…' : 'Play — advance one morning';
+    pauseBtn.setAttribute('aria-label', stepping ? 'A morning is passing' : 'Play — advance one morning');
+  }
+  const speedBtn = document.getElementById('btnSpeed');
+  if(speedBtn){
+    speedBtn.textContent = '1d';
+    speedBtn.classList.add('on');
+    speedBtn.title = 'One labeled day at a time';
+    speedBtn.setAttribute('aria-label', 'One labeled day at a time');
+  }
+}
+function clockDateLabel(s){
+  s = s || state;
+  if(!s) return '';
+  const sn = SEASONS[s.season] || {emoji:'🌸', name:'Spring'};
+  return `${sn.emoji} ${sn.name} · Y${s.year} · D${s.day}`;
+}
+function flashDawnLabel(){
+  const el = document.getElementById('seasonPill');
+  if(!el) return;
+  el.classList.remove('dawn-flash');
+  void el.offsetWidth;
+  el.classList.add('dawn-flash');
+  clearTimeout(el._dawnT);
+  el._dawnT = setTimeout(()=>{ try{ el.classList.remove('dawn-flash'); }catch(e){} }, 1000);
+}
+/** One Play click = one labeled dawn. Time does not run on its own. */
+function playAdvanceOneDay(){
+  if(!state || homesteadMode || state.homesteadView || state.levelDone) return false;
+  if(typeof modalOpen!=='undefined' && modalOpen) return false;
+  if(typeof journeyOpen!=='undefined' && journeyOpen) return false;
+  if(state._dayStepping) return false;
+  state._dayStepping = true;
+  state.dayFrac = 0;
+  const beforeRevived = (typeof countRevived==='function') ? countRevived() : ((state.stats && state.stats.revived)|0);
+  const beforeSeason = state.season;
+  try{
+    state.paused = false;
+    if(typeof simStep==='function') simStep(DAY_LEN);
+  }finally{
+    state.paused = true;
+    state._dayStepping = false;
+    state.dayFrac = 0;
+  }
+  state.tod = 0.05;
+  state._dawnBeat = 0.85;
+  if(typeof updateHUD==='function') updateHUD();
+  if(typeof updateClockUI==='function') updateClockUI();
+  if(typeof updateQuests==='function') updateQuests();
+  flashDawnLabel();
+  const afterRevived = (typeof countRevived==='function') ? countRevived() : ((state.stats && state.stats.revived)|0);
+  const woke = Math.max(0, afterRevived - beforeRevived);
+  const date = clockDateLabel();
+  if(woke>0){
+    toast(`🌅 Morning — ${date}. ${woke===1?'A bed woke':'Beds woke'} — plant on the brown soil.`, {throttleMs:800});
+  }else if(beforeSeason!==state.season){
+    /* advanceSeason already toasted the new season */
+  }else{
+    toast(`🌤️ Morning — ${date}`, {throttleMs:700});
+  }
+  if(typeof tutSyncSim==='function') tutSyncSim();
+  try{ save(); }catch(e){}
+  return true;
 }
 const LEGENDS = {
   // H1 — dual-code bands (color + pattern name) for colorblind safety
@@ -24601,7 +24807,9 @@ function openInfo(refreshOnly){
       <div class="istory">${story}</div>
       <div class="hbarw"><div class="hbar" style="width:${Math.max(3, Math.min(100,(wk.shown/need*100)|0))}%; background:linear-gradient(90deg,#9a8340,#c98a3d)"></div></div>
       <div style="font-weight:800; font-size:13px">Waking up: <b>${Math.min(wk.shown, need)}</b>/${need}</div>
-      <div class="chiprow">💀 Nothing can grow here yet — the soil is DEAD.</div>
+      <div class="chiprow">${(typeof tileIsSleeping==='function' && tileIsSleeping(t))
+        ? ('💤 Still sleeping — '+(typeof readyInDaysLine==='function' ? readyInDaysLine(t) : 'wait for Play'))
+        : '💀 Nothing can grow here yet — the soil is DEAD.'}</div>
       ${feat?`<div class="chiprow">${feat}</div>`:''}
       ${highLine?`<div class="chiprow">${highLine}</div>`:''}
       ${homeNeedLine && homeNeedLine!==feat?`<div class="chiprow">${homeNeedLine}</div>`:''}
@@ -24610,7 +24818,7 @@ function openInfo(refreshOnly){
       ${(typeof windShelterStory==='function' && windShelterStory(t,{needOnly:true}))?`<div class="chiprow">${windShelterStory(t,{needOnly:true})}</div>`:''}
       ${(typeof hedgeCorridorStory==='function' && hedgeCorridorStory(t,{needOnly:true}))?`<div class="chiprow">${hedgeCorridorStory(t,{needOnly:true})}</div>`:''}
       ${washLine?`<div class="chiprow">${washLine}</div>`:''}
-      ${t.compost>0?`<div class="chiprow">🪣 compost working — ${t.compost.toFixed(0)}d left</div>`:''}
+      ${t.compost>0?`<div class="chiprow">🪣 compost working — ${t.compost.toFixed(0)}d left · ${(typeof readyInDaysLine==='function' ? readyInDaysLine(t) : 'wait for Play')}</div>`:''}
       ${t.crop?`<div class="chiprow">🌿 pioneers cracking the crust — ${Math.round(Math.min(1,t.crop.growth)*100)}%</div>`:''}
       ${t.graze?`<div class="chiprow">🐐 goats browsing the scrub${typeof paddockStockThirstNeed==='function' && paddockStockThirstNeed()?' · dry — herd needs a drink':''}${typeof paddockWindShelterNeed==='function' && paddockWindShelterNeed()?' · open to the wind — herd needs a windbreak':''}</div>`:''}
       <div class="chiprow">💡 Feed it: 🪣 compost${toolAllowed('covercrop')?', 🌿 pioneer plants':''}${toolAllowed('goat')?', or 🐐 goats':''}. Water nearby helps it all work faster.</div>`;
@@ -24742,7 +24950,7 @@ function openInfo(refreshOnly){
       chips.push('🌾 the hay stand is gone — graze waits until cover returns');
     if(typeof isNativeScrubMarkT==='function' && isNativeScrubMarkT(t) && !isNativeScrubT(t))
       chips.push('🌵 cleared native scrub — replant this marked stump with Trees to restore wind cover');
-    if(!t.crop && !t.graze) chips.push('💤 resting & regenerating');
+    if(!t.crop && !t.graze) chips.push(t.compost>0 ? '💤 resting & regenerating — compost working' : '💤 resting & regenerating');
     if(t.feature==='swale'){
       const swaleChip = (typeof homeWaterStory==='function' && homeWaterStory(t)) || '〰️ contour — holds water for the beds below';
       chips.push(swaleChip);
@@ -26086,6 +26294,39 @@ function drawCoopMass(ctx, p, s){
   ctx.restore();
 }
 let _journeyAtlasCv = null;
+/** House corner, laneway, and river on top of skin or procedural land — the map is one valley. */
+function paintValleyRouteMarks(ctx){
+  if(!ctx || typeof atlasToView!=='function') return;
+  const atlasPath = (pts)=> (pts||[]).map(p=>atlasToView(p.c, p.r));
+  if(typeof ATLAS_GEO==='object' && ATLAS_GEO){
+    if(typeof atlasStemCenterline==='function' && typeof catmullPts==='function' && typeof fillWidthStrip==='function'){
+      const stemPts = catmullPts(atlasStemCenterline().map(p=>atlasToView(p.c, p.r)), 6);
+      fillWidthStrip(ctx, stemPts, (i,t)=> 11 - t*2.2, 'rgba(36,92,120,0.42)');
+      fillWidthStrip(ctx, stemPts, (i,t)=> 6.4 - t*1.2, 'rgba(48,140,176,0.55)');
+    }
+    if(ATLAS_GEO.creek && typeof catmullPts==='function' && typeof fillWidthStrip==='function'){
+      const creekPts = catmullPts(atlasPath(ATLAS_GEO.creek), 7);
+      fillWidthStrip(ctx, creekPts, 5.5, 'rgba(40,120,140,0.40)');
+    }
+    function dirtLane(points, half){
+      if(!points || !points.length || typeof catmullPts!=='function') return;
+      const pts = catmullPts(atlasPath(points), 8);
+      const fade = (t)=> t>0.82 ? Math.max(0.16, 1-(t-0.82)/0.18) : (t<0.08 ? t/0.08 : 1);
+      fillWidthStrip(ctx, pts, (i,t)=> (half+5)*fade(t), 'rgba(88,64,38,0.38)');
+      fillWidthStrip(ctx, pts, (i,t)=> half*0.7*fade(t), 'rgba(168,128,72,0.42)');
+    }
+    if(ATLAS_GEO.lane) dirtLane(ATLAS_GEO.lane, 6.4);
+    if(ATLAS_GEO.paddockSpur) dirtLane(ATLAS_GEO.paddockSpur, 3.8);
+    if(ATLAS_GEO.orchardSpur) dirtLane(ATLAS_GEO.orchardSpur, 3.8);
+  }
+  const home = atlasToView(11, 61);
+  ctx.fillStyle = 'rgba(90,70,36,0.20)';
+  ctx.beginPath(); ctx.ellipse(home.x, home.y+6, 46, 22, 0, 0, Math.PI*2); ctx.fill();
+  const hp = atlasToView(4.35, 28.7);
+  if(typeof drawFarmhouseMass==='function') drawFarmhouseMass(ctx, hp, 0.85);
+  const houseTier = (camp && camp.homestead && (camp.homestead.houseTier|0)) || 0;
+  if(typeof drawSprAt==='function') drawSprAt(ctx, 'house_t'+houseTier, 4.35, 28.7, 168, 140);
+}
 function nudgeJourneyAtlasPaint(){
   const cv = _journeyAtlasCv;
   if(!cv || !cv.isConnected) return false;
@@ -26097,7 +26338,6 @@ function paintValleyAtlas(cv){
   if(!ctx) return false;
   try {
   const skinImg = VALLEY_ATLAS_SKIN ? sprReady(VALLEY_ATLAS_SKIN) : null;
-  if(VALLEY_ATLAS_SKIN && !skinImg) return false;
   ctx.clearRect(0, 0, V.w, V.h);
   const hills = sprReady('bg_hills_1') || sprReady('bg_hills');
   if(!skinImg){
@@ -26198,7 +26438,6 @@ function paintValleyAtlas(cv){
     ctx.fillRect(0, 0, V.w, V.h);
   }
   const usedSkin = !!(skin && blitValleyAtlasSkin(ctx, skin));
-  if(VALLEY_ATLAS_SKIN && !usedSkin) return false;
 
   if(!usedSkin){
     const SCALE = 18;
@@ -26434,23 +26673,29 @@ function paintValleyAtlas(cv){
     fg.closePath();
     fg.fill();
   });
-  // Soft-punch the painted lane so locked-parcel fog does not break the thread.
+  // Soft-punch the painted lane, river, and Home Patch so mist never hides the route.
   fg.globalCompositeOperation = 'destination-out';
   for(let r=0;r<ATLAS_H;r++) for(let c=0;c<ATLAS_W;c++){
     const A = atlasGet(c,r);
-    if(!A || A.feature!=='path') continue;
+    if(!A) continue;
+    const path = A.feature==='path';
+    const water = A.water==='main' || A.water==='creek' || A.water==='pond_site';
+    const home = c>=8 && c<14 && r>=58 && r<64;
+    const house = c>=4 && c<16 && r>=52 && r<58;
+    if(!path && !water && !home && !house) continue;
     const p = atlasToView(c+0.5, r+0.5);
     fg.beginPath();
-    fg.arc(p.x, p.y, 9, 0, Math.PI*2);
+    fg.arc(p.x, p.y, water?12:(path?10:14), 0, Math.PI*2);
     fg.fill();
   }
   fg.globalCompositeOperation = 'source-over';
   ctx.save();
-  ctx.filter = 'blur(16px)';
-  ctx.globalAlpha = 0.2;
+  ctx.filter = 'blur(14px)';
+  ctx.globalAlpha = 0.10;
   ctx.drawImage(fog, 0, 0);
   ctx.restore();
-  return !!(usedSkin || hills);
+  if(typeof paintValleyRouteMarks==='function') paintValleyRouteMarks(ctx);
+  return true;
   } catch (err) {
     console.warn('[Rootweave] valley paint', err);
     return false;
@@ -27293,7 +27538,7 @@ function wireValleyRegion(el, P, ms){
       if(typeof parcelDeedOffered==='function' && parcelDeedOffered(P)){
         SND.pop(); openLandDeed(P); return;
       }
-      toast(`${P.name} is still in mist — ${hint || (P.leftover?'heal a neighboring field first.':'work the neighboring field first.')}`);
+      toast(`${P.name} — ${hint || (P.leftover?'Unlock by healing a neighboring field.':'Unlock by working the neighboring field.')}`);
       return;
     }
     journeyPick(P.lvIndex);
@@ -27325,7 +27570,10 @@ function buildValleyMapEl(){
   _journeyAtlasCv = cv;
   let tries = 0;
   const paint = ()=>{
-    if(!cv.isConnected) return;
+    if(!cv.isConnected){
+      if(tries++ < 80) setTimeout(paint, 40);
+      return;
+    }
     const ok = paintValleyAtlas(cv);
     if(!ok && tries++ < 80) setTimeout(paint, 120);
   };
@@ -27352,7 +27600,12 @@ function buildValleyMapEl(){
     const mid = parcelViewCenter(P);
     const lab = document.createElement('div');
     lab.className = 'vlab '+ms+(P.leftover?' leftover':'')+(deedLive?' deed':'');
-    lab.textContent = deedLive ? (P.name+' · 🪙'+parcelDeedCost(P)) : P.name;
+    const hint = typeof parcelUnlockHint==='function' ? parcelUnlockHint(P) : '';
+    if(ms==='locked' && hint && !deedLive){
+      lab.innerHTML = '<span class="vlab-name">'+P.name+'</span><span class="vlab-hint">'+hint+'</span>';
+    }else{
+      lab.textContent = deedLive ? (P.name+' · 🪙'+parcelDeedCost(P)) : P.name;
+    }
     lab.style.left = (mid.x/VALLEY_VIEW.w*100).toFixed(2)+'%';
     lab.style.top = (mid.y/VALLEY_VIEW.h*100).toFixed(2)+'%';
     wrap.appendChild(lab);
@@ -27504,6 +27757,7 @@ function buildJourney(){
     : 'Tap a field to walk it. Mist lifts as you heal the neighbors.';
   path.appendChild(mapHead);
   path.appendChild(buildValleyMapEl());
+  if(typeof nudgeJourneyAtlasPaint==='function') nudgeJourneyAtlasPaint();
 
   const mapEl = document.createElement('button');
   mapEl.type = 'button';
@@ -27695,6 +27949,11 @@ function enterLevel(lv, fresh){
   applyLevelUI();
   setOverlay('none');
   farmCache = null;
+  if(state && !state.homesteadView){
+    state.paused = true;
+    state.speed = 1;
+    state._dayStepping = false;
+  }
   updateHUD(); updateClockUI(); updateQuests(); refreshAnchors();
   hideJourney();
   save();
@@ -27857,11 +28116,11 @@ function init(){
         setTimeout(()=>{
           if(cottageOpen || modalOpen || journeyOpen) return;
           if(camp.tipsShown.keys_help) return;
-          toast('⌨️ Space pause · Esc back · 1–9 tools · R turn · right-click inspect', {once:'keys_help', throttleMs:4000});
+          toast('⌨️ Space advances one morning · Esc back · 1–9 tools · R turn · right-click inspect', {once:'keys_help', throttleMs:4000});
         }, Math.max(800, Math.max(toastBusyUntil - performance.now(), ONCE_COACH_GAP_MS - (now - (lastOnceCoachT||0))) + 200));
         return;
       }
-      toast('⌨️ Space pause · Esc back · 1–9 tools · R turn · right-click inspect', {once:'keys_help', throttleMs:4000});
+      toast('⌨️ Space advances one morning · Esc back · 1–9 tools · R turn · right-click inspect', {once:'keys_help', throttleMs:4000});
     }, 6800);
   }
   // C3: mobile starts with quest collapsed to one-line strip
@@ -27883,44 +28142,32 @@ function init(){
   window.addEventListener('resize', ()=>{ layout(); if(typeof updatePaletteScrollHint==='function') updatePaletteScrollHint(); });
   // HUD buttons
   document.getElementById('btnPause').addEventListener('click', ()=>{
-    state.paused = !state.paused;
-    // BC — clear first-session ▶️ pulse as soon as they act
     try{
       const b = document.getElementById('btnPause');
-      if(b){ b.classList.remove('play-nudge'); b.setAttribute('aria-label','Pause or play'); b.title='Pause / play'; }
+      if(b){ b.classList.remove('play-nudge'); }
     }catch(e){}
-    updateClockUI();
-    // X3 / B8 — first pause teaches Space; later pauses stay short
-    if(state.paused){
-      if(!camp.tipsShown) camp.tipsShown = {};
-      if(!camp.tipsShown.pause_space){
-        camp.tipsShown.pause_space = true;
-        toast('⏸️ Paused — time freezes so you can build. Press Space or ▶️ to resume.');
-      }else{
-        toast('⏸️ Paused — build freely, time waits for you.');
-      }
-    }else{
-      toast('▶️ Time flows again!');
+    if(!camp.tipsShown) camp.tipsShown = {};
+    if(!camp.tipsShown.day_step_lit){
+      camp.tipsShown.day_step_lit = true;
     }
+    playAdvanceOneDay();
+    updateClockUI();
     tutSyncSim();
-    SND.pop(); save();
+    SND.pop();
   });
   document.getElementById('btnSpeed').addEventListener('click', ()=>{
-    state.speed = state.speed>=3 ? 1 : state.speed+1;
-    if(state.paused){ state.paused = false; }
-    updateClockUI();
     if(!camp.tipsShown) camp.tipsShown = {};
-    // BU — clicking speed also consumes passive speed_nudge
     camp.tipsShown.speed_discover = true;
     camp.tipsShown.speed_nudge = true;
-    if(!camp.tipsShown.speed_lit){
-      camp.tipsShown.speed_lit = true;
-      toast(`⏩ Speed ${state.speed}× — ⏸️ and ⏩ control time (Space also pauses).`);
-    }else{
-      toast(`⏩ Speed ${state.speed}×`);
+    camp.tipsShown.speed_lit = true;
+    if(!camp.tipsShown.day_step_speed){
+      camp.tipsShown.day_step_speed = true;
+      toast('▶️ Play advances one morning. Time no longer runs on its own.');
     }
+    playAdvanceOneDay();
+    updateClockUI();
     tutSyncSim();
-    SND.pop(); save();
+    SND.pop();
   });
   document.getElementById('btnGoals').addEventListener('click', openGoals);
   const btnNotes = document.getElementById('btnNotes');
@@ -28192,10 +28439,8 @@ function init(){
       }
     }else if(state._autoPausedByHide){
       state._autoPausedByHide = false;
-      state.paused = false;
+      state.paused = true;
       if(typeof updateClockUI==='function') updateClockUI();
-      // AN — first return: soft explain (not every tab switch)
-      toast('⏸️ Auto-paused while you were away — time is running again.', {once:'auto_pause_away'});
     }
   });
   requestAnimationFrame(frame);

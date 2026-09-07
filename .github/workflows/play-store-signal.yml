@@ -13,3 +13,4 @@ jobs:
         with:
           node-version: '22'
       - run: node tests/play-store-signal.test.mjs
+      - run: node tests/closed-test-playfeel.test.mjs
