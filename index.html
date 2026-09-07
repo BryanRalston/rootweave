@@ -27570,7 +27570,10 @@ function buildValleyMapEl(){
   _journeyAtlasCv = cv;
   let tries = 0;
   const paint = ()=>{
-    if(!cv.isConnected) return;
+    if(!cv.isConnected){
+      if(tries++ < 80) setTimeout(paint, 40);
+      return;
+    }
     const ok = paintValleyAtlas(cv);
     if(!ok && tries++ < 80) setTimeout(paint, 120);
   };
@@ -27754,6 +27757,7 @@ function buildJourney(){
     : 'Tap a field to walk it. Mist lifts as you heal the neighbors.';
   path.appendChild(mapHead);
   path.appendChild(buildValleyMapEl());
+  if(typeof nudgeJourneyAtlasPaint==='function') nudgeJourneyAtlasPaint();
 
   const mapEl = document.createElement('button');
   mapEl.type = 'button';

@@ -101,6 +101,7 @@ check('applyTool wires sleeping / pond toasts', () => {
   assert.match(html, /function playAdvanceOneDay/);
   assert.match(html, /flashDawnLabel/);
   assert.match(html, /paintValleyRouteMarks/);
+  assert.match(html, /if\(!cv\.isConnected\)\{\s*if\(tries\+\+ < 80\) setTimeout\(paint, 40\);/);
 });
 
 check('Play is discrete one-day, not continuous speed', () => {
