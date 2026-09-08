@@ -8,7 +8,7 @@ Wraps the live PWA at `https://bryanralston.github.io/rootweave/` with start URL
 
 `https://bryanralston.github.io/rootweave/?store=play`
 
-so the in-app Gumroad coin shop stays hidden. Ordinary mobile browsers (no `store=play`) keep the web shop.
+so the TWA is marked as the Play channel. Paid coin packs are hidden on web and Play. Optional support, if present, lives under About and does not add coins.
 
 This is a checked-in Gradle TWA (android-browser-helper `LauncherActivity`), same shape as a bubblewrap project. Re-running `bubblewrap init` is optional; `twa-manifest.json` is here if you want that later.
 

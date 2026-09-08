@@ -95,8 +95,8 @@ canvas#game.tooling{cursor:crosshair}
 .hudbtn:active{transform:translateY(2px); box-shadow:0 1px 4px rgba(20,14,4,.2)}
 .hudbtn.on{background:linear-gradient(180deg,#ffedb8,#f5d98a); border-color:var(--gold2)}
 a.hudbtn{text-decoration:none; color:inherit}
-/* Quiet Support control — opens the coin shop on web, Play-safe copy on TWA. Hidden on first-run coach / map / cottage. */
-#btnSupport{font-size:15px; padding:4px 8px}
+/* Support lives in About only — no HUD tip-jar / coin-pack pressure. */
+#btnSupport{display:none !important; font-size:15px; padding:4px 8px}
 #btnSupport .slbl{font-size:11.5px; font-weight:800; letter-spacing:.01em}
 body.tut-open #btnSupport,
 body.overlay-open #btnSupport,
@@ -885,7 +885,7 @@ body.reduce-motion #badgeBanner{ transition:none; }
     <button class="hudbtn" id="btnGoals" title="Goals & badges" aria-label="Goals and badges">⭐</button>
     <button class="hudbtn" id="btnMore" title="Map overlays & views" aria-label="Overlays menu">⋯</button>
     <button class="hudbtn" id="btnSound" title="Sound on/off" aria-label="Toggle sound">🔊</button>
-    <button type="button" class="hudbtn" id="btnSupport" title="Support the farm — play stays free" aria-label="Support the farm">💛 <span class="slbl">Support</span></button>
+    <button type="button" class="hudbtn" id="btnSupport" title="Optional support — play is free; does not add coins" aria-label="Optional support" hidden>💛 <span class="slbl">Support</span></button>
   </div>
 </div>
 
@@ -4017,7 +4017,7 @@ function openLandDeed(P){
   }else if(!offered){
     lesson = `<div class="lesson" style="text-align:left">Fog still sits on the neighbor line. Work the field that touches this fold, then the neighbor will talk terms.</div>`;
   }else if(bal < cost){
-    lesson = `<div class="lesson" style="text-align:left">A neighbor will sign <b>${P.name}</b> over for <b>🪙${cost}</b>. You have <b>🪙${bal}</b> — surplus from the stand, harvests, or the optional coin shop. Play stays free; this is just more ground.${waitLine}</div>`;
+    lesson = `<div class="lesson" style="text-align:left">A neighbor will sign <b>${P.name}</b> over for <b>🪙${cost}</b>. You have <b>🪙${bal}</b> — surplus from the stand and harvests. Play stays free; this is just more ground.${waitLine}</div>`;
   }else{
     lesson = `<div class="lesson" style="text-align:left">A neighbor will sign <b>${P.name}</b> over for <b>🪙${cost}</b>. You have <b>🪙${bal}</b>. ${feelLine}${waitLine}</div>`;
     buyBtn = `<button class="mbtn big" data-act="buydeed" data-parcel="${P.id}">Take the fold · 🪙${cost}</button>`;
@@ -4409,8 +4409,8 @@ function defaultCamp(){
     parcels:{},   // VALLEY_PARCELS id → {cleared, restorePct, bestStars, bought}
     scrapbook:[],
     kitsOwned:{},
-    grantedPacks:{}, // coin-pack ids already fulfilled on this save (once each)
-    pendingShopCoins:0, // pack coins waiting for a live plot (splash / between plots)
+    grantedPacks:{}, // retired coin-pack ids (packs no longer sold or granted)
+    pendingShopCoins:0, // leftover pack credit from old saves, applied once if present
     featureUnlocks:{}, // shopId tools permanently unlocked by parcel clears
     fieldNotes:{}, // earned field-note ids
     herd: typeof emptyHerd==='function' ? emptyHerd() : {cattle:0, chicken:0, sheep:0, goat:0, pig:0, duckT:0},
@@ -19994,9 +19994,9 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-09-07.closed3';
+const SHIP_BUILD = '2026-09-08.freeplay';
 /* PLAY_STORE_SIGNAL_BEGIN */
-/** Explicit Play/TWA signal only (?store=play). Never Android UA — mobile Safari/Chrome on github.io keep the web shop. */
+/** Explicit Play/TWA signal only (?store=play). Never Android UA. Paid coin packs are hidden on web and Play. */
 const PLAY_STORE_CHANNEL = 'play';
 const PLAY_STORE_SESSION_KEY = 'rw_store_channel';
 function readStoreQueryValue(){
@@ -20019,19 +20019,19 @@ function isPlayStoreClient(){
   }catch(e){}
   return false;
 }
-function playStoreHidesCoinShop(){ return isPlayStoreClient(); }
-function playStoreAllowsGumroadCoinCheckout(){ return !isPlayStoreClient(); }
-function playStoreAllowsGrantCoinPack(){ return !isPlayStoreClient(); }
+function playStoreHidesCoinShop(){ return true; }
+function playStoreAllowsGumroadCoinCheckout(){ return false; }
+function playStoreAllowsGrantCoinPack(){ return false; }
 persistPlayStoreSignal();
 /* PLAY_STORE_SIGNAL_END */
-/** Official PWYW tip jar — play stays free. Coin packs live in COIN_PACKS. Web-only checkout; Play/TWA hides packs. */
+/** Optional external PWYW (buy me a coffee). Never grants coins. Not shown in the first-session HUD. */
 const SUPPORT_FARM = {
   url: 'https://ralstonia5.gumroad.com/l/oehmly',
   email: 'b.ralston62989@gmail.com',
-  label: 'Support the farm',
-  thankYou: '💛 Thank you for supporting the farm. Play stays free — this early build starts on the Home Patch.'
+  label: 'Optional support',
+  thankYou: '💛 Thank you for supporting the farm. Play stays free — this does not add coins.'
 };
-/** Swap Gumroad slugs here when the listings go live. Query grant: ?pack=coins80 or ?pack=coins200. Play/TWA never fulfills these. */
+/** Retired paid packs. Kept so old ?pack= return links can be stripped. Never sold or granted. */
 const COIN_PACKS = [
   {id:'coins80',  name:'Seed pouch', coins:80,  price:'$1.99', url:'https://ralstonia5.gumroad.com/l/rootweave-coins-80'},
   {id:'coins200', name:'Crate',      coins:200, price:'$4.99', url:'https://ralstonia5.gumroad.com/l/rootweave-coins-200'},
@@ -20096,58 +20096,30 @@ function creditShopCoins(n){
 }
 function grantCoinPack(pack, opts){
   if(typeof playStoreAllowsGrantCoinPack === 'function' && !playStoreAllowsGrantCoinPack()) return false;
-  const o = opts || {};
-  if(!pack || !camp) return false;
-  if(!camp.grantedPacks || typeof camp.grantedPacks!=='object') camp.grantedPacks = {};
-  if(camp.grantedPacks[pack.id]) return false;
-  camp.grantedPacks[pack.id] = true;
-  creditShopCoins(pack.coins|0);
-  try{ save(); }catch(e){}
-  if(typeof updateHUD==='function') updateHUD();
-  const msg = '+'+(pack.coins|0)+' coins';
-  const fire = ()=>{
-    if(typeof toast==='function') toast(msg, {force:true, throttleMs:400});
-  };
-  if(o.delayToast) toastAfterSplash(fire);
-  else fire();
-  return true;
+  return false;
 }
 function openPlayStoreSupport(){
   showModal(`
-    <h2>💛 Support the farm</h2>
-    <div class="sub">Play is free. No ads.</div>
+    <h2>💛 Optional support</h2>
+    <div class="sub">Play is free. No ads. This does not add coins.</div>
     <div class="lesson" style="text-align:left">
-      This Play build does not sell coin packs. Play Billing is not in this closed test.
-      <b>Home Patch</b> still starts with 40 coins — no purchase required.
-      Optional support lives on the website and does not add coins in this app.
+      Coin packs are not sold. Play Billing is not in this build.
+      <b>Home Patch</b> starts with 40 coins earned into the farm loop — no purchase required.
+      Optional support is a tip for the developer. It does not grant coins or unlocks.
+    </div>
+    <div class="legal-row">
+      <a id="coinShopTip" href="${supportFarmHref()}" target="_blank" rel="noopener">Buy me a coffee (optional)</a>
     </div>
     <div class="modalbtns"><button class="mbtn" data-act="close">Back</button></div>
   `);
+  wireSupportFarmLink(document.getElementById('coinShopTip'));
 }
 function openCoinShop(){
   if(typeof playStoreHidesCoinShop === 'function' && playStoreHidesCoinShop()){
     openPlayStoreSupport();
     return;
   }
-  const bal = homesteadMode ? (camp.bank|0) : (state && (state.coins|0));
-  const items = COIN_PACKS.map(p=>`<div class="shopitem">
-      <div class="sem">${p.id==='coins200'?'📦':'🌱'}</div>
-      <div><div class="snm">${p.name}</div><div class="sds">${p.coins} coins for the upgrade shop</div></div>
-      <a class="shopbuy" href="${p.url}" target="_blank" rel="noopener">Buy ${p.price}</a>
-    </div>`).join('');
-  showModal(`
-    <h2>💛 Coin shop</h2>
-    <div class="sub">Optional coins for the upgrade shop. 🪙 <b>${bal|0}</b></div>
-    <div class="lesson" style="text-align:left">
-      Early build. <b>Home Patch</b> is the playable start. You do not need to buy this to play — wake, compost, and the first session still run on the 40 coins you start with. Surplus can buy a neighboring fold on the map (a farm deal, not an unlock pack).
-    </div>
-    ${items}
-    <div class="legal-row">
-      <a id="coinShopTip" href="${supportFarmHref()}" target="_blank" rel="noopener">or pay what you want</a>
-    </div>
-    <div class="modalbtns"><button class="mbtn" data-act="close">Back</button></div>
-  `);
-  wireSupportFarmLink(document.getElementById('coinShopTip'));
+  openPlayStoreSupport();
 }
 /** Optional thank-you when returning from Gumroad (?supporter=1). Never gates content. */
 function maybeThankSupporter(){
@@ -20169,22 +20141,13 @@ function maybeThankSupporter(){
     toast(msg, {force:true, throttleMs:400, once:'supporter_thanks'});
   });
 }
-/** Fulfill ?pack=coins80 / ?pack=coins200 once per save. Easy to cheat; that is OK for now. Play/TWA never grants. */
+/** Retired: ?pack= never grants coins. Strip the query so old Gumroad return links stay inert. */
 function maybeGrantCoinPack(){
   if(typeof playStoreAllowsGrantCoinPack === 'function' && !playStoreAllowsGrantCoinPack()){
     try{ stripPlayQueryParam('pack'); }catch(e){}
     return;
   }
-  let raw = '';
-  try{
-    const q = new URLSearchParams(location.search || '');
-    raw = String(q.get('pack') || '').trim();
-    if(raw) stripPlayQueryParam('pack');
-  }catch(e){ raw = ''; }
-  if(!raw) return;
-  const pack = coinPackById(raw);
-  if(!pack) return;
-  grantCoinPack(pack, {delayToast:true});
+  try{ stripPlayQueryParam('pack'); }catch(e){}
 }
 function openAboutCredits(){
   const ver = SHIP_BUILD;
@@ -20198,7 +20161,7 @@ function openAboutCredits(){
         🟫 <b>Tiles read clearly.</b> Dead, sleeping, awake, and pond beds no longer look the same. Sleeping ground shows <b>ready in X days</b> (from the real wake bar). Wrong-tool taps speak: compost on a pond is pond water, not soil; planting on sleeping ground says wait — or compost first.<br>
         ▶️ <b>Play is one morning.</b> Each Play click advances exactly one labeled day. The date pill flashes dawn when beds wake. Compost → wait → plant stays the same loop — time is just readable.<br>
         🗺️ <b>Journey is one valley.</b> House corner, laneway, and river stay on the map. Locked neighbors show the real unlock line (clear Home Patch, clear a neighbor, or a land deed) — not “still in mist.” Tap an unlocked fold and you walk that land.<br>
-        First session stays free. Play/TWA still hides coin packs.
+        🪙 <b>Play is free.</b> Coin packs are gone. Coins come from harvest and the stand. Optional support, if you want it, lives under About and does not add coins.
       </div>`
     : '';
   // CD — first About open literacy (in-modal; no toast spam)
@@ -20222,18 +20185,16 @@ function openAboutCredits(){
     </div>
     <div class="lesson" style="text-align:left">
       This is an early build — <b>Home Patch</b> is the playable start. Play stays free: no ads, no pay-to-revive.
-      You do not need to buy coins to play.
-      ${isPlayStoreClient()
-        ? 'Optional support lives on the website and does not add coins in this Play app. Coin packs are hidden until Play Billing exists.'
-        : `Optional packs live in the <a href="#" data-act="coinshop">${SUPPORT_FARM.label}</a> shop
-      (💛 Support). ${SUPPORT_FARM.email ? 'Questions: '+SUPPORT_FARM.email+'.' : ''}`}
+      Coins are earned by playing. You do not need to buy coins.
+      Optional support is a tip only — it does not add coins.
+      ${SUPPORT_FARM.email ? 'Questions: '+SUPPORT_FARM.email+'.' : ''}
     </div>
     <div class="legal-row">
       <a href="legal/privacy.html">Privacy</a>
       <span style="opacity:.45"> · </span>
       <a href="legal/terms.html">Terms</a>
-      ${isPlayStoreClient() ? '' : `<span style="opacity:.45"> · </span>
-      <a href="#" data-act="coinshop">${SUPPORT_FARM.label}</a>`}
+      <span style="opacity:.45"> · </span>
+      <a id="aboutSupportLink" href="${supportFarmHref()}" target="_blank" rel="noopener">${SUPPORT_FARM.label}</a>
     </div>
     <div class="modalbtns" style="flex-wrap:wrap">
       <button class="mbtn wood" data-act="exportsave">Export save</button>
@@ -20242,6 +20203,7 @@ function openAboutCredits(){
       <button class="mbtn" data-act="close">Back</button>
     </div>
   `);
+  wireSupportFarmLink(document.getElementById('aboutSupportLink'));
 }
 /** M5 — full campaign wipe with double confirm if any progress exists. */
 function hasAnyCampaignProgress(){
@@ -25926,7 +25888,7 @@ function runJourneySoftTips(){
   // 3b) Surrounding land deal — after Home Patch, never the first-session lead
   if(typeof homePatchCleared==='function' && homePatchCleared() &&
      VALLEY_PARCELS.some(P=>parcelCanDeed(P) && !parcelIsBought(P) && parcelDeedOffered(P))){
-    if(offerJourneySoftTip('land_deed_first', 'A fogged neighbor with a coin price is a land deal — surplus from play or the coin shop. Home Patch stays free.', 600)) return;
+    if(offerJourneySoftTip('land_deed_first', 'A fogged neighbor with a coin price is a land deal — surplus from harvest and the stand. Home Patch stays free.', 600)) return;
   }
   // 3c) Returned visitors on the painted fold — once, names the land, no new panel
   if(typeof homePatchCleared==='function' && homePatchCleared() && !camp.tipsShown.wildmap_first){
@@ -28201,9 +28163,7 @@ function init(){
   document.getElementById('btnSound').title = soundOn ? 'Sound on — tap to mute' : 'Sound off — tap to unmute farm life';
   const btnSupport = document.getElementById('btnSupport');
   if(btnSupport){
-    if(typeof isPlayStoreClient === 'function' && isPlayStoreClient()){
-      btnSupport.title = 'Support the farm — play is free; coin packs are not sold in this Play app';
-    }
+    btnSupport.title = 'Optional support — play is free; does not add coins';
     btnSupport.addEventListener('click', ()=>{ openCoinShop(); SND.pop(); });
   }
   // BV/CH — quieter cold boot; skip while Journey/splash owns the screen (defer to first plot)
