@@ -52,8 +52,8 @@ If you have better phone captures, replace these. Do not upload journey-map lock
 
 - Start URL: `https://bryanralston.github.io/rootweave/?store=play`
 - Host: `bryanralston.github.io`, path `/rootweave/`
-- `?store=play` hides the Gumroad coin shop. Ordinary mobile Chrome/Safari on github.io **without** that query still show the web shop.
-- First session: splash → Wake Home Patch → 40 coins. Support stays after the tutorial (existing gate) and does not sell packs.
+- Paid coin packs are hidden on web and on `?store=play`. Ordinary mobile Chrome/Safari on github.io also have no in-app coin shop.
+- First session: splash → Wake Home Patch → 40 coins. Optional support lives under About (buy me a coffee) and does not add coins.
 
 ---
 
@@ -86,6 +86,6 @@ A closed-test track is **not** created by this PR. You create it.
 
 - Does not create the Play app, closed track, or opt-in link.
 - Does not implement Play Billing.
-- Does not open Gumroad coin packs (`rootweave-coins-80` / `rootweave-coins-200`) from the Android app.
+- Does not open Gumroad coin packs (`rootweave-coins-80` / `rootweave-coins-200`) from the Android app or the website.
 - Does not change leftover-hold / What’s new treadmill content.
 - Does not touch Manager Schedule Pro or Harborline.

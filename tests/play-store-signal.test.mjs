@@ -1,6 +1,6 @@
 /**
- * Probe: Play/TWA store=play hides the Gumroad coin shop; web without that
- * query keeps it. First session (Home Patch, 40 coins) stays free.
+ * Probe: paid coin packs are hidden on web and Play. store=play still
+ * marks the TWA channel. Coins stay earnable. Optional support never grants.
  *
  * Run: node tests/play-store-signal.test.mjs
  */
@@ -17,6 +17,8 @@ const listing = fs.readFileSync(path.join(root, 'android/PLAY_LISTING.md'), 'utf
 const gradle = fs.readFileSync(path.join(root, 'android/app/build.gradle'), 'utf8');
 const manifest = fs.readFileSync(path.join(root, 'android/app/src/main/AndroidManifest.xml'), 'utf8');
 const assetlinks = fs.readFileSync(path.join(root, '.well-known/assetlinks.json'), 'utf8');
+const terms = fs.readFileSync(path.join(root, 'legal/terms.html'), 'utf8');
+const privacy = fs.readFileSync(path.join(root, 'legal/privacy.html'), 'utf8');
 
 const failures = [];
 function check(name, fn) {
@@ -51,22 +53,26 @@ function runSignal(search, sessionPlay) {
   return ctx;
 }
 
-// --- store signal: explicit query only ---
-check('web without store=play does not hide shop', () => {
+function supportModal() {
+  return html.slice(html.indexOf('function openPlayStoreSupport'), html.indexOf('function openCoinShop'));
+}
+
+// --- store signal: explicit query only; packs hidden everywhere ---
+check('web without store=play hides paid packs', () => {
   const ctx = runSignal('', false);
   assert.equal(ctx.isPlayStoreClient(), false);
-  assert.equal(ctx.playStoreHidesCoinShop(), false);
-  assert.equal(ctx.playStoreAllowsGumroadCoinCheckout(), true);
-  assert.equal(ctx.playStoreAllowsGrantCoinPack(), true);
+  assert.equal(ctx.playStoreHidesCoinShop(), true);
+  assert.equal(ctx.playStoreAllowsGumroadCoinCheckout(), false);
+  assert.equal(ctx.playStoreAllowsGrantCoinPack(), false);
 });
 
-check('mobile-looking query without store=play still shows shop', () => {
+check('mobile-looking query without store=play is not the Play channel', () => {
   const ctx = runSignal('?source=pwa&utm_source=android', false);
   assert.equal(ctx.isPlayStoreClient(), false);
-  assert.equal(ctx.playStoreHidesCoinShop(), false);
+  assert.equal(ctx.playStoreHidesCoinShop(), true);
 });
 
-check('store=play hides shop and blocks Gumroad coin checkout + grant', () => {
+check('store=play marks TWA and still blocks coin checkout + grant', () => {
   const ctx = runSignal('?store=play', false);
   assert.equal(ctx.isPlayStoreClient(), true);
   assert.equal(ctx.playStoreHidesCoinShop(), true);
@@ -74,7 +80,7 @@ check('store=play hides shop and blocks Gumroad coin checkout + grant', () => {
   assert.equal(ctx.playStoreAllowsGrantCoinPack(), false);
 });
 
-check('store=play persists in session so a later URL without the query still hides shop', () => {
+check('store=play persists in session so a later URL without the query still marks Play', () => {
   const first = runSignal('?store=play', false);
   assert.equal(first.isPlayStoreClient(), true);
   const persisted = runSignal('', true);
@@ -88,32 +94,37 @@ check('signal helpers never inspect userAgent', () => {
 });
 
 // --- source gates ---
-check('grantCoinPack refuses on Play', () => {
+check('grantCoinPack refuses whenever packs are disallowed', () => {
   assert.match(html, /function grantCoinPack[\s\S]*?playStoreAllowsGrantCoinPack/);
 });
 
-check('maybeGrantCoinPack strips pack and returns on Play', () => {
+check('maybeGrantCoinPack strips pack and returns', () => {
   assert.match(html, /function maybeGrantCoinPack\(\)\{[\s\S]*?playStoreAllowsGrantCoinPack[\s\S]*?stripPlayQueryParam\('pack'\)/);
 });
 
-check('openCoinShop routes to Play-safe Support (no pack URLs in that modal)', () => {
+check('openCoinShop routes to optional support (no pack checkout)', () => {
   assert.match(html, /function openCoinShop\(\)\{\s*if\(typeof playStoreHidesCoinShop/);
-  const playModal = html.slice(html.indexOf('function openPlayStoreSupport'), html.indexOf('function openCoinShop'));
+  const playModal = supportModal();
   assert.doesNotMatch(playModal, /rootweave-coins-80|rootweave-coins-200|Buy \$1\.99|Buy \$4\.99/);
-  assert.doesNotMatch(playModal, /gumroad\.com/);
-  assert.match(playModal, /does not sell coin packs/);
+  assert.doesNotMatch(playModal, /<h2>💛 Coin shop<\/h2>/);
+  assert.match(playModal, /does not add coins/);
   assert.match(playModal, /40 coins/);
 });
 
-check('web coin shop still lists Gumroad packs', () => {
-  assert.match(html, /https:\/\/ralstonia5\.gumroad\.com\/l\/rootweave-coins-80/);
-  assert.match(html, /https:\/\/ralstonia5\.gumroad\.com\/l\/rootweave-coins-200/);
-  assert.match(html, /<h2>💛 Coin shop<\/h2>/);
+check('no paid pack checkout UI on web or Play', () => {
+  assert.doesNotMatch(html, /<h2>💛 Coin shop<\/h2>/);
+  assert.doesNotMatch(html, /Buy \$\{p\.price\}|Buy \$1\.99|Buy \$4\.99/);
+  assert.doesNotMatch(html, /class="shopbuy"[^>]*rootweave-coins/);
 });
 
-check('About credits hide coinshop act on Play only', () => {
-  assert.match(html, /isPlayStoreClient\(\)\s*\n?\s*\?\s*'Optional support lives on the website/);
-  assert.match(html, /data-act="coinshop"/);
+check('About keeps a quiet optional-support link, not a coin shop', () => {
+  assert.match(html, /id="aboutSupportLink"/);
+  assert.match(html, /Optional support is a tip only/);
+  assert.doesNotMatch(html, /Optional packs live in the/);
+  const about = html.slice(html.indexOf('function openAboutCredits'), html.indexOf('function hasAnyCampaignProgress'));
+  assert.doesNotMatch(about, /data-act="coinshop"/);
+  assert.match(about, /supportFarmHref\(\)/);
+  assert.match(html, /ralstonia5\.gumroad\.com\/l\/oehmly/);
 });
 
 // --- first session still free ---
@@ -121,7 +132,8 @@ check('Home Patch still starts at 40 coins', () => {
   assert.match(html, /id:'home', name:'Home Patch'[\s\S]*?coins:40/);
 });
 
-check('Support stays gated by existing tutorial CSS (tut-open)', () => {
+check('HUD Support is hidden (About/Support only)', () => {
+  assert.match(html, /#btnSupport\{display:none !important/);
   assert.match(html, /body\.tut-open #btnSupport/);
 });
 
@@ -129,10 +141,16 @@ check('no purchase gate on splash go', () => {
   assert.match(html, /act==='splashgo'[\s\S]{0,80}enterLevel\(0, true\)/);
 });
 
+check('land-deed copy does not push a coin shop', () => {
+  assert.doesNotMatch(html, /optional coin shop/);
+  assert.doesNotMatch(html, /surplus from play or the coin shop/);
+  assert.match(html, /surplus from the stand and harvests/);
+});
+
 // --- ship versions + TWA identity ---
 check('SHIP_BUILD and CACHE bump together', () => {
-  assert.match(html, /const SHIP_BUILD = '2026-09-07\.closed3'/);
-  assert.match(sw, /const CACHE = 'rootweave-2026-09-07\.closed3'/);
+  assert.match(html, /const SHIP_BUILD = '2026-09-08\.freeplay'/);
+  assert.match(sw, /const CACHE = 'rootweave-2026-09-08\.freeplay'/);
 });
 
 check('TWA version is 1.0.3 / 4', () => {
@@ -154,9 +172,21 @@ check('TWA package is Cortex Developments, not MSP', () => {
   assert.match(links[0].target.sha256_cert_fingerprints[0], /^00:00:/);
 });
 
-// --- grantCoinPack runtime on Play vs web ---
-check('grantCoinPack runtime: Play never credits; web still can', () => {
-  const camp = { pendingShopCoins: 0, grantedPacks: {} };
+check('legal copy: packs not sold; PWYW does not grant coins', () => {
+  assert.match(terms, /Paid coin packs are not sold/);
+  assert.match(terms, /does <strong>not<\/strong> grant coins/);
+  assert.match(privacy, /does <strong>not<\/strong> grant coins/);
+  assert.doesNotMatch(terms, /Seed pouch, Crate/);
+  assert.doesNotMatch(privacy, /pack coins are granted locally/);
+});
+
+check('no ads / no Play Billing', () => {
+  assert.doesNotMatch(html, /BillingClient|com\.android\.vending\.BILLING|play-billing/);
+  assert.doesNotMatch(gradle, /com\.android\.vending\.BILLING|billingclient/);
+});
+
+// --- grantCoinPack runtime: never credits ---
+check('grantCoinPack runtime: web and Play never credit', () => {
   const pack = { id: 'coins80', coins: 80 };
   const harness = `
     ${extractBlock(html, '/* PLAY_STORE_SIGNAL_BEGIN */', '/* PLAY_STORE_SIGNAL_END */')}
@@ -176,10 +206,10 @@ check('grantCoinPack runtime: Play never credits; web still can', () => {
 
   const webLoc = { location: { search: '' }, sessionStorage: { getItem: () => null, setItem() {} }, URLSearchParams, console };
   webLoc.globalThis = webLoc;
-  webLoc.__camp = camp;
+  webLoc.__camp = { pendingShopCoins: 0, grantedPacks: {} };
   vm.runInNewContext(harness, webLoc, { filename: 'grant-web.js' });
-  assert.equal(webLoc.grantCoinPack(pack), true);
-  assert.equal(camp.pendingShopCoins, 80);
+  assert.equal(webLoc.grantCoinPack(pack), false);
+  assert.equal(webLoc.__camp.pendingShopCoins, 0);
 });
 
 if (failures.length) {
@@ -187,4 +217,4 @@ if (failures.length) {
   for (const f of failures) console.error(' -', f);
   process.exit(1);
 }
-console.log('ok  play-store-signal: web shop stays; store=play hides shop; no Gumroad coin grant; Home Patch 40 coins');
+console.log('ok  play-store-signal: packs hidden on web+Play; no grant; Home Patch 40 coins');

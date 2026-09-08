@@ -1,6 +1,6 @@
 /**
  * Closed-test playfeel: tile states, one-day Play, journey unlock copy.
- * First session stays free. store=play still hides the coin shop.
+ * First session stays free. Paid coin packs stay hidden on web and Play.
  *
  * Run: node tests/closed-test-playfeel.test.mjs
  */
@@ -126,18 +126,19 @@ check('Journey locked copy uses real unlock hint, not only mist', () => {
   assert.match(html, /vlab-hint/);
 });
 
-check('first session stays free; Play hides shop', () => {
+check('first session stays free; packs hidden', () => {
   assert.match(html, /id:'home', name:'Home Patch'[\s\S]*?coins:40/);
-  assert.match(html, /playStoreHidesCoinShop/);
+  assert.match(html, /playStoreHidesCoinShop\(\)\{ return true; \}/);
   assert.doesNotMatch(html, /BillingClient|com\.android\.vending\.BILLING|play-billing/);
   assert.match(gradle, /applicationId "com\.cortexdevelopments\.rootweave"/);
 });
 
 check('ship stamps move together', () => {
-  assert.match(html, /const SHIP_BUILD = '2026-09-07\.closed3'/);
-  assert.match(sw, /const CACHE = 'rootweave-2026-09-07\.closed3'/);
+  assert.match(html, /const SHIP_BUILD = '2026-09-08\.freeplay'/);
+  assert.match(sw, /const CACHE = 'rootweave-2026-09-08\.freeplay'/);
   assert.match(html, /What's new \(\$\{ver\}\)/);
   assert.match(html, /Play is one morning/);
+  assert.match(html, /Coin packs are gone/);
 });
 
 if (failures.length) {
