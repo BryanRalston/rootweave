@@ -153,12 +153,12 @@ check('SHIP_BUILD and CACHE bump together', () => {
   assert.match(sw, /const CACHE = 'rootweave-2026-09-08\.freeplay'/);
 });
 
-check('TWA version is 1.0.3 / 4', () => {
-  assert.match(gradle, /versionCode 4/);
-  assert.match(gradle, /versionName "1\.0\.3"/);
+check('TWA version is 1.0.4 / 5', () => {
+  assert.match(gradle, /versionCode 5/);
+  assert.match(gradle, /versionName "1\.0\.4"/);
   const twa = fs.readFileSync(path.join(root, 'android/twa-manifest.json'), 'utf8');
-  assert.match(twa, /"appVersionName": "1\.0\.3"/);
-  assert.match(twa, /"appVersionCode": 4/);
+  assert.match(twa, /"appVersionName": "1\.0\.4"/);
+  assert.match(twa, /"appVersionCode": 5/);
 });
 
 check('TWA package is Cortex Developments, not MSP', () => {

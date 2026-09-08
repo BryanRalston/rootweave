@@ -16,8 +16,8 @@ android {
         applicationId "com.cortexdevelopments.rootweave"
         minSdk 21
         targetSdk 36
-        versionCode 4
-        versionName "1.0.3"
+        versionCode 5
+        versionName "1.0.4"
         resValue "string", "appName", "Rootweave"
     }
 
@@ -51,6 +51,6 @@ dependencies {
     implementation('com.google.androidbrowserhelper:androidbrowserhelper:2.6.1') {
         exclude group: 'androidx.browser', module: 'browser'
     }
-    implementation 'androidx.browser:browser:1.8.0'
+    implementation 'androidx.browser:browser:1.9.0'
     implementation 'androidx.appcompat:appcompat:1.7.0'
 }
