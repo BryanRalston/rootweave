@@ -149,8 +149,8 @@ check('land-deed copy does not push a coin shop', () => {
 
 // --- ship versions + TWA identity ---
 check('SHIP_BUILD and CACHE bump together', () => {
-  assert.match(html, /const SHIP_BUILD = '2026-09-08\.freeplay'/);
-  assert.match(sw, /const CACHE = 'rootweave-2026-09-08\.freeplay'/);
+  assert.match(html, /const SHIP_BUILD = '2026-09-16\.featuremap'/);
+  assert.match(sw, /const CACHE = 'rootweave-2026-09-16\.featuremap'/);
 });
 
 check('TWA version is 1.0.4 / 5 and browser 1.9.0', () => {

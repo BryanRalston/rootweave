@@ -134,11 +134,39 @@ check('first session stays free; packs hidden', () => {
 });
 
 check('ship stamps move together', () => {
-  assert.match(html, /const SHIP_BUILD = '2026-09-08\.freeplay'/);
-  assert.match(sw, /const CACHE = 'rootweave-2026-09-08\.freeplay'/);
+  assert.match(html, /const SHIP_BUILD = '2026-09-16\.featuremap'/);
+  assert.match(sw, /const CACHE = 'rootweave-2026-09-16\.featuremap'/);
   assert.match(html, /What's new \(\$\{ver\}\)/);
-  assert.match(html, /Play is one morning/);
-  assert.match(html, /Coin packs are gone/);
+  assert.match(html, /Feature Map in About/);
+  assert.match(html, /Play is free/);
+});
+
+check('About Feature Map lists live systems only', () => {
+  const about = html.slice(html.indexOf('function featureMapHtml'), html.indexOf('function openAboutCredits'));
+  assert.match(about, /id="featureMap"/);
+  assert.match(about, /Feature Map/);
+  assert.match(about, /Home Patch/);
+  assert.match(about, /Pioneers or Three Sisters/);
+  assert.match(about, /Inspect a bed for soil health/);
+  assert.match(about, /one labeled morning/);
+  assert.match(about, /dead, sleeping, awake, or pond/);
+  assert.match(about, /house corner, laneway, river/);
+  assert.match(about, /real unlock line/);
+  assert.match(about, /Back Paddock/);
+  assert.match(about, /leftover paddocks, creek\/wash, orchard/);
+  assert.match(about, /Cattle and chickens/);
+  assert.match(about, /stock water/);
+  assert.match(about, /neighbor stand/);
+  assert.match(about, /Valley Shop/);
+  assert.match(about, /No ads/);
+  assert.match(about, /does not add coins/);
+  assert.match(about, /Export \/ Import JSON/);
+  assert.match(about, /valley freeplay/);
+  assert.match(about, /\?store=play/);
+  assert.doesNotMatch(about, /coming soon/i);
+  assert.doesNotMatch(about, /Play Billing|Buy \$1\.99|coin pack checkout/i);
+  const aboutOpen = html.slice(html.indexOf('function openAboutCredits'), html.indexOf('function hasAnyCampaignProgress'));
+  assert.match(aboutOpen, /featureMapHtml\(\)/);
 });
 
 if (failures.length) {

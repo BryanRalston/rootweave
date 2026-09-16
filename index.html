@@ -471,6 +471,12 @@ body.home-plot #questPanel{
   font-size:13px; font-style:italic; color:var(--green2); font-weight:600;
 }
 .lesson a{color:var(--wood2); font-style:normal; font-weight:800; text-decoration:underline}
+.fmap{text-align:left;margin:8px 0 4px}
+.fmap h3{margin:0 0 2px;font-size:15.5px;color:var(--wood2);font-weight:800}
+.fmap-lead{margin:0 0 6px;font-size:12.5px;font-weight:600;color:var(--soft)}
+.fmap-item{background:#eef5e4;border:1.5px solid #a8c890;border-radius:10px;padding:7px 10px;margin:5px 0;font-size:12.5px;line-height:1.4;font-weight:600;color:var(--green2);font-style:normal}
+.fmap-item b{color:var(--wood2)}
+.fmap-item code{font-size:11.5px;font-weight:800}
 .legal-row{text-align:center;margin-top:10px;font-size:13px;font-weight:700}
 .legal-row a{color:var(--wood2);text-decoration:underline;pointer-events:auto}
 .legal-row a:hover{color:var(--green2)}
@@ -19994,7 +20000,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-09-08.freeplay';
+const SHIP_BUILD = '2026-09-16.featuremap';
 /* PLAY_STORE_SIGNAL_BEGIN */
 /** Explicit Play/TWA signal only (?store=play). Never Android UA. Paid coin packs are hidden on web and Play. */
 const PLAY_STORE_CHANNEL = 'play';
@@ -20149,6 +20155,23 @@ function maybeGrantCoinPack(){
   }
   try{ stripPlayQueryParam('pack'); }catch(e){}
 }
+/** Scanable live-systems list for About. Current capabilities only — not a roadmap. */
+function featureMapHtml(){
+  return `
+    <div class="fmap" id="featureMap">
+      <h3>🗺️ Feature Map</h3>
+      <p class="fmap-lead">What you can do today. Live systems only — not a roadmap, not a pledge.</p>
+      <div class="fmap-item">🏡 <b>Home Patch.</b> Compost gray tiles, wait for wake, then plant Pioneers or Three Sisters. Inspect a bed for soil health.</div>
+      <div class="fmap-item">▶️ <b>Play.</b> One click is one labeled morning. Dawn flashes when beds wake. Tiles read dead, sleeping, awake, or pond.</div>
+      <div class="fmap-item">🗺️ <b>Journey.</b> One valley: house corner, laneway, river. Tap an unlocked fold to walk that land. Locked neighbors show the real unlock line.</div>
+      <div class="fmap-item">🌿 <b>Neighbor folds.</b> After Home Patch: Back Paddock, leftover paddocks, creek/wash, orchard, and other atlas folds as they unlock.</div>
+      <div class="fmap-item">🐄 <b>Animals &amp; water.</b> Cattle and chickens on later plots. Pond and stock water where the fold needs a drink.</div>
+      <div class="fmap-item">🪙 <b>Coins.</b> Earned from harvest and the neighbor stand. Valley Shop spends those coins.</div>
+      <div class="fmap-item">🆓 <b>Free to play.</b> No ads. No paid coin packs. Optional Support under About is a tip and does not add coins.</div>
+      <div class="fmap-item">💾 <b>Saves.</b> Export / Import JSON. New Game wipes the valley. Homestead after Home Patch; valley freeplay when the campaign plots are cleared.</div>
+      <div class="fmap-item">🤖 <b>Android.</b> Play closed-test TWA (<code>?store=play</code>) is the same free path.</div>
+    </div>`;
+}
 function openAboutCredits(){
   const ver = SHIP_BUILD;
   // AG — once-per-save "what's new" so returning players see ship notes
@@ -20158,17 +20181,14 @@ function openAboutCredits(){
   const whatsNew = showNew
     ? `<div class="lesson" style="text-align:left;margin-top:6px;border-color:rgba(234,181,67,.45)">
         <b>What's new (${ver}):</b><br>
-        🟫 <b>Tiles read clearly.</b> Dead, sleeping, awake, and pond beds no longer look the same. Sleeping ground shows <b>ready in X days</b> (from the real wake bar). Wrong-tool taps speak: compost on a pond is pond water, not soil; planting on sleeping ground says wait — or compost first.<br>
-        ▶️ <b>Play is one morning.</b> Each Play click advances exactly one labeled day. The date pill flashes dawn when beds wake. Compost → wait → plant stays the same loop — time is just readable.<br>
-        🗺️ <b>Journey is one valley.</b> House corner, laneway, and river stay on the map. Locked neighbors show the real unlock line (clear Home Patch, clear a neighbor, or a land deed) — not “still in mist.” Tap an unlocked fold and you walk that land.<br>
-        🪙 <b>Play is free.</b> Coin packs are gone. Coins come from harvest and the stand. Optional support, if you want it, lives under About and does not add coins.
+        🗺️ <b>Feature Map in About.</b> A scan of what is live today — Home Patch loop, one-day Play, Journey folds, coins, and saves. Not a roadmap.
       </div>`
     : '';
   // CD — first About open literacy (in-modal; no toast spam)
   const firstAbout = !camp.tipsShown.about_first_open;
   if(firstAbout) camp.tipsShown.about_first_open = true;
   const aboutLit = firstAbout
-    ? `<div class="lesson" style="text-align:left">ℹ️ Thesis, keys, and <b>Export / Import save</b> live here — download a JSON backup anytime.</div>`
+    ? `<div class="lesson" style="text-align:left">ℹ️ <b>Feature Map</b>, keys, and <b>Export / Import save</b> live here — download a JSON backup anytime.</div>`
     : '';
   showModal(`
     <h2>🌱 About Rootweave</h2>
@@ -20177,6 +20197,7 @@ function openAboutCredits(){
       <b>Rootweave</b> is a regenerative farm simulator. Biodiversity, thoughtful animal integration, and time heal the land — success is soil and wildness, not just profit.
     </div>
     ${aboutLit}
+    ${featureMapHtml()}
     ${whatsNew}
     <div class="lesson" style="text-align:left">
       <b>How to heal:</b> feed dead ground → plant many kinds → move animals (cattle then chickens) → buffer water → rest and wait.<br><br>
