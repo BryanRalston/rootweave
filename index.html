@@ -471,12 +471,49 @@ body.home-plot #questPanel{
   font-size:13px; font-style:italic; color:var(--green2); font-weight:600;
 }
 .lesson a{color:var(--wood2); font-style:normal; font-weight:800; text-decoration:underline}
-.fmap{text-align:left;margin:8px 0 4px}
-.fmap h3{margin:0 0 2px;font-size:15.5px;color:var(--wood2);font-weight:800}
-.fmap-lead{margin:0 0 6px;font-size:12.5px;font-weight:600;color:var(--soft)}
-.fmap-item{background:#eef5e4;border:1.5px solid #a8c890;border-radius:10px;padding:7px 10px;margin:5px 0;font-size:12.5px;line-height:1.4;font-weight:600;color:var(--green2);font-style:normal}
-.fmap-item b{color:var(--wood2)}
-.fmap-item code{font-size:11.5px;font-weight:800}
+/* Feature map — full-page view (Meet Ready pattern), not an About dump */
+#featuresMap{
+  position:fixed; inset:0; z-index:95; display:none;
+  overflow-y:auto; -webkit-overflow-scrolling:touch;
+  background:#fffdf6; color:var(--ink);
+}
+#featuresMap.show{display:block}
+.fmap-page{max-width:560px; margin:0 auto; padding:18px 16px calc(28px + env(safe-area-inset-bottom,0px))}
+.fmap-back{
+  display:inline-flex; align-items:center; min-height:44px; margin:0 0 10px -6px; padding:8px 10px;
+  border:0; background:transparent; font:800 12px inherit; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--soft); cursor:pointer; font-family:inherit;
+}
+.fmap-kicker{font-size:11px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:var(--soft); margin:0 0 6px}
+#featuresMap h1{margin:0; font-size:28px; font-weight:800; color:var(--wood2); letter-spacing:-.02em; line-height:1.1}
+.fmap-lede{margin:12px 0 0; font-size:15px; font-weight:600; color:var(--soft)}
+.fmap-group{margin:26px 0 0}
+.fmap-cards{display:flex; flex-direction:column; gap:8px; margin-top:10px}
+.fmap-card{
+  background:var(--card); border:1.5px solid var(--line); border-radius:14px;
+  padding:12px 14px; box-shadow:inset 0 1px 0 rgba(255,250,230,.7);
+}
+.fmap-card h2{margin:0; font-size:16.5px; font-weight:800; color:var(--wood2)}
+.fmap-card p{margin:6px 0 0; font-size:13.5px; font-weight:600; color:var(--soft); line-height:1.45}
+.fmap-limits{border-color:#c4a06a}
+.fmap-foot{margin:26px 0 0; font-size:13px; font-weight:700; color:var(--soft); font-style:italic}
+.fmap-entry{
+  display:block; width:100%; text-align:left; cursor:pointer; font-family:inherit;
+  background:linear-gradient(180deg,#fff8d8,#f3e0b0); border:2px solid var(--line);
+  border-radius:14px; padding:12px 14px; color:var(--ink);
+  box-shadow:0 3px 10px rgba(20,14,4,.18), inset 0 1px 0 rgba(255,250,230,.75);
+}
+.fmap-entry:active{transform:translateY(1px)}
+.fmap-entry .fmap-kicker{margin-bottom:2px}
+.fmap-entry strong{display:block; font-size:16px; font-weight:800; color:var(--wood2)}
+.fmap-entry .fmap-sub{display:block; font-size:12.5px; font-weight:600; color:var(--soft); margin-top:2px}
+.fmap-entry.quiet{
+  background:rgba(249,237,208,.1); border:1.5px solid rgba(245,230,190,.28);
+  box-shadow:none; margin:12px 0 0;
+}
+.fmap-entry.quiet .fmap-kicker{color:rgba(232,217,174,.75)}
+.fmap-entry.quiet strong{color:#ffeece}
+.fmap-entry.quiet .fmap-sub{color:#e8d9ae}
 .legal-row{text-align:center;margin-top:10px;font-size:13px;font-weight:700}
 .legal-row a{color:var(--wood2);text-decoration:underline;pointer-events:auto}
 .legal-row a:hover{color:var(--green2)}
@@ -927,6 +964,9 @@ body.reduce-motion #badgeBanner{ transition:none; }
     <div class="jsub">Your farm — house by the garden, river through the valley</div>
     <div id="jpath"></div>
   </div>
+</div>
+<div id="featuresMap" role="dialog" aria-modal="true" aria-labelledby="fmapTitle">
+  <div class="fmap-page" id="fmapPage"></div>
 </div>
 
 <!-- Farmhouse multi-room interior -->
@@ -20155,22 +20195,118 @@ function maybeGrantCoinPack(){
   }
   try{ stripPlayQueryParam('pack'); }catch(e){}
 }
-/** Scanable live-systems list for About. Current capabilities only — not a roadmap. */
-function featureMapHtml(){
+/* FEATURE_MAP_BEGIN */
+/** Current live systems only. Bryan 2026-09-14. Not a roadmap. */
+const FEATURE_MAP = {
+  label: 'Feature map',
+  title: "What's in Rootweave",
+  lede: 'Current capabilities. Not a roadmap.',
+  foot: 'This is the farm that exists. Not the farm we wish we had.',
+  groups: [
+    {kicker:'Home Patch', items:[
+      {title:'Compost → wait → plant', body:'🪣 Compost wakes dead ground. Wait for the bed. Plant 🌿 Pioneers or 🌽 Three Sisters.'},
+      {title:'Inspect + soil health', body:'👆 Inspect a tile for the soil story. Home Patch has the soil-health overlay.'},
+      {title:'Readable tiles', body:'Dead, sleeping, awake, and pond beds read differently. Sleeping ground shows ready in X days.'},
+      {title:'One Play click', body:'▶️ Play advances exactly one labeled day. Not an idle loop.'}
+    ]},
+    {kicker:'Journey', items:[
+      {title:'Valley map', body:'One drawing of the valley — house, laneway, and river stay on the map.'},
+      {title:'Tap a fold', body:'Tap an unlocked fold and you walk that land. Locked neighbors show the real unlock line.'},
+      {title:'Neighbors after Home', body:'After Home Patch, leftover and neighbor folds open as you heal the next fields.'}
+    ]},
+    {kicker:'Animals & water', items:[
+      {title:'Cattle & chickens', body:'Back Paddock brings cattle, then chickens. Move the herd so the pad can rest.'},
+      {title:'Ponds & streams', body:'Later plots have pond and stream tiles. Creek Bend teaches buffers on the banks.'}
+    ]},
+    {kicker:'Coins', items:[
+      {title:'Earned, not bought', body:'Coins come from harvest and the neighbor stand (after Home). Paid coin packs are not sold.'},
+      {title:'Valley Shop', body:'River Reach opens the Valley Shop. It spends earned coins on land tools — not a pay-to-win checkout.'}
+    ]},
+    {kicker:'Free & saves', items:[
+      {title:'Play is free', body:'No ads. No paid coin packs. Play Billing is not in this build. Web and Play closed-test TWA (?store=play) share this path.'},
+      {title:'Optional support', body:'A tip link lives under About. It does not grant coins or unlocks.'},
+      {title:'Export / Import / New Game', body:'Download a JSON backup from About. Import it later. New Game wipes the valley.'},
+      {title:'Homestead & freeplay', body:'Homestead unlocks after Home Patch. Valley freeplay opens when the campaign is cleared.'}
+    ]}
+  ],
+  limits:{
+    kicker:'Named limits',
+    title:'What this is not',
+    body:'Not a pay-to-win shop. No ads. No Play Billing. Home Patch is the start — some folds stay locked until you heal neighbors. Optional support is a tip only; it does not add coins.'
+  }
+};
+/* FEATURE_MAP_END */
+function featureMapEntryHtml(quiet){
+  const M = FEATURE_MAP;
+  return `<button type="button" class="fmap-entry${quiet?' quiet':''}" data-act="features" id="${quiet?'jFeatures':'aboutFeatureMap'}">
+    <span class="fmap-kicker">${M.label}</span>
+    <strong>${M.title}</strong>
+    <span class="fmap-sub">${M.lede}</span>
+  </button>`;
+}
+function featureMapPageHtml(){
+  const M = FEATURE_MAP;
+  const groups = M.groups.map(g=>`
+    <section class="fmap-group">
+      <div class="fmap-kicker">${g.kicker}</div>
+      <div class="fmap-cards">${g.items.map(it=>`
+        <article class="fmap-card"><h2>${it.title}</h2><p>${it.body}</p></article>`).join('')}
+      </div>
+    </section>`).join('');
   return `
-    <div class="fmap" id="featureMap">
-      <h3>🗺️ Feature Map</h3>
-      <p class="fmap-lead">What you can do today. Live systems only — not a roadmap, not a pledge.</p>
-      <div class="fmap-item">🏡 <b>Home Patch.</b> Compost gray tiles, wait for wake, then plant Pioneers or Three Sisters. Inspect a bed for soil health.</div>
-      <div class="fmap-item">▶️ <b>Play.</b> One click is one labeled morning. Dawn flashes when beds wake. Tiles read dead, sleeping, awake, or pond.</div>
-      <div class="fmap-item">🗺️ <b>Journey.</b> One valley: house corner, laneway, river. Tap an unlocked fold to walk that land. Locked neighbors show the real unlock line.</div>
-      <div class="fmap-item">🌿 <b>Neighbor folds.</b> After Home Patch: Back Paddock, leftover paddocks, creek/wash, orchard, and other atlas folds as they unlock.</div>
-      <div class="fmap-item">🐄 <b>Animals &amp; water.</b> Cattle and chickens on later plots. Pond and stock water where the fold needs a drink.</div>
-      <div class="fmap-item">🪙 <b>Coins.</b> Earned from harvest and the neighbor stand. Valley Shop spends those coins.</div>
-      <div class="fmap-item">🆓 <b>Free to play.</b> No ads. No paid coin packs. Optional Support under About is a tip and does not add coins.</div>
-      <div class="fmap-item">💾 <b>Saves.</b> Export / Import JSON. New Game wipes the valley. Homestead after Home Patch; valley freeplay when the campaign plots are cleared.</div>
-      <div class="fmap-item">🤖 <b>Android.</b> Play closed-test TWA (<code>?store=play</code>) is the same free path.</div>
-    </div>`;
+    <button type="button" class="fmap-back" id="fmapBack">← Back</button>
+    <div class="fmap-kicker">${M.label}</div>
+    <h1 id="fmapTitle">${M.title}</h1>
+    <p class="fmap-lede">${M.lede}</p>
+    ${groups}
+    <section class="fmap-group">
+      <div class="fmap-kicker">${M.limits.kicker}</div>
+      <article class="fmap-card fmap-limits"><h2>${M.limits.title}</h2><p>${M.limits.body}</p></article>
+    </section>
+    <p class="fmap-foot">${M.foot}</p>`;
+}
+let featureMapVisible = false;
+function featureMapIsOpen(){
+  const el = document.getElementById('featuresMap');
+  return !!(featureMapVisible && el && el.classList.contains('show'));
+}
+function setFeatureMapHash(on){
+  try{
+    const path = (location.pathname || '/') + (location.search || '');
+    if(on){
+      if(location.hash !== '#features') history.pushState({fmap:1}, '', path + '#features');
+    }else if(location.hash === '#features'){
+      history.replaceState({}, '', path);
+    }
+  }catch(e){}
+}
+function renderFeatureMap(){
+  const page = document.getElementById('fmapPage');
+  if(!page) return;
+  page.innerHTML = featureMapPageHtml();
+  const back = document.getElementById('fmapBack');
+  if(back) back.addEventListener('click', ()=>{ if(typeof SND==='object' && SND.pop) SND.pop(); closeFeatureMap(); });
+}
+function openFeatureMap(){
+  const el = document.getElementById('featuresMap');
+  if(!el) return;
+  if(!el.dataset.ready){ renderFeatureMap(); el.dataset.ready = '1'; }
+  el.classList.add('show');
+  featureMapVisible = true;
+  document.body.classList.add('fmap-open');
+  el.scrollTop = 0;
+  setFeatureMapHash(true);
+}
+function closeFeatureMap(){
+  const el = document.getElementById('featuresMap');
+  if(el) el.classList.remove('show');
+  featureMapVisible = false;
+  document.body.classList.remove('fmap-open');
+  setFeatureMapHash(false);
+}
+function syncFeatureMapFromHash(){
+  if(location.hash === '#features') openFeatureMap();
+  else if(featureMapVisible) closeFeatureMap();
 }
 function openAboutCredits(){
   const ver = SHIP_BUILD;
@@ -20181,23 +20317,23 @@ function openAboutCredits(){
   const whatsNew = showNew
     ? `<div class="lesson" style="text-align:left;margin-top:6px;border-color:rgba(234,181,67,.45)">
         <b>What's new (${ver}):</b><br>
-        🗺️ <b>Feature Map in About.</b> A scan of what is live today — Home Patch loop, one-day Play, Journey folds, coins, and saves. Not a roadmap.
+        🗺️ <b>Feature map.</b> What's in Rootweave — current capabilities, not a roadmap. Open it from About or the Journey footer.
       </div>`
     : '';
   // CD — first About open literacy (in-modal; no toast spam)
   const firstAbout = !camp.tipsShown.about_first_open;
   if(firstAbout) camp.tipsShown.about_first_open = true;
   const aboutLit = firstAbout
-    ? `<div class="lesson" style="text-align:left">ℹ️ <b>Feature Map</b>, keys, and <b>Export / Import save</b> live here — download a JSON backup anytime.</div>`
+    ? `<div class="lesson" style="text-align:left">ℹ️ Thesis, keys, and <b>Export / Import save</b> live here. <b>What's in Rootweave</b> opens the Feature map.</div>`
     : '';
   showModal(`
     <h2>🌱 About Rootweave</h2>
     <div class="sub" style="text-align:center">Ship build <b>${ver}</b></div>
-    <div class="eventkid" style="text-align:left;font-size:14.5px;line-height:1.45">
+    ${featureMapEntryHtml(false)}
+    <div class="eventkid" style="text-align:left;font-size:14.5px;line-height:1.45;margin-top:10px">
       <b>Rootweave</b> is a regenerative farm simulator. Biodiversity, thoughtful animal integration, and time heal the land — success is soil and wildness, not just profit.
     </div>
     ${aboutLit}
-    ${featureMapHtml()}
     ${whatsNew}
     <div class="lesson" style="text-align:left">
       <b>How to heal:</b> feed dead ground → plant many kinds → move animals (cattle then chickens) → buffer water → rest and wait.<br><br>
@@ -27750,6 +27886,13 @@ function buildJourney(){
   path.appendChild(mapEl);
 
   path.appendChild(renderDesignGoalsEl());
+  const fmapKick = document.createElement('button');
+  fmapKick.type = 'button';
+  fmapKick.className = 'fmap-entry quiet';
+  fmapKick.id = 'jFeatures';
+  fmapKick.innerHTML = `<span class="fmap-kicker">${FEATURE_MAP.label}</span><strong>${FEATURE_MAP.title}</strong><span class="fmap-sub">${FEATURE_MAP.lede}</span>`;
+  fmapKick.addEventListener('click', ()=>{ if(typeof SND==='object' && SND.pop) SND.pop(); openFeatureMap(); });
+  path.appendChild(fmapKick);
 }
 /** Light design goals — bank rewards for room/yard progress */
 function ensureDesignGoals(){
@@ -28255,6 +28398,7 @@ function init(){
     else if(act==='newgame'){ confirmNewGame(); }
     else if(act==='newgamewipe'){ closeModal(); wipeAllProgress(); toast('🆕 New game — the valley waits. Export saves anytime from About.'); }
     else if(act==='about'){ openAboutCredits(); }
+    else if(act==='features'){ openFeatureMap(); if(typeof SND==='object' && SND.pop) SND.pop(); }
     else if(act==='coinshop'){ e.preventDefault(); openCoinShop(); SND.pop(); }
     else if(act==='lvgo'){
       if(state){ state.introSeen = true; state._introDismissed = true; state._introModalShown = true; }
@@ -28319,14 +28463,15 @@ function init(){
     if(e.target.tagName==='INPUT' || e.target.tagName==='TEXTAREA' || e.target.isContentEditable) return;
     // Space = pause/play (not while journey/modal/cottage)
     if(e.key===' ' || e.code==='Space'){
-      if(cottageOpen || modalOpen || journeyOpen) return;
+      if(cottageOpen || modalOpen || journeyOpen || featureMapIsOpen()) return;
       e.preventDefault();
       document.getElementById('btnPause').click();
       return;
     }
     if(e.key==='Escape'){
       e.preventDefault();
-      // AN — topmost UI stack first (cottage → modal → overlay menu → info → journey → tool → map)
+      // AN — topmost UI stack first (feature map → cottage → modal → overlay menu → info → journey → tool → map)
+      if(featureMapIsOpen()){ closeFeatureMap(); return; }
       if(cottageOpen){ exitCottage(); return; }
       if(modalOpen){ closeModal(); return; }
       const ovBar = document.getElementById('overlaybar');
@@ -28385,6 +28530,9 @@ function init(){
   if(!bundle) showSplash();     // brand new: title first, then the journey map
   else showJourney();           // returning: straight to the journey (▶ continue)
   if(location.hash==='#journey'){ try{ closeModal(); }catch(e){} showJourney(); }
+  if(location.hash==='#features'){ try{ openFeatureMap(); }catch(e){} }
+  window.addEventListener('hashchange', ()=>{ try{ syncFeatureMapFromHash(); }catch(e){} });
+  window.addEventListener('popstate', ()=>{ try{ syncFeatureMapFromHash(); }catch(e){} });
   if(bundle && resumed && state && !state.homesteadView && !state.levelDone){
     plotSessionReady = true;
   }

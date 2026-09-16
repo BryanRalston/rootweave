@@ -5,6 +5,7 @@ const CACHE = 'rootweave-2026-09-16.featuremap';
 const PRECACHE = [
   './',
   './index.html',
+  './features.html',
   './manifest.webmanifest',
   './sw.js',
   './icons/icon-192.png',
