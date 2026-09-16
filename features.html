@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#3a5a40">
+  <meta name="description" content="What's in Rootweave — current capabilities. Not a roadmap.">
+  <title>Feature map · What's in Rootweave</title>
+  <link rel="icon" href="icons/favicon-32.png">
+  <style>
+    :root{
+      --cream:#f6e7c6; --card:#f9edd0; --wood:#8a5a33; --wood2:#6b4423;
+      --green:#3a5a40; --ink:#3b2d1d; --soft:#8a7052; --line:#d4b88a; --muted:#6b5a42;
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0; padding:0}
+    body{
+      font-family:"Segoe UI Rounded","Segoe UI",system-ui,-apple-system,sans-serif;
+      background:#fffdf6; color:var(--ink); line-height:1.5;
+    }
+    .fmap-page{max-width:560px; margin:0 auto; padding:20px 18px 48px}
+    .fmap-back{
+      display:inline-block; margin:0 0 14px; min-height:44px; padding:8px 2px;
+      font:800 12px inherit; letter-spacing:.08em; text-transform:uppercase;
+      color:var(--soft); text-decoration:none;
+    }
+    .fmap-back:hover{color:var(--wood2)}
+    .fmap-kicker{
+      font-size:11px; font-weight:800; letter-spacing:.08em; text-transform:uppercase;
+      color:var(--soft); margin:0 0 6px;
+    }
+    h1{
+      margin:0; font-size:28px; font-weight:800; color:var(--wood2); letter-spacing:-.02em; line-height:1.1;
+    }
+    .fmap-lede{margin:12px 0 0; font-size:15px; font-weight:600; color:var(--muted)}
+    .fmap-group{margin:28px 0 0}
+    .fmap-cards{display:flex; flex-direction:column; gap:8px; margin-top:10px}
+    .fmap-card{
+      background:var(--card); border:1.5px solid var(--line); border-radius:14px;
+      padding:12px 14px; box-shadow:inset 0 1px 0 rgba(255,250,230,.7);
+    }
+    .fmap-card h2{margin:0; font-size:16.5px; font-weight:800; color:var(--wood2)}
+    .fmap-card p{margin:6px 0 0; font-size:13.5px; font-weight:600; color:var(--muted); line-height:1.45}
+    .fmap-limits{border-color:#c4a06a}
+    .fmap-foot{margin:28px 0 0; font-size:13px; font-weight:700; color:var(--soft); font-style:italic}
+    .fmap-play{
+      display:inline-block; margin-top:18px; padding:12px 16px; border-radius:13px;
+      background:var(--green); color:#fff; font:800 15px inherit; text-decoration:none;
+    }
+  </style>
+</head>
+<body>
+  <main class="fmap-page">
+    <a class="fmap-back" href="./">← Rootweave</a>
+    <div class="fmap-kicker">Feature map</div>
+    <h1>What's in Rootweave</h1>
+    <p class="fmap-lede">Current capabilities. Not a roadmap.</p>
+
+    <section class="fmap-group">
+      <div class="fmap-kicker">Home Patch</div>
+      <div class="fmap-cards">
+        <article class="fmap-card">
+          <h2>Compost → wait → plant</h2>
+          <p>🪣 Compost wakes dead ground. Wait for the bed. Plant 🌿 Pioneers or 🌽 Three Sisters.</p>
+        </article>
+        <article class="fmap-card">
+          <h2>Inspect + soil health</h2>
+          <p>👆 Inspect a tile for the soil story. Home Patch has the soil-health overlay.</p>
+        </article>
+        <article class="fmap-card">
+          <h2>Readable tiles</h2>
+          <p>Dead, sleeping, awake, and pond beds read differently. Sleeping ground shows ready in X days.</p>
+        </article>
+        <article class="fmap-card">
+          <h2>One Play click</h2>
+          <p>▶️ Play advances exactly one labeled day. Not an idle loop.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="fmap-group">
+      <div class="fmap-kicker">Journey</div>
+      <div class="fmap-cards">
+        <article class="fmap-card">
+          <h2>Valley map</h2>
+          <p>One drawing of the valley — house, laneway, and river stay on the map.</p>
+        </article>
+        <article class="fmap-card">
+          <h2>Tap a fold</h2>
+          <p>Tap an unlocked fold and you walk that land. Locked neighbors show the real unlock line.</p>
+        </article>
+        <article class="fmap-card">
+          <h2>Neighbors after Home</h2>
+          <p>After Home Patch, leftover and neighbor folds open as you heal the next fields.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="fmap-group">
+      <div class="fmap-kicker">Animals &amp; water</div>
+      <div class="fmap-cards">
+        <article class="fmap-card">
+          <h2>Cattle &amp; chickens</h2>
+          <p>Back Paddock brings cattle, then chickens. Move the herd so the pad can rest.</p>
+        </article>
+        <article class="fmap-card">
+          <h2>Ponds &amp; streams</h2>
+          <p>Later plots have pond and stream tiles. Creek Bend teaches buffers on the banks.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="fmap-group">
+      <div class="fmap-kicker">Coins</div>
+      <div class="fmap-cards">
+        <article class="fmap-card">
+          <h2>Earned, not bought</h2>
+          <p>Coins come from harvest and the neighbor stand (after Home). Paid coin packs are not sold.</p>
+        </article>
+        <article class="fmap-card">
+          <h2>Valley Shop</h2>
+          <p>River Reach opens the Valley Shop. It spends earned coins on land tools — not a pay-to-win checkout.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="fmap-group">
+      <div class="fmap-kicker">Free &amp; saves</div>
+      <div class="fmap-cards">
+        <article class="fmap-card">
+          <h2>Play is free</h2>
+          <p>No ads. No paid coin packs. Play Billing is not in this build. Web and Play closed-test TWA (?store=play) share this path.</p>
+        </article>
+        <article class="fmap-card">
+          <h2>Optional support</h2>
+          <p>A tip link lives under About. It does not grant coins or unlocks.</p>
+        </article>
+        <article class="fmap-card">
+          <h2>Export / Import / New Game</h2>
+          <p>Download a JSON backup from About. Import it later. New Game wipes the valley.</p>
+        </article>
+        <article class="fmap-card">
+          <h2>Homestead &amp; freeplay</h2>
+          <p>Homestead unlocks after Home Patch. Valley freeplay opens when the campaign is cleared.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="fmap-group">
+      <div class="fmap-kicker">Named limits</div>
+      <article class="fmap-card fmap-limits">
+        <h2>What this is not</h2>
+        <p>Not a pay-to-win shop. No ads. No Play Billing. Home Patch is the start — some folds stay locked until you heal neighbors. Optional support is a tip only; it does not add coins.</p>
+      </article>
+    </section>
+
+    <p class="fmap-foot">This is the farm that exists. Not the farm we wish we had.</p>
+    <a class="fmap-play" href="./#features">Open in the game</a>
+  </main>
+</body>
+</html>
