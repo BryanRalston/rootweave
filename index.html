@@ -140,6 +140,18 @@ body:has(#bootSplash:not(.hide)) #btnSupport{display:none !important}
   box-shadow:0 3px 8px rgba(20,14,4,.3), inset 0 1px 0 rgba(255,250,230,.8); display:flex; align-items:center; gap:5px; min-height:36px;
 }
 .ovbtn.on{background:linear-gradient(180deg,#e4f0cd,#cfe3ae); border-color:var(--green2)}
+.ovbtn.fmap-ov{background:linear-gradient(180deg,#fff0c4,#e8c86a); border-color:var(--gold2)}
+.fmap{display:flex; flex-direction:column; gap:8px; text-align:left; margin:4px 0 2px}
+.fmap-g{
+  background:linear-gradient(180deg,#fff8e6,#f3e2b8);
+  border:1.5px solid rgba(140,100,40,.28);
+  border-radius:12px;
+  padding:10px 12px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.55), 0 2px 6px rgba(40,20,0,.08);
+}
+.fmap-g h3{margin:0 0 6px; font-size:14.5px; color:var(--wood2); font-weight:800}
+.fmap-g ul{margin:0; padding-left:1.15em}
+.fmap-g li{font-size:13px; font-weight:600; line-height:1.4; margin:3px 0; color:var(--ink)}
 /* ---------- quest / region panel ---------- */
 #questPanel{
   position:absolute; left:10px; top:calc(58px + env(safe-area-inset-top, 0px)); z-index:19; width:236px; max-width:46vw;
@@ -883,7 +895,7 @@ body.reduce-motion #badgeBanner{ transition:none; }
     <button class="hudbtn" id="btnShop" title="Shop — unlock buildings, animals & upgrades" aria-label="Shop">🛒</button>
     <button class="hudbtn" id="btnNotes" title="Field notes you've earned" aria-label="Field notes">📓<span class="fn-dot" id="notesDot" hidden></span></button>
     <button class="hudbtn" id="btnGoals" title="Goals & badges" aria-label="Goals and badges">⭐</button>
-    <button class="hudbtn" id="btnMore" title="Map overlays & views" aria-label="Overlays menu">⋯</button>
+    <button class="hudbtn" id="btnMore" title="Map views &amp; What's in Rootweave" aria-label="Overlays and features menu">⋯</button>
     <button class="hudbtn" id="btnSound" title="Sound on/off" aria-label="Toggle sound">🔊</button>
     <button type="button" class="hudbtn" id="btnSupport" title="Optional support — play is free; does not add coins" aria-label="Optional support" hidden>💛 <span class="slbl">Support</span></button>
   </div>
@@ -895,6 +907,7 @@ body.reduce-motion #badgeBanner{ transition:none; }
 </div>
 
 <div id="overlaybar">
+  <button type="button" class="ovbtn fmap-ov" id="ovFeatures">🗺️ What's in Rootweave</button>
   <button class="ovbtn on" data-ov="none">🌈 Natural</button>
   <button class="ovbtn" data-ov="health">💚 Soil Health</button>
   <button class="ovbtn" data-ov="water">💧 Water</button>
@@ -18020,7 +18033,10 @@ function openFieldNotes(){
     <div class="sub">${n? n+' of '+total+' notes — a scrapbook of what your hands learned.':'Empty pages. Plant, graze, feed — the book fills as you do.'}</div>
     ${head}
     <div class="fn-book">${rows}</div>
-    <div class="modalbtns"><button class="mbtn" data-act="close">Close</button></div>
+    <div class="modalbtns">
+      <button class="mbtn wood" data-act="features" data-back="notes">What's in Rootweave</button>
+      <button class="mbtn" data-act="close">Close</button>
+    </div>
   `);
 }
 /** F6 / X4 / AJ / RG — inspect names the practice, then a health vibe. */
@@ -19994,7 +20010,7 @@ function campaignProgress(){
   return { cleared, total, pct };
 }
 /** H2 — About / credits: thesis + version, no dark patterns. */
-const SHIP_BUILD = '2026-09-08.freeplay';
+const SHIP_BUILD = '2026-09-16.features';
 /* PLAY_STORE_SIGNAL_BEGIN */
 /** Explicit Play/TWA signal only (?store=play). Never Android UA. Paid coin packs are hidden on web and Play. */
 const PLAY_STORE_CHANNEL = 'play';
@@ -20149,6 +20165,82 @@ function maybeGrantCoinPack(){
   }
   try{ stripPlayQueryParam('pack'); }catch(e){}
 }
+/* FEATURE_MAP_BEGIN */
+/** Current capabilities only. Not a roadmap. Verified against this build. */
+const FEATURE_MAP = [
+  {em:'🪙', title:'Play free', items:[
+    'No ads.',
+    'No real-money coin packs.',
+    'Coins are earned by farming — harvest and the neighbor stand.',
+    'Optional Support is a tip only. It does not add coins. On the web it opens an external page.'
+  ]},
+  {em:'🏡', title:'Your farm', items:[
+    'First session is Home Patch: compost → wait → plant.',
+    'Crops include Three Sisters (corn, beans, squash).',
+    'Soil health is visible on the land and in overlays.',
+    'Play advances one morning; waking beds show dawn.',
+    'Plot goals track what this land needs.'
+  ]},
+  {em:'🗺️', title:'The valley', items:[
+    'One continuous regenerative farm map.',
+    'Tap a patch on Journey to walk that land.',
+    'Leftover patches stay workable — tap them on Journey and keep farming.'
+  ]},
+  {em:'🟫', title:'Guidance', items:[
+    'Dead, sleeping, awake, and pond beds read differently.',
+    'Sleeping ground shows ready in X days.',
+    'Wrong-tool taps explain (pond water is not soil; planting on sleeping ground says wait).'
+  ]},
+  {em:'🧺', title:'Neighbors / market', items:[
+    'After Home Patch, the neighbor stand by the house buys surplus harvest.',
+    'Surplus meat sales shrink the herd (last of a kind stays).'
+  ]},
+  {em:'🌐', title:'Platforms', items:[
+    'Play in the browser.',
+    'Android closed-test wraps this same web app (Trusted Web Activity).'
+  ]}
+];
+let featureMapReturn = null;
+function featureMapGroupsHtml(){
+  return '<div class="fmap">'+FEATURE_MAP.map(g=>{
+    const items = (g.items||[]).map(i=>'<li>'+i+'</li>').join('');
+    return '<section class="fmap-g"><h3>'+g.em+' '+g.title+'</h3><ul>'+items+'</ul></section>';
+  }).join('')+'</div>';
+}
+function openFeatureMap(opts){
+  opts = opts || {};
+  featureMapReturn = opts.back || null;
+  showModal(`
+    <h2>🗺️ What's in Rootweave</h2>
+    <div class="sub">What you can do today. Not a roadmap.</div>
+    ${featureMapGroupsHtml()}
+    <div class="legal-row">
+      <a href="features.html">Open the same list on the site</a>
+    </div>
+    <div class="modalbtns">
+      <button class="mbtn wood" data-act="about">About</button>
+      <button class="mbtn" data-act="featuresback">Back</button>
+    </div>
+  `);
+  const back = document.querySelector('#modalBox [data-act="featuresback"]');
+  if(back && typeof back.focus==='function') back.focus();
+}
+function closeFeatureMap(){
+  const ret = featureMapReturn;
+  featureMapReturn = null;
+  if(ret==='splash'){ showSplash(); return; }
+  if(ret==='about'){ openAboutCredits(); return; }
+  if(ret==='notes'){ if(typeof openFieldNotes==='function') openFieldNotes(); return; }
+  closeModal();
+}
+function maybeOpenFeatureMapFromHash(opts){
+  try{
+    if(location.hash!=='#features') return false;
+    openFeatureMap(opts||{});
+    return true;
+  }catch(e){ return false; }
+}
+/* FEATURE_MAP_END */
 function openAboutCredits(){
   const ver = SHIP_BUILD;
   // AG — once-per-save "what's new" so returning players see ship notes
@@ -20158,10 +20250,7 @@ function openAboutCredits(){
   const whatsNew = showNew
     ? `<div class="lesson" style="text-align:left;margin-top:6px;border-color:rgba(234,181,67,.45)">
         <b>What's new (${ver}):</b><br>
-        🟫 <b>Tiles read clearly.</b> Dead, sleeping, awake, and pond beds no longer look the same. Sleeping ground shows <b>ready in X days</b> (from the real wake bar). Wrong-tool taps speak: compost on a pond is pond water, not soil; planting on sleeping ground says wait — or compost first.<br>
-        ▶️ <b>Play is one morning.</b> Each Play click advances exactly one labeled day. The date pill flashes dawn when beds wake. Compost → wait → plant stays the same loop — time is just readable.<br>
-        🗺️ <b>Journey is one valley.</b> House corner, laneway, and river stay on the map. Locked neighbors show the real unlock line (clear Home Patch, clear a neighbor, or a land deed) — not “still in mist.” Tap an unlocked fold and you walk that land.<br>
-        🪙 <b>Play is free.</b> Coin packs are gone. Coins come from harvest and the stand. Optional support, if you want it, lives under About and does not add coins.
+        🗺️ <b>Feature Map.</b> What's in Rootweave today — current capabilities only, not a roadmap. Open it from Journey (Features), About, Field Notes, the ⋯ menu, or <a href="features.html">features.html</a>.
       </div>`
     : '';
   // CD — first About open literacy (in-modal; no toast spam)
@@ -20190,6 +20279,8 @@ function openAboutCredits(){
       ${SUPPORT_FARM.email ? 'Questions: '+SUPPORT_FARM.email+'.' : ''}
     </div>
     <div class="legal-row">
+      <a href="#features" data-act="features" data-back="about">What's in Rootweave</a>
+      <span style="opacity:.45"> · </span>
       <a href="legal/privacy.html">Privacy</a>
       <span style="opacity:.45"> · </span>
       <a href="legal/terms.html">Terms</a>
@@ -20197,6 +20288,7 @@ function openAboutCredits(){
       <a id="aboutSupportLink" href="${supportFarmHref()}" target="_blank" rel="noopener">${SUPPORT_FARM.label}</a>
     </div>
     <div class="modalbtns" style="flex-wrap:wrap">
+      <button class="mbtn wood" data-act="features" data-back="about">What's in Rootweave</button>
       <button class="mbtn wood" data-act="exportsave">Export save</button>
       <button class="mbtn wood" data-act="importsave">Import save</button>
       <button class="mbtn wood" data-act="newgame" style="border-color:#a06040">🆕 New Game</button>
@@ -27681,6 +27773,7 @@ function buildJourney(){
     <span class="prestige-pill" title="Land prestige — restored parcels & stars">🌍 Land ★ ${landPrestigeScore()}</span>
     <span class="prestige-pill" title="Home prestige — house, rooms & yard">🏡 Home ★ ${homePrestigeScore()}</span>
     <button type="button" class="prestige-pill jscrap-btn" id="jScrap" style="cursor:pointer" title="Your earned memories — badges, clears, rooms">${scrapN?`📔 Story (${scrapN})`:'📔 Scrapbook'}</button>
+    <button type="button" class="prestige-pill" id="jFeatures" style="cursor:pointer" title="What Rootweave can do today">🗺️ Features</button>
     <button type="button" class="prestige-pill" id="jAbout" style="cursor:pointer">ℹ️ About</button>
     <button type="button" class="prestige-pill" id="jNew" style="cursor:pointer" title="Wipe journey and start over">🆕 New Game</button>`;
   path.appendChild(prest);
@@ -27701,6 +27794,8 @@ function buildJourney(){
     if(camp){ if(!camp.tipsShown) camp.tipsShown = {}; camp.tipsShown.scrapbook_story_pill = true; }
     SND.pop(); openScrapbook();
   });
+  const jFeat = prest.querySelector('#jFeatures');
+  if(jFeat) jFeat.addEventListener('click', ()=>{ SND.pop(); openFeatureMap(); });
   prest.querySelector('#jAbout').addEventListener('click', ()=>{ SND.pop(); openAboutCredits(); });
   prest.querySelector('#jNew').addEventListener('click', ()=>{ SND.pop(); confirmNewGame(); });
 
@@ -28198,10 +28293,15 @@ function init(){
   // overlays
   document.querySelectorAll('.ovbtn').forEach(b=>{
     b.addEventListener('click', ()=>{
-      setOverlay(b.dataset.ov); SND.pop();
       const bar = document.getElementById('overlaybar');
       if(bar) bar.classList.remove('open');
       if(btnMore) btnMore.classList.remove('on');
+      if(b.id==='ovFeatures'){
+        SND.pop();
+        if(typeof openFeatureMap==='function') openFeatureMap();
+        return;
+      }
+      setOverlay(b.dataset.ov); SND.pop();
     });
   });
   // modal delegation (incl. shop buys & tabs)
@@ -28233,7 +28333,9 @@ function init(){
     else if(act==='importsave'){ importSaveFile(); }
     else if(act==='newgame'){ confirmNewGame(); }
     else if(act==='newgamewipe'){ closeModal(); wipeAllProgress(); toast('🆕 New game — the valley waits. Export saves anytime from About.'); }
-    else if(act==='about'){ openAboutCredits(); }
+    else if(act==='about'){ featureMapReturn = null; openAboutCredits(); }
+    else if(act==='features'){ e.preventDefault(); openFeatureMap({back: actEl.dataset.back || null}); SND.pop(); }
+    else if(act==='featuresback'){ closeFeatureMap(); }
     else if(act==='coinshop'){ e.preventDefault(); openCoinShop(); SND.pop(); }
     else if(act==='lvgo'){
       if(state){ state.introSeen = true; state._introDismissed = true; state._introModalShown = true; }
@@ -28307,7 +28409,14 @@ function init(){
       e.preventDefault();
       // AN — topmost UI stack first (cottage → modal → overlay menu → info → journey → tool → map)
       if(cottageOpen){ exitCottage(); return; }
-      if(modalOpen){ closeModal(); return; }
+      if(modalOpen){
+        if(document.querySelector('#modalBox [data-act="featuresback"]') && typeof closeFeatureMap==='function'){
+          closeFeatureMap();
+          return;
+        }
+        closeModal();
+        return;
+      }
       const ovBar = document.getElementById('overlaybar');
       if(ovBar && ovBar.classList.contains('open')){
         ovBar.classList.remove('open');
@@ -28364,6 +28473,14 @@ function init(){
   if(!bundle) showSplash();     // brand new: title first, then the journey map
   else showJourney();           // returning: straight to the journey (▶ continue)
   if(location.hash==='#journey'){ try{ closeModal(); }catch(e){} showJourney(); }
+  if(location.hash==='#features'){
+    try{ openFeatureMap({back: bundle ? null : 'splash'}); }catch(e){}
+  }
+  window.addEventListener('hashchange', ()=>{
+    if(location.hash==='#features' && typeof openFeatureMap==='function'){
+      openFeatureMap();
+    }
+  });
   if(bundle && resumed && state && !state.homesteadView && !state.levelDone){
     plotSessionReady = true;
   }
@@ -28416,10 +28533,11 @@ function showSplash(){
     <div class="modalbtns" style="flex-direction:column;gap:8px">
       <button class="mbtn big" data-act="splashgo">Wake the Home Patch 🌱</button>
       <button class="mbtn wood" data-act="splashskip" style="font-size:13.5px">I've farmed before — skip coaching ⏩</button>
+      <button type="button" class="mbtn wood" data-act="features" data-back="splash" style="font-size:13.5px">What's in Rootweave</button>
       <button type="button" class="mbtn" data-act="about" style="font-size:12.5px;opacity:.9">About &amp; credits</button>
     </div>
     <div class="legal-row" style="margin-top:6px;font-size:12px;opacity:.9">
-      <a href="legal/privacy.html">Privacy</a> · <a href="legal/terms.html">Terms</a>
+      <a href="features.html">Features</a> · <a href="legal/privacy.html">Privacy</a> · <a href="legal/terms.html">Terms</a>
     </div>
   `);
 }

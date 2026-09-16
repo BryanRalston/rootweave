@@ -134,11 +134,11 @@ check('first session stays free; packs hidden', () => {
 });
 
 check('ship stamps move together', () => {
-  assert.match(html, /const SHIP_BUILD = '2026-09-08\.freeplay'/);
-  assert.match(sw, /const CACHE = 'rootweave-2026-09-08\.freeplay'/);
+  assert.match(html, /const SHIP_BUILD = '2026-09-16\.features'/);
+  assert.match(sw, /const CACHE = 'rootweave-2026-09-16\.features'/);
   assert.match(html, /What's new \(\$\{ver\}\)/);
-  assert.match(html, /Play is one morning/);
-  assert.match(html, /Coin packs are gone/);
+  assert.match(html, /Feature Map/);
+  assert.match(html, /current capabilities only/);
 });
 
 if (failures.length) {
