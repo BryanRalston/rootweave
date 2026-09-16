@@ -100,6 +100,11 @@ check('in-product entry points exist', () => {
   assert.match(html, /location\.hash==='#features'/);
 });
 
+check('plot overlay filter keeps the Feature Map button visible', () => {
+  const skips = html.match(/if\(b\.id==='ovFeatures'\)\{ b\.style\.display = ''; return; \}/g) || [];
+  assert.equal(skips.length, 2, 'applyLevelUI and applyHomesteadUI must keep ovFeatures visible');
+});
+
 check('on-site page deep-links into the in-game panel', () => {
   assert.match(featuresPage, /href="\.\/#features"/);
   assert.match(featuresPage, /What's in Rootweave/);

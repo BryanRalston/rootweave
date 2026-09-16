@@ -15828,6 +15828,7 @@ function applyHomesteadUI(){
   const j = document.getElementById('btnJourney');
   if(j){ j.style.display = ''; j.disabled = false; }
   document.querySelectorAll('.ovbtn').forEach(b=>{
+    if(b.id==='ovFeatures'){ b.style.display = ''; return; }
     b.style.display = b.dataset.ov==='none' ? '' : 'none';
   });
   document.getElementById('tut').classList.remove('show');
@@ -28110,6 +28111,7 @@ function applyLevelUI(){
   const j = document.getElementById('btnJourney');
   if(j){ j.style.display = ''; j.disabled = false; }
   document.querySelectorAll('.ovbtn').forEach(b=>{
+    if(b.id==='ovFeatures'){ b.style.display = ''; return; }
     const ov = b.dataset.ov;
     b.style.display = (ov==='none' || (L.ovs && L.ovs.indexOf(ov)>=0)) ? '' : 'none';
   });
