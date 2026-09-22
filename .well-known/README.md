@@ -12,17 +12,18 @@ Chrome / Play verify Digital Asset Links at the **host root**, not the project p
 
 Copy the same `assetlinks.json` into the **user/org GitHub Pages repo** (`BryanRalston.github.io`) at `.well-known/assetlinks.json` so the host-root URL serves it. This rootweave repo cannot publish to `/` on `bryanralston.github.io`.
 
-## Placeholder fingerprint
+## Fingerprints
 
-`00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00` is a dummy. Chrome will show a URL bar until the real Play App Signing SHA-256 is pasted.
+`assetlinks.json` lists two SHA-256 certs for `com.cortexdevelopments.rootweave`:
 
-## After the Play Console app exists (Cortex Developments)
+1. Play App signing key (`7F:1E:A9:64…`)
+2. Upload key (`02:E0:A7:12…`)
 
-1. Play Console → **Rootweave** (`com.cortexdevelopments.rootweave`) → **Setup → App integrity → App signing**.
-2. Copy **App signing key certificate** SHA-256 (colon-separated hex).
-   - Use the **app signing** cert, not the upload key, once Play App Signing is on (default for new apps).
-3. Replace the placeholder string in `assetlinks.json` (this repo **and** the host-root copy).
-4. Confirm `Content-Type` is `application/json` and the file is reachable without a redirect that drops the path.
-5. Optional check: [Google's statement list tester](https://developers.google.com/digital-asset-links/tools/statement-list) against `https://bryanralston.github.io`.
+Copy the same file to the host-root Pages repo when that copy is still the old placeholder.
+
+## Checks
+
+1. Confirm `Content-Type` is `application/json` and the file is reachable without a redirect that drops the path.
+2. Optional check: [Google's statement list tester](https://developers.google.com/digital-asset-links/tools/statement-list) against `https://bryanralston.github.io`.
 
 Do **not** put Manager Schedule Pro (`com.managerschedulebuilder.pro`) fingerprints in this file.
