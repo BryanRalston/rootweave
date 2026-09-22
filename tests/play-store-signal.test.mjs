@@ -171,7 +171,10 @@ check('TWA package is Cortex Developments, not MSP', () => {
   assert.match(listing, /Closed testing/);
   const links = JSON.parse(assetlinks);
   assert.equal(links[0].target.package_name, 'com.cortexdevelopments.rootweave');
-  assert.match(links[0].target.sha256_cert_fingerprints[0], /^00:00:/);
+  assert.deepEqual(links[0].target.sha256_cert_fingerprints, [
+    '7F:1E:A9:64:30:D7:AE:F0:E3:74:05:87:E4:02:22:9B:51:22:03:0F:31:4B:56:E3:6F:ED:BA:72:B2:98:AC:BF',
+    '02:E0:A7:12:33:D3:03:68:8E:02:68:37:0F:BD:68:D8:42:4D:7E:52:29:96:EB:DB:F2:BF:A9:95:4A:70:22:DE',
+  ]);
 });
 
 check('legal copy: packs not sold; PWYW does not grant coins', () => {
